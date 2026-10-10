@@ -283,9 +283,13 @@ impl Session {
         match r {
             Ok(v) => {
                 if let Some(t) = txn {
+                    let changed = t.changed_cells();
                     self.history.push(t);
                     self.dirty = true;
-                    self.after_change();
+                    match changed {
+                        Some(cells) => self.after_cells_change(&cells),
+                        None => self.after_change(),
+                    }
                 }
                 Ok(v)
             }
@@ -298,9 +302,26 @@ impl Session {
         }
     }
 
+    /// The workbook changed arbitrarily (structural edit, undo/redo): full recalc.
     pub fn after_change(&mut self) {
         if self.wb.calc_mode == CalcMode::Automatic {
             self.recalc();
+        } else {
+            self.cache.invalidate_deps();
+        }
+    }
+
+    /// Only `cells` changed: recompute them and their dependents.
+    pub fn after_cells_change(&mut self, cells: &[(usize, CellAddr)]) {
+        if self.wb.calc_mode == CalcMode::Automatic {
+            self.last_recalc = sp_formula::recalc::recalc_dirty(
+                &mut self.wb,
+                &mut self.cache,
+                cells,
+                self.recalc_opts,
+            );
+        } else {
+            self.cache.invalidate_deps();
         }
     }
 
@@ -373,5 +394,40 @@ mod tests {
         s.execute("edit.redo", &json!({})).unwrap();
         assert_eq!(v(&s, "A2"), sp_core::Value::Number(42.0));
         assert!(s.execute("no.such.command", &json!({})).is_err());
+    }
+
+    #[test]
+    fn cell_edits_recalc_incrementally() {
+        let mut s = Session::new();
+        let v = |s: &Session, a: &str| s.wb.sheets[0].value(CellAddr::parse(a).unwrap()).clone();
+        for (cell, input) in [
+            ("A1", "2"),
+            ("A2", "=A1*10"),
+            ("B3", "=SUM(A:A)"),
+            ("B1", "7"),
+        ] {
+            s.execute("cell.set", &json!({"cell": cell, "input": input}))
+                .unwrap();
+        }
+        assert!(s.last_recalc.incremental);
+        assert_eq!(s.last_recalc.formulas, 0); // B1 feeds nothing; used range unchanged
+        s.execute("cell.set", &json!({"cell": "A1", "input": "3"}))
+            .unwrap();
+        assert!(s.last_recalc.incremental);
+        assert_eq!(s.last_recalc.formulas, 2);
+        assert_eq!(v(&s, "B3"), sp_core::Value::Number(33.0));
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert!(!s.last_recalc.incremental);
+        assert_eq!(v(&s, "B3"), sp_core::Value::Number(22.0));
+        s.execute("formulas.calc_manual", &json!({})).unwrap();
+        s.execute("cell.set", &json!({"cell": "A1", "input": "4"}))
+            .unwrap();
+        assert_eq!(v(&s, "B3"), sp_core::Value::Number(22.0));
+        s.execute("formulas.calc_automatic", &json!({})).unwrap();
+        assert_eq!(v(&s, "B3"), sp_core::Value::Number(44.0));
+        s.execute("cell.set", &json!({"cell": "A1", "input": "5"}))
+            .unwrap();
+        assert!(s.last_recalc.incremental);
+        assert_eq!(v(&s, "B3"), sp_core::Value::Number(55.0));
     }
 }
