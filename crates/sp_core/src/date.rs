@@ -31,27 +31,35 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 const BASE: i64 = -25_569;
 
 /// Serial number for a year/month/day, normalising overflowing months and days the way the
-/// `DATE` function does. Returns `None` outside 1900-01-00 ..= 9999-12-31.
+/// `DATE` function does (the year is taken literally; `DATE`'s 0..=1899 → 1900+ offset is the
+/// caller's job). Day overflow counts through the phantom 1900-02-29, so `(1900, 2, 29)` and
+/// `(1900, 3, 0)` are both serial 60. Returns `None` outside 1900-01-00 ..= 9999-12-31.
 pub fn date_to_serial(year: i64, month: i64, day: i64) -> Option<f64> {
-    let year = if (0..1900).contains(&year) {
-        year + 1900
-    } else {
-        year
-    };
-    let total_months = year.checked_mul(12)?.checked_add(month - 1)?;
+    let total_months = year.checked_mul(12)?.checked_add(month.checked_sub(1)?)?;
     let y = total_months.div_euclid(12);
-    let m = (total_months.rem_euclid(12) + 1) as u32;
-    let first = days_from_civil(y, m, 1);
-    let days = first.checked_add(day - 1)?;
-    let mut serial = days - BASE;
-    // Before 1900-03-01 the target counts the phantom Feb 29.
-    if serial < 61 {
-        serial -= 1;
+    // Far outside the representable range; keeps the calendar arithmetic overflow-free.
+    if !(-100_000..=100_000).contains(&y) {
+        return None;
     }
-    if !(0..=2_958_465).contains(&serial) {
+    let m = (total_months.rem_euclid(12) + 1) as u32;
+    let mut first = days_from_civil(y, m, 1) - BASE;
+    // Before 1900-03-01 the target's serials are one lower than the real calendar's.
+    if y < 1900 || (y == 1900 && m <= 2) {
+        first -= 1;
+    }
+    let serial = first.checked_add(day.checked_sub(1)?)?;
+    if !(0..=MAX_SERIAL).contains(&serial) {
         return None;
     }
     Some(serial as f64)
+}
+
+/// Largest valid serial: 9999-12-31.
+pub const MAX_SERIAL: i64 = 2_958_465;
+
+/// True when `serial` is a date the target can represent (0 ..< 9999-12-31 + 1 day).
+pub fn in_range(serial: f64) -> bool {
+    serial.is_finite() && (0.0..(MAX_SERIAL + 1) as f64).contains(&serial)
 }
 
 /// (year, month, day) of a serial. Serial 0 → (1900, 1, 0); serial 60 → (1900, 2, 29).
@@ -126,7 +134,19 @@ mod tests {
         assert_eq!(date_to_serial(1900, 3, 1), Some(61.0));
         assert_eq!(date_to_serial(2024, 1, 15), Some(45306.0));
         assert_eq!(date_to_serial(2008, 14, 1), date_to_serial(2009, 2, 1));
-        assert_eq!(date_to_serial(108, 1, 1), date_to_serial(2008, 1, 1));
+        assert_eq!(date_to_serial(1899, 12, 30), None);
+        assert_eq!(date_to_serial(1900, 2, 29), Some(60.0));
+        assert_eq!(date_to_serial(1900, 3, 0), Some(60.0));
+        assert_eq!(date_to_serial(1900, 1, 60), Some(60.0));
+        assert_eq!(date_to_serial(1900, 1, 0), Some(0.0));
+        assert_eq!(date_to_serial(1900, 1, 61), Some(61.0));
+        assert_eq!(date_to_serial(1900, 1, -1), None);
+        assert_eq!(date_to_serial(9999, 12, 31), Some(2_958_465.0));
+        assert_eq!(date_to_serial(10000, 1, 1), None);
+        // Hostile inputs never overflow.
+        assert_eq!(date_to_serial(i64::MAX, i64::MIN, i64::MAX), None);
+        assert_eq!(date_to_serial(2000, i64::MAX, 1), None);
+        assert_eq!(date_to_serial(2000, 1, i64::MIN), None);
         assert_eq!(serial_to_date(45306.0), Some((2024, 1, 15)));
         assert_eq!(serial_to_date(60.0), Some((1900, 2, 29)));
         assert_eq!(serial_to_date(1.0), Some((1900, 1, 1)));
