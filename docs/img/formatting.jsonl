@@ -1,0 +1,79 @@
+{"op": "exec", "id": "home.cells.column_width", "params": {"range": "A1:I1", "width": 13}}
+{"op": "exec", "id": "home.cells.row_height", "params": {"range": "A2", "height": 26}}
+{"op": "exec", "id": "home.cells.row_height", "params": {"range": "A4", "height": 26}}
+{"op": "exec", "id": "home.cells.row_height", "params": {"range": "A6", "height": 80}}
+{"op": "exec", "id": "home.cells.row_height", "params": {"range": "A8", "height": 22}}
+{"op": "exec", "id": "home.cells.row_height", "params": {"range": "A9", "height": 22}}
+{"op": "exec", "id": "home.cells.row_height", "params": {"range": "A11", "height": 22}}
+{"op": "exec", "id": "home.cells.row_height", "params": {"range": "A13", "height": 22}}
+{"op": "set", "cell": "A2", "input": "Borders"}
+{"op": "set", "cell": "A4", "input": "Borders"}
+{"op": "set", "cell": "B2", "input": "thin"}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "B2", "style": "thin"}}
+{"op": "exec", "id": "home.align.center", "params": {"range": "B2"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "B2"}}
+{"op": "set", "cell": "D2", "input": "medium"}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "D2", "style": "medium"}}
+{"op": "exec", "id": "home.align.center", "params": {"range": "D2"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "D2"}}
+{"op": "set", "cell": "F2", "input": "thick"}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "F2", "style": "thick"}}
+{"op": "exec", "id": "home.align.center", "params": {"range": "F2"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "F2"}}
+{"op": "set", "cell": "B4", "input": "dashed"}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "B4", "style": "dashed"}}
+{"op": "exec", "id": "home.align.center", "params": {"range": "B4"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "B4"}}
+{"op": "set", "cell": "D4", "input": "dotted"}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "D4", "style": "dotted"}}
+{"op": "exec", "id": "home.align.center", "params": {"range": "D4"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "D4"}}
+{"op": "set", "cell": "F4", "input": "double"}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "F4", "style": "double"}}
+{"op": "exec", "id": "home.align.center", "params": {"range": "F4"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "F4"}}
+{"op": "set", "cell": "H2", "input": "grid"}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "H2:I4", "style": "thin"}}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "H3", "style": "thick"}}
+{"op": "set", "cell": "A6", "input": "Align"}
+{"op": "set", "cell": "B6", "input": "Wrapped text flows onto several lines inside the cell"}
+{"op": "exec", "id": "home.align.wrap_text", "params": {"range": "B6"}}
+{"op": "set", "cell": "C6", "input": "Top"}
+{"op": "exec", "id": "home.align.top", "params": {"range": "C6"}}
+{"op": "set", "cell": "D6", "input": "Middle"}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "D6"}}
+{"op": "set", "cell": "E6", "input": "Bottom"}
+{"op": "exec", "id": "home.align.bottom", "params": {"range": "E6"}}
+{"op": "set", "cell": "F6", "input": "Indent 2"}
+{"op": "exec", "id": "home.align.indent_increase", "params": {"range": "F6"}}
+{"op": "exec", "id": "home.align.indent_increase", "params": {"range": "F6"}}
+{"op": "exec", "id": "home.align.top", "params": {"range": "F6"}}
+{"op": "set", "cell": "G6", "input": "Up 90"}
+{"op": "exec", "id": "home.align.orientation", "params": {"range": "G6", "degrees": 90}}
+{"op": "exec", "id": "home.align.center", "params": {"range": "G6"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "G6"}}
+{"op": "set", "cell": "H6", "input": "Down -90"}
+{"op": "exec", "id": "home.align.orientation", "params": {"range": "H6", "degrees": -90}}
+{"op": "exec", "id": "home.align.center", "params": {"range": "H6"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "H6"}}
+{"op": "set", "cell": "I6", "input": "Slant 45"}
+{"op": "exec", "id": "home.align.orientation", "params": {"range": "I6", "degrees": 45}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "I6"}}
+{"op": "exec", "id": "home.font.border_outline", "params": {"range": "B6:I6"}}
+{"op": "set", "cell": "A8", "input": "Merge"}
+{"op": "set", "cell": "B8", "input": "Merged & centred, medium border"}
+{"op": "exec", "id": "home.align.merge_center", "params": {"range": "B8:E9"}}
+{"op": "exec", "id": "home.align.middle", "params": {"range": "B8"}}
+{"op": "exec", "id": "home.font.fill_color", "params": {"range": "B8", "color": "#E2EFDA"}}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "B8:E9", "style": "medium"}}
+{"op": "set", "cell": "G8", "input": "Outline"}
+{"op": "exec", "id": "home.font.border_outline", "params": {"range": "G8:I9"}}
+{"op": "set", "cell": "A11", "input": "Font"}
+{"op": "set", "cell": "B11", "input": "Courier New family"}
+{"op": "exec", "id": "home.font.family", "params": {"range": "B11", "name": "Courier New"}}
+{"op": "set", "cell": "E11", "input": "Calibri (default)"}
+{"op": "set", "cell": "G11", "input": "Right ind 1"}
+{"op": "exec", "id": "home.align.right", "params": {"range": "G11"}}
+{"op": "exec", "id": "home.align.indent_increase", "params": {"range": "G11"}}
+{"op": "exec", "id": "home.font.borders", "params": {"range": "G11:H11", "style": "thin"}}
+{"op": "exec", "id": "select.range", "params": {"range": "H13"}}

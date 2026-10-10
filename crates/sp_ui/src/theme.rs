@@ -19,6 +19,8 @@ pub struct Theme {
     pub selection_fill: Color32,
     pub selection_border: Color32,
     pub cell_text: Color32,
+    /// Cell borders whose colour is "automatic".
+    pub border_auto: Color32,
     pub formula_bar_bg: Color32,
     pub status_bg: Color32,
     pub status_text: Color32,
@@ -44,6 +46,7 @@ pub const LIGHT: Theme = Theme {
     selection_fill: Color32::from_rgba_premultiplied(33, 115, 70, 22),
     selection_border: Color32::from_rgb(33, 115, 70),
     cell_text: Color32::from_rgb(20, 20, 20),
+    border_auto: Color32::BLACK,
     formula_bar_bg: Color32::WHITE,
     status_bg: Color32::from_rgb(243, 243, 243),
     status_text: Color32::from_rgb(68, 68, 68),
