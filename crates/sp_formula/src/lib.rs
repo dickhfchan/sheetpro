@@ -1,6 +1,7 @@
 //! L2 formula engine: parser, printer, reference shifting, evaluator, functions, recalc.
 
 pub mod ast;
+pub mod deps;
 pub mod eval;
 pub mod functions;
 pub mod parser;

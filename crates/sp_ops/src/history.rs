@@ -53,6 +53,18 @@ pub struct Txn {
 }
 
 impl Txn {
+    /// Cells this transaction changed, or `None` if it replaced whole sheets or the whole
+    /// workbook (structural edits), in which case callers should treat everything as changed.
+    pub fn changed_cells(&self) -> Option<Vec<(usize, CellAddr)>> {
+        self.undo
+            .iter()
+            .map(|p| match p {
+                Patch::Cell { sheet, addr, .. } => Some((*sheet, *addr)),
+                Patch::Sheet { .. } | Patch::Book(_) => None,
+            })
+            .collect()
+    }
+
     /// Undo this transaction without recording it (used to roll back a failed command).
     pub fn revert(self, wb: &mut Workbook) {
         for p in self.undo.iter().rev() {
@@ -274,6 +286,27 @@ mod tests {
         assert_eq!(wb.sheets[0].value(a), &Value::Number(2.0));
         h.redo(&mut wb);
         assert_eq!(wb.sheets.len(), 2);
+    }
+
+    #[test]
+    fn changed_cells_lists_cell_patches_only() {
+        let mut wb = Workbook::new();
+        let (a, b) = (CellAddr::new(0, 0), CellAddr::new(3, 2));
+        let mut tx = Tx::new(&mut wb);
+        tx.set_cell(0, a, Some(Cell::constant(Value::Number(1.0))));
+        tx.set_cell(0, b, None);
+        tx.set_cell(0, a, Some(Cell::constant(Value::Number(2.0))));
+        let t = tx.commit("set").unwrap();
+        assert_eq!(t.changed_cells(), Some(vec![(0, a), (0, b)]));
+
+        let mut tx = Tx::new(&mut wb);
+        tx.set_cell(0, a, None);
+        tx.touch_sheet(0);
+        assert_eq!(tx.commit("sort").unwrap().changed_cells(), None);
+
+        let mut tx = Tx::new(&mut wb);
+        tx.touch_book();
+        assert_eq!(tx.commit("book").unwrap().changed_cells(), None);
     }
 
     #[test]

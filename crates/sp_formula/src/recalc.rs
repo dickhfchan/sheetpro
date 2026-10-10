@@ -4,22 +4,31 @@
 //! reads a not-yet-computed formula cell records it as *pending*; the pending cells are
 //! computed first and the formula is retried. Cells found on the stack while pending form a
 //! cycle and evaluate to 0 (the target's behaviour with iterative calculation off).
+//!
+//! `recalc` recomputes every formula and (re)builds the dependency graph kept in the
+//! `AstCache`; `recalc_dirty` recomputes only edited cells and their transitive dependents,
+//! reading every other formula's cached value. It falls back to a full recalc whenever the
+//! graph is missing or stale, the workbook has circular references, or propagation blows up,
+//! so its results always equal a full recalc's (volatile random draws aside).
 
 use crate::ast::Expr;
+use crate::deps::{DepGraph, FxMap, FxSet};
 use crate::eval::{Ev, EvalValue, Host};
 use crate::parser::{ParseError, parse};
 use sp_core::{CellAddr, CellRange, ErrorKind, Value};
 use sp_model::{Content, Workbook};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-pub type Key = (usize, CellAddr);
+pub use crate::deps::Key;
 
 /// Parsed-formula cache keyed by cell; entries are re-parsed when the source text changes.
+/// Also holds the dependency graph built by the last full recalc (for `recalc_dirty`).
 #[derive(Default)]
 pub struct AstCache {
-    map: HashMap<Key, (String, Result<Arc<Expr>, ParseError>)>,
+    map: FxMap<Key, (String, Result<Arc<Expr>, ParseError>)>,
+    deps: Option<DepGraph>,
 }
 
 impl AstCache {
@@ -36,6 +45,17 @@ impl AstCache {
 
     pub fn clear(&mut self) {
         self.map.clear();
+        self.deps = None;
+    }
+
+    /// Drop the dependency graph (the workbook changed without a recalc); the next
+    /// `recalc_dirty` then runs a full recalc, which rebuilds it.
+    pub fn invalidate_deps(&mut self) {
+        self.deps = None;
+    }
+
+    pub fn deps(&self) -> Option<&DepGraph> {
+        self.deps.as_ref()
     }
 
     pub fn len(&self) -> usize {
@@ -52,6 +72,8 @@ pub struct RecalcStats {
     pub formulas: usize,
     pub evaluations: usize,
     pub cycles: usize,
+    /// Recomputed only dirty cells (`formulas` then counts the dirty formulas).
+    pub incremental: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -63,8 +85,10 @@ pub struct RecalcOptions {
 
 struct WbHost<'a> {
     wb: &'a Workbook,
-    computed: RefCell<HashMap<Key, Value>>,
+    computed: RefCell<FxMap<Key, Value>>,
     pending: RefCell<Vec<Key>>,
+    /// Incremental mode: formulas outside this set read their cached value.
+    dirty: Option<&'a FxSet<Key>>,
     names: HashMap<(String, Option<usize>), Arc<Expr>>,
     /// Read formula cells' cached values instead of tracking pending work.
     use_cached: bool,
@@ -75,7 +99,12 @@ struct WbHost<'a> {
 const MAX_PENDING: usize = 1_000_000;
 
 impl<'a> WbHost<'a> {
-    fn new(wb: &'a Workbook, use_cached: bool, opts: RecalcOptions) -> Self {
+    fn new(
+        wb: &'a Workbook,
+        use_cached: bool,
+        dirty: Option<&'a FxSet<Key>>,
+        opts: RecalcOptions,
+    ) -> Self {
         let mut names = HashMap::new();
         for n in &wb.names {
             if let Ok(e) = parse(&n.formula) {
@@ -84,8 +113,9 @@ impl<'a> WbHost<'a> {
         }
         WbHost {
             wb,
-            computed: RefCell::new(HashMap::new()),
+            computed: RefCell::new(FxMap::default()),
             pending: RefCell::new(Vec::new()),
+            dirty,
             names,
             use_cached,
             now: opts.now,
@@ -99,6 +129,9 @@ impl<'a> WbHost<'a> {
         }
         if let Some(v) = self.computed.borrow().get(&key) {
             return v.clone();
+        }
+        if self.dirty.is_some_and(|d| !d.contains(&key)) {
+            return cached.clone();
         }
         let mut p = self.pending.borrow_mut();
         if p.len() < MAX_PENDING {
@@ -206,7 +239,82 @@ fn finalize(ev: &Ev<'_>, v: EvalValue) -> Value {
     }
 }
 
-/// Recalculate every formula in the workbook, writing results into each cell's `value`.
+/// Evaluate `order` (formula key + source) demand-driven; returns each formula's value.
+fn compute(
+    wb: &Workbook,
+    cache: &mut AstCache,
+    order: &[(Key, String)],
+    dirty: Option<&FxSet<Key>>,
+    opts: RecalcOptions,
+    stats: &mut RecalcStats,
+) -> FxMap<Key, Value> {
+    let sources: FxMap<Key, &str> = order.iter().map(|(k, s)| (*k, s.as_str())).collect();
+    let host = WbHost::new(wb, false, dirty, opts);
+    // Formulas evaluated at least once and waiting for pending precedents. They are exactly
+    // the current evaluation path, so reaching one again is a genuine circular reference
+    // (cells merely queued on the stack are not: they are pushed again and evaluated first).
+    let mut waiting: FxSet<Key> = FxSet::default();
+    for (key, _) in order {
+        if host.computed.borrow().contains_key(key) {
+            continue;
+        }
+        let mut stack = vec![*key];
+        while let Some(&top) = stack.last() {
+            if host.computed.borrow().contains_key(&top) {
+                stack.pop();
+                waiting.remove(&top);
+                continue;
+            }
+            let Some(src) = sources.get(&top) else {
+                stack.pop();
+                continue;
+            };
+            let value = match cache.get(top, src) {
+                Err(_) => Value::Error(ErrorKind::Name),
+                Ok(expr) => {
+                    host.pending.borrow_mut().clear();
+                    let mut ev = Ev::new(&host, top.0, top.1);
+                    let r = ev.eval(&expr);
+                    // Finalizing may read a returned reference's cell: do it before checking
+                    // for pending precedents so those reads are tracked too.
+                    let v = finalize(&ev, r);
+                    stats.evaluations += 1;
+                    let pending: Vec<Key> = std::mem::take(&mut *host.pending.borrow_mut());
+                    if !pending.is_empty() {
+                        waiting.insert(top);
+                        let mut seen = FxSet::default();
+                        for p in pending {
+                            if !seen.insert(p) || host.computed.borrow().contains_key(&p) {
+                                continue;
+                            }
+                            if waiting.contains(&p) {
+                                stats.cycles += 1;
+                                host.computed.borrow_mut().insert(p, Value::Number(0.0));
+                            } else {
+                                stack.push(p);
+                            }
+                        }
+                        continue;
+                    }
+                    v
+                }
+            };
+            host.computed.borrow_mut().insert(top, value);
+        }
+    }
+    host.computed.into_inner()
+}
+
+fn write_back(wb: &mut Workbook, results: FxMap<Key, Value>) {
+    for ((si, a), v) in results {
+        if let Some(c) = wb.sheet_mut(si).and_then(|s| s.get_mut(a)) {
+            c.value = v;
+        }
+    }
+}
+
+/// Recalculate every formula in the workbook, writing results into each cell's `value`,
+/// and rebuild the dependency graph used by `recalc_dirty`.
 pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> RecalcStats {
     let mut stats = RecalcStats::default();
     let mut formulas: Vec<(Key, String)> = Vec::new();
@@ -218,64 +326,72 @@ pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> R
         }
     }
     stats.formulas = formulas.len();
-    let sources: HashMap<Key, String> = formulas.iter().cloned().collect();
-    let results: HashMap<Key, Value> = {
-        let host = WbHost::new(wb, false, opts);
-        let mut on_stack: HashSet<Key> = HashSet::new();
-        for (key, _) in &formulas {
-            if host.computed.borrow().contains_key(key) {
-                continue;
-            }
-            let mut stack = vec![*key];
-            on_stack.insert(*key);
-            while let Some(&top) = stack.last() {
-                if host.computed.borrow().contains_key(&top) {
-                    stack.pop();
-                    on_stack.remove(&top);
-                    continue;
-                }
-                let Some(src) = sources.get(&top) else {
-                    stack.pop();
-                    on_stack.remove(&top);
-                    continue;
-                };
-                let value = match cache.get(top, src) {
-                    Err(_) => Value::Error(ErrorKind::Name),
-                    Ok(expr) => {
-                        host.pending.borrow_mut().clear();
-                        let mut ev = Ev::new(&host, top.0, top.1);
-                        let r = ev.eval(&expr);
-                        stats.evaluations += 1;
-                        let pending: Vec<Key> = std::mem::take(&mut *host.pending.borrow_mut());
-                        if !pending.is_empty() {
-                            let mut seen = HashSet::new();
-                            for p in pending {
-                                if !seen.insert(p) || host.computed.borrow().contains_key(&p) {
-                                    continue;
-                                }
-                                if on_stack.contains(&p) {
-                                    stats.cycles += 1;
-                                    host.computed.borrow_mut().insert(p, Value::Number(0.0));
-                                } else {
-                                    stack.push(p);
-                                    on_stack.insert(p);
-                                }
-                            }
-                            continue;
-                        }
-                        finalize(&ev, r)
-                    }
-                };
-                host.computed.borrow_mut().insert(top, value);
-            }
-        }
-        host.computed.into_inner()
+    let results = compute(wb, cache, &formulas, None, opts, &mut stats);
+    write_back(wb, results);
+    let mut graph = DepGraph::new(wb);
+    for (key, src) in &formulas {
+        let expr = cache.get(*key, src).ok();
+        graph.insert(wb, *key, expr.as_deref());
+    }
+    graph.has_cycles = stats.cycles > 0;
+    cache.deps = Some(graph);
+    stats
+}
+
+/// Recalculate after `changed` cells were edited (content replaced, cleared or inserted):
+/// only those cells, always-dirty (volatile) formulas and their transitive dependents are
+/// recomputed. Every other formula keeps its cached value. Results equal `recalc`'s; falls
+/// back to it when there is no current dependency graph or the workbook has cycles.
+pub fn recalc_dirty(
+    wb: &mut Workbook,
+    cache: &mut AstCache,
+    changed: &[Key],
+    opts: RecalcOptions,
+) -> RecalcStats {
+    let Some(mut graph) = cache.deps.take() else {
+        return recalc(wb, cache, opts);
     };
-    for ((si, a), v) in results {
-        if let Some(c) = wb.sheet_mut(si).and_then(|s| s.get_mut(a)) {
-            c.value = v;
+    if graph.has_cycles || !graph.matches(wb) {
+        return recalc(wb, cache, opts);
+    }
+    for &key in changed {
+        let src = wb
+            .sheet(key.0)
+            .and_then(|s| s.get(key.1))
+            .and_then(|c| c.formula_src())
+            .map(str::to_string);
+        match src {
+            Some(src) => {
+                let expr = cache.get(key, &src).ok();
+                graph.insert(wb, key, expr.as_deref());
+            }
+            None => graph.remove(key),
         }
     }
+    let Some(dirty) = graph.dirty_from(wb, changed) else {
+        return recalc(wb, cache, opts);
+    };
+    let mut order: Vec<(Key, String)> = dirty
+        .iter()
+        .filter_map(|k| {
+            let src = wb.sheet(k.0)?.get(k.1)?.formula_src()?;
+            Some((*k, src.to_string()))
+        })
+        .collect();
+    // Same visiting order as a full recalc (sheet, then row-major).
+    order.sort_unstable_by_key(|(k, _)| *k);
+    let mut stats = RecalcStats {
+        formulas: order.len(),
+        incremental: true,
+        ..RecalcStats::default()
+    };
+    let results = compute(wb, cache, &order, Some(&dirty), opts, &mut stats);
+    if stats.cycles > 0 {
+        // A new circular reference: resolve it exactly as a full recalc would.
+        return recalc(wb, cache, opts);
+    }
+    write_back(wb, results);
+    cache.deps = Some(graph);
     stats
 }
 
@@ -284,7 +400,7 @@ pub fn eval_formula(wb: &Workbook, sheet: usize, at: CellAddr, src: &str) -> Val
     match parse(src) {
         Err(_) => Value::Error(ErrorKind::Name),
         Ok(expr) => {
-            let host = WbHost::new(wb, true, RecalcOptions::default());
+            let host = WbHost::new(wb, true, None, RecalcOptions::default());
             let mut ev = Ev::new(&host, sheet, at);
             let r = ev.eval(&expr);
             finalize(&ev, r)
@@ -386,6 +502,267 @@ mod tests {
         assert_eq!(v(&wb, "B11"), Value::Error(ErrorKind::Name));
         assert_eq!(v(&wb, "B12"), Value::Number(6.0));
         assert_eq!(v(&wb, "B13"), Value::Number(5.0));
+    }
+
+    const OPTS: RecalcOptions = RecalcOptions {
+        now: Some(45306.5),
+        seed: 7,
+    };
+
+    fn parse_input(input: &str) -> Option<MCell> {
+        let cell = match input.strip_prefix('=') {
+            Some(f) => MCell::formula(f),
+            None if input.is_empty() => return None,
+            None => match input.parse::<f64>() {
+                Ok(n) => MCell::constant(Value::Number(n)),
+                Err(_) => MCell::constant(Value::text(input)),
+            },
+        };
+        Some(cell)
+    }
+
+    /// Apply edits, recalc incrementally, and check against a cold full recalc.
+    fn edit_and_compare(wb: &mut Workbook, cache: &mut AstCache, edits: &[(usize, &str, &str)]) {
+        let mut changed = Vec::new();
+        for (si, a, input) in edits {
+            let addr = CellAddr::parse(a).unwrap();
+            match parse_input(input) {
+                Some(c) => {
+                    wb.sheets[*si].set(addr, c);
+                }
+                None => {
+                    wb.sheets[*si].remove(addr);
+                }
+            }
+            changed.push((*si, addr));
+        }
+        recalc_dirty(wb, cache, &changed, OPTS);
+        let mut full = wb.clone();
+        recalc(&mut full, &mut AstCache::default(), OPTS);
+        for (si, (a, b)) in wb.sheets.iter().zip(&full.sheets).enumerate() {
+            for (addr, c) in b.iter() {
+                assert_eq!(
+                    a.get(addr),
+                    Some(c),
+                    "sheet {si} {} differs after {edits:?}\n{}",
+                    addr.to_a1(),
+                    b.iter()
+                        .map(|(a, c)| format!("{}={:?}->{:?}", a.to_a1(), c.content, c.value))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+            }
+        }
+        assert_eq!(*wb, full, "incremental != full after {edits:?}");
+    }
+
+    fn base(cells: &[(&str, &str)]) -> (Workbook, AstCache) {
+        let mut wb = Workbook::new();
+        for (a, input) in cells {
+            if let Some(c) = parse_input(input) {
+                wb.sheets[0].set(CellAddr::parse(a).unwrap(), c);
+            }
+        }
+        let mut cache = AstCache::default();
+        recalc(&mut wb, &mut cache, OPTS);
+        (wb, cache)
+    }
+
+    #[test]
+    fn incremental_chain_recomputes_only_dependents() {
+        let mut cells: Vec<(String, String)> = vec![("A1".into(), "1".into())];
+        for r in 2..=5000 {
+            cells.push((format!("A{r}"), format!("=A{}+1", r - 1)));
+            cells.push((format!("B{r}"), format!("=C{r}*2")));
+        }
+        let refs: Vec<(&str, &str)> = cells
+            .iter()
+            .map(|(a, b)| (a.as_str(), b.as_str()))
+            .collect();
+        let (mut wb, mut cache) = base(&refs);
+        let k = |a: &str| (0, CellAddr::parse(a).unwrap());
+        wb.sheets[0].set(
+            CellAddr::parse("A1").unwrap(),
+            MCell::constant(Value::Number(10.0)),
+        );
+        let st = recalc_dirty(&mut wb, &mut cache, &[k("A1")], OPTS);
+        assert!(st.incremental);
+        assert_eq!(st.formulas, 4999);
+        assert_eq!(v(&wb, "A5000"), Value::Number(5009.0));
+        wb.sheets[0].set(
+            CellAddr::parse("C7").unwrap(),
+            MCell::constant(Value::Number(4.0)),
+        );
+        let st = recalc_dirty(&mut wb, &mut cache, &[k("C7")], OPTS);
+        assert_eq!((st.formulas, st.evaluations), (1, 1));
+        assert_eq!(v(&wb, "B7"), Value::Number(8.0));
+        // Reverse chain entered mid-way.
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A3000", "=B7+A2999")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "")]);
+    }
+
+    #[test]
+    fn incremental_ranges_and_whole_columns() {
+        let (mut wb, mut cache) = base(&[
+            ("A1", "1"),
+            ("A2", "2"),
+            ("B1", "=SUM(A1:A5)"),
+            ("B2", "=SUM(A:A)"),
+            ("B3", "=COUNTBLANK(A:A)"),
+            ("B4", "=SUM(2:2)"),
+            ("B5", "=(A1):(A3)"),
+            ("B6", "=SUM((A1):(A9))"),
+            ("C1", "=B1+B2"),
+            ("D1", "=Total*2"),
+        ]);
+        wb.names.push(sp_model::DefinedName {
+            name: "Total".into(),
+            formula: "Sheet1!$A$1:$A$9".into(),
+            scope: None,
+        });
+        recalc(&mut wb, &mut cache, OPTS);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A4", "10")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A8", "5")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A100", "7")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "Z2", "3")]);
+        // Used range grows: COUNTBLANK(A:A) changes though column A did not.
+        edit_and_compare(&mut wb, &mut cache, &[(0, "F500", "1")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "F500", "")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "=SUM(Total)")]); // cycle
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "=SUM(A2:A9)")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A3", "100")]);
+        assert_eq!(v(&wb, "B5"), Value::Number(117.0));
+    }
+
+    #[test]
+    fn incremental_cycles_match_full() {
+        let (mut wb, mut cache) = base(&[("A1", "1"), ("B1", "=A1+1"), ("C1", "=B1+1")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "=C1+1")]);
+        assert!(cache.deps().is_some_and(|g| g.has_cycles));
+        edit_and_compare(&mut wb, &mut cache, &[(0, "B1", "5")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "2")]);
+        assert!(cache.deps().is_some_and(|g| !g.has_cycles));
+        edit_and_compare(&mut wb, &mut cache, &[(0, "D1", "=D1")]);
+    }
+
+    #[test]
+    fn incremental_volatile_always_recomputed() {
+        let (mut wb, mut cache) = base(&[
+            ("A1", "1"),
+            ("B1", "=NOW()+A2"),
+            ("C1", "=B1+1"),
+            ("D1", "=INDIRECT(\"A\"&(A1+1))"),
+            ("E1", "=OFFSET(A1,A1,0)"),
+            ("F1", "=RAND()"),
+            ("G1", "=F1*0"),
+        ]);
+        let k = |a: &str| (0, CellAddr::parse(a).unwrap());
+        wb.sheets[0].set(
+            CellAddr::parse("A2").unwrap(),
+            MCell::constant(Value::Number(9.0)),
+        );
+        let opts = RecalcOptions { seed: 99, ..OPTS };
+        let before = v(&wb, "F1");
+        let st = recalc_dirty(&mut wb, &mut cache, &[k("A2")], opts);
+        assert!(st.incremental);
+        assert_eq!(st.formulas, 6);
+        assert_eq!(v(&wb, "C1"), Value::Number(45306.5 + 9.0 + 1.0));
+        assert_eq!(v(&wb, "D1"), Value::Number(9.0));
+        assert_eq!(v(&wb, "E1"), Value::Number(9.0));
+        assert_ne!(v(&wb, "F1"), before);
+        assert_eq!(v(&wb, "G1"), Value::Number(0.0));
+    }
+
+    #[test]
+    fn incremental_matches_full_on_random_edits() {
+        let mut rng: u64 = 0x2545_F491_4F6C_DD1D;
+        let mut next = move |n: u64| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng % n
+        };
+        let cell = |r: u64, c: u64| format!("{}{}", (b'A' + c as u8) as char, r + 1);
+        let mut wb = Workbook::new();
+        wb.sheets.push(sp_model::Sheet::new("Two"));
+        wb.names.push(sp_model::DefinedName {
+            name: "Rate".into(),
+            formula: "Two!$B$2".into(),
+            scope: None,
+        });
+        let mut cache = AstCache::default();
+        recalc(&mut wb, &mut cache, OPTS);
+        let mut incremental = 0;
+        for _ in 0..400 {
+            let n_edits = 1 + next(3);
+            let mut edits: Vec<(usize, String, String)> = Vec::new();
+            for _ in 0..n_edits {
+                // Formulas only read columns left of their own, so most states are acyclic
+                // (whole-row refs and the occasional self-column range still make cycles).
+                let (r, c) = (next(12), next(6));
+                let r2 = next(12);
+                let c2 = if c == 0 { 0 } else { next(c) };
+                let c3 = if c == 0 { 0 } else { next(c) };
+                let input = match if c == 0 { next(3) } else { next(16) } {
+                    0 | 1 => format!("{}", next(100)),
+                    2 => String::new(),
+                    3 => format!("={}+{}", cell(r2, c2), cell(next(12), c3)),
+                    4 => format!("=SUM({}:{})", cell(r2, c2), cell(r2 + next(4), c2)),
+                    5 => format!("=SUM({}:{})", cell(0, c2), cell(r2, c3)),
+                    6 => format!("=SUM({0}:{0})", (b'A' + c2 as u8) as char),
+                    7 => format!("=IF({}>50,{},1)", cell(r2, c2), cell(next(12), c3)),
+                    8 => format!("=Two!{}*2", cell(r2, c2)),
+                    9 if c > 1 => "=Rate+1".into(),
+                    10 => format!("=COUNTBLANK({0}:{0})", (b'A' + c2 as u8) as char),
+                    11 => format!("=INDEX({}:{},2)", cell(r2, c2), cell(r2 + 3, c2)),
+                    12 => format!("=ISFORMULA({})", cell(r2, c2)),
+                    13 if next(8) == 0 => format!("=SUM({}:{})", r2 + 1, r2 + 2),
+                    14 => format!("=SUM(({}):({}))", cell(r2, c2), cell(next(12), c3)),
+                    _ => format!("=LET(x,{},x*3)", cell(r2, c2)),
+                };
+                edits.push((next(2) as usize, cell(r, c), input));
+            }
+            let refs: Vec<(usize, &str, &str)> = edits
+                .iter()
+                .map(|(s, a, i)| (*s, a.as_str(), i.as_str()))
+                .collect();
+            edit_and_compare(&mut wb, &mut cache, &refs);
+            incremental += usize::from(cache.deps().is_some_and(|g| !g.has_cycles));
+        }
+        assert!(incremental > 0);
+    }
+
+    #[test]
+    fn stale_graph_falls_back_to_full() {
+        let (mut wb, mut cache) = base(&[("A1", "1"), ("B1", "=A1*2")]);
+        // A sheet added behind the graph's back: signature mismatch → full recalc.
+        wb.sheets.push(sp_model::Sheet::new("New"));
+        wb.sheets[0].set(CellAddr::parse("C1").unwrap(), MCell::formula("New!A1+B1"));
+        let st = recalc_dirty(&mut wb, &mut cache, &[], OPTS);
+        assert!(!st.incremental);
+        assert_eq!(v(&wb, "C1"), Value::Number(2.0));
+        cache.invalidate_deps();
+        let st = recalc_dirty(&mut wb, &mut cache, &[], OPTS);
+        assert!(!st.incremental);
+        assert!(cache.deps().is_some());
+    }
+
+    #[test]
+    fn queued_precedent_is_not_a_cycle() {
+        // A1 queues B1 and C1; C1 then needs B1 while it is still only queued.
+        let mut wb = Workbook::new();
+        for (a, f) in [("A1", "B1+C1"), ("B1", "2+3"), ("C1", "B1+1")] {
+            wb.sheets[0].set(CellAddr::parse(a).unwrap(), MCell::formula(f));
+        }
+        let st = recalc(&mut wb, &mut AstCache::default(), OPTS);
+        assert_eq!(st.cycles, 0);
+        assert_eq!(v(&wb, "A1"), Value::Number(11.0));
+    }
+
+    #[test]
+    fn returned_reference_to_later_formula() {
+        let wb = wb_with(&[("A1", "=INDEX(B1:B3,2)"), ("B2", "=3+4"), ("C1", "=B1:B2")]);
+        assert_eq!(v(&wb, "A1"), Value::Number(7.0));
     }
 
     #[test]
