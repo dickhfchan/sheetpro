@@ -102,6 +102,14 @@ const FUTURE_FUNCTIONS: &[&str] = &[
     "REGEXEXTRACT",
     "REGEXREPLACE",
     "TRIMRANGE",
+    "IMCOSH",
+    "IMCOT",
+    "IMCSC",
+    "IMCSCH",
+    "IMSEC",
+    "IMSECH",
+    "IMSINH",
+    "IMTAN",
 ];
 const WORKSHEET_FUNCTIONS: &[&str] = &["FILTER", "SORT"];
 
