@@ -1,6 +1,7 @@
 //! L6 shell: a thin egui front end over `sp_engine::Session`. Every action goes through
 //! `Session::execute`; this crate owns only transient view state (edit buffer, hover…).
 
+pub mod grid;
 pub mod theme;
 
 #[cfg(feature = "screenshot")]
@@ -11,6 +12,7 @@ use serde_json::json;
 use sp_core::{CellAddr, CellRange, Value, col_to_letters};
 use sp_engine::{Json, Session, catalog, registry};
 use sp_render::{Align, layout};
+
 use theme::{LIGHT as T, color};
 
 pub const RIBBON_TABS: [&str; 8] = [
@@ -434,8 +436,8 @@ impl App {
         let page_cols = view.cols.len().saturating_sub(1).max(1) as u32;
         let sel = s.sel.range();
         let active = s.sel.active;
-        // 11pt ≈ 12.5px in egui's default font matches the target's default column fit.
-        let font = |size: f32| FontId::proportional(size * zoom * 1.14);
+        let families = painter.fonts(|f| f.families());
+        let font = |size: f32| grid::font_id(size, zoom, egui::FontFamily::Proportional);
 
         let col_rect = |c: u32| {
             view.cols
@@ -454,8 +456,20 @@ impl App {
             let (y, h) = row_rect(a.row)?;
             Some(Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h)))
         };
+        let merge_rects: Vec<(CellRange, Rect)> = view
+            .merges
+            .iter()
+            .map(|m| {
+                (
+                    m.range,
+                    Rect::from_min_size(cells_origin + Vec2::new(m.x, m.y), Vec2::new(m.w, m.h)),
+                )
+            })
+            .collect();
+        let in_merge = |a: CellAddr| merge_rects.iter().any(|(m, _)| m.contains(a));
 
-        // Fills first, then gridlines, then text, so fills don't cover lines.
+        // Fills first, then gridlines, then merged areas (hiding their inner gridlines), then
+        // text, then borders on top.
         for d in &view.cells {
             if let (Some(f), Some(r)) = (d.fill, cell_rect(d.addr)) {
                 painter.rect_filled(r, 0.0, color(f));
@@ -476,6 +490,9 @@ impl App {
                     Stroke::new(1.0, T.gridline),
                 );
             }
+        }
+        for (m, (_, mr)) in view.merges.iter().zip(&merge_rects) {
+            painter.rect_filled(mr.shrink(0.5), 0.0, grid::merge_fill(m.cell.as_ref()));
         }
         // Selection highlight.
         let sel_rect = {
@@ -510,88 +527,66 @@ impl App {
         {
             painter.rect_filled(r, 0.0, T.selection_fill);
         }
+        let cell_area = Rect::from_min_max(cells_origin, rect.max);
+        let blocks = |c: u32, row: u32| {
+            let a = CellAddr::new(row, c);
+            in_merge(a) || sheet.get(a).is_some_and(|x| !x.value.is_empty())
+        };
         for d in &view.cells {
             let Some(r) = cell_rect(d.addr) else { continue };
-            // Text overflows into empty neighbours to the right, like the target app.
+            // Unwrapped, unrotated text overflows into empty neighbours, like the target app.
             let mut clip = r;
-            if d.align == Align::Left && !d.wrap && !matches!(sheet.value(d.addr), Value::Number(_))
-            {
-                let mut c = d.addr.col + 1;
-                while let Some((x, w)) = col_rect(c) {
-                    if sheet
-                        .get(CellAddr::new(d.addr.row, c))
-                        .is_some_and(|x| !x.value.is_empty())
-                    {
-                        break;
+            if !d.wrap && d.rotation == 0 && !d.is_number {
+                if matches!(d.align, Align::Left | Align::Center) {
+                    let mut c = d.addr.col.saturating_add(1);
+                    while let Some((x, w)) = col_rect(c) {
+                        if blocks(c, d.addr.row) {
+                            break;
+                        }
+                        clip.max.x = x + w;
+                        c = c.saturating_add(1);
                     }
-                    clip.max.x = x + w;
-                    c += 1;
+                }
+                if matches!(d.align, Align::Right | Align::Center) {
+                    let mut c = d.addr.col;
+                    while let Some(prev) = c.checked_sub(1)
+                        && let Some((x, _)) = col_rect(prev)
+                        && !blocks(prev, d.addr.row)
+                    {
+                        clip.min.x = x;
+                        c = prev;
+                    }
                 }
             }
-            let text_color = d.color.map_or(T.cell_text, color);
-            let (anchor, pos) = match d.align {
-                Align::Left => (Align2::LEFT_CENTER, Pos2::new(r.min.x + 3.0, r.center().y)),
-                Align::Center => (Align2::CENTER_CENTER, r.center()),
-                Align::Right => (Align2::RIGHT_CENTER, Pos2::new(r.max.x - 3.0, r.center().y)),
-            };
-            let size = d.font_size;
-            let fid = font(size);
-            let p = painter.with_clip_rect(clip.intersect(rect));
-            // Numbers that don't fit show ### like the target app.
-            let galley = p.layout_no_wrap(d.text.clone(), fid.clone(), text_color);
-            let shown = if matches!(sheet.value(d.addr), Value::Number(_))
-                && galley.size().x > r.width() - 4.0
-            {
-                "#".repeat(((r.width() - 4.0) / 7.0).max(1.0) as usize)
-            } else {
-                d.text.clone()
-            };
-            let resp_rect = p.text(pos, anchor, shown, fid, text_color);
-            if d.bold {
-                // egui has no synthetic bold for the default font: overdraw with a 0.6px offset.
-                p.text(
-                    pos + Vec2::new(0.6, 0.0),
-                    anchor,
-                    d.text.clone(),
-                    font(size),
-                    text_color,
-                );
-            }
-            if d.underline {
-                p.hline(
-                    resp_rect.x_range(),
-                    resp_rect.max.y - 1.0,
-                    Stroke::new(1.0, text_color),
-                );
-            }
-            if d.strike {
-                p.hline(
-                    resp_rect.x_range(),
-                    resp_rect.center().y,
-                    Stroke::new(1.0, text_color),
+            grid::draw_cell_text(
+                &painter,
+                &grid::CellText {
+                    d,
+                    rect: r,
+                    clip: clip.intersect(cell_area),
+                    zoom,
+                    families: &families,
+                },
+            );
+        }
+        for (m, (_, mr)) in view.merges.iter().zip(&merge_rects) {
+            if let Some(d) = &m.cell {
+                grid::draw_cell_text(
+                    &painter,
+                    &grid::CellText {
+                        d,
+                        rect: *mr,
+                        clip: mr.intersect(cell_area),
+                        zoom,
+                        families: &families,
+                    },
                 );
             }
         }
-        // Merged areas: blank out interior gridlines by repainting the merge with its fill.
-        for m in &sheet.merges {
-            if let (Some(a), Some(b)) = (cell_rect(m.start), cell_rect(m.end)) {
-                let mr = a.union(b);
-                let fill = sheet
-                    .get(m.start)
-                    .and_then(|c| s.wb.styles.get(c.style).fill)
-                    .map_or(T.grid_bg, color);
-                painter.rect_filled(mr.shrink(0.5), 0.0, fill);
-                if let Some(c) = sheet.get(m.start) {
-                    let st = s.wb.styles.get(c.style);
-                    let text = sp_core::numfmt::format_value(&c.value, &st.num_fmt).text;
-                    painter.with_clip_rect(mr).text(
-                        mr.center(),
-                        Align2::CENTER_CENTER,
-                        text,
-                        font(st.font_size() as f32),
-                        st.font_color.map_or(T.cell_text, color),
-                    );
-                }
+        {
+            let bp = painter.with_clip_rect(cell_area.expand(1.0));
+            for seg in &view.borders {
+                grid::draw_border(&bp, cells_origin, seg);
             }
         }
         if let Some(r) = sel_rect {
@@ -602,7 +597,12 @@ impl App {
                 StrokeKind::Inside,
             );
         }
-        if let Some(r) = cell_rect(active) {
+        let active_rect = merge_rects
+            .iter()
+            .find(|(m, _)| m.contains(active))
+            .map(|(_, r)| *r)
+            .or_else(|| cell_rect(active));
+        if let Some(r) = active_rect {
             painter.rect_stroke(
                 r,
                 0.0,
