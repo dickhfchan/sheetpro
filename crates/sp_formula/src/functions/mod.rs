@@ -5,12 +5,16 @@
 
 pub mod criteria;
 pub mod datetime;
+pub mod distributions;
+pub mod engineering;
 pub mod financial;
 pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod special;
 pub mod stats;
+pub mod stats_ext;
 pub mod text;
 
 use crate::ast::Expr;
@@ -85,6 +89,9 @@ pub fn registry() -> &'static Registry {
         stats::register(&mut r);
         datetime::register(&mut r);
         financial::register(&mut r);
+        distributions::register(&mut r);
+        stats_ext::register(&mut r);
+        engineering::register(&mut r);
         r
     })
 }

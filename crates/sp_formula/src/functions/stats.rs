@@ -228,7 +228,18 @@ fn rank(ev: &mut Ev<'_>, args: &[Expr], avg: bool) -> EvalValue {
 }
 
 fn kth(ev: &mut Ev<'_>, args: &[Expr], large: bool) -> EvalValue {
-    let v = match arg_array(ev, args, 0) {
+    // A direct scalar argument (not a reference or array) is coerced like a number.
+    let first = args.first().map(|e| ev.eval(e));
+    let arr = match first {
+        Some(EvalValue::Scalar(Value::Error(e))) => return EvalValue::err(e),
+        Some(EvalValue::Scalar(v)) => match crate::eval::to_number(&v) {
+            Ok(n) => Ok(crate::eval::Array2::scalar(Value::Number(n))),
+            Err(e) => return EvalValue::err(e),
+        },
+        Some(v) => ev.to_array(v),
+        None => Err(ErrorKind::Value),
+    };
+    let v = match arr {
         Ok(a) => {
             if let Some(Value::Error(e)) = a.data.iter().find(|v| matches!(v, Value::Error(_))) {
                 return EvalValue::err(*e);
@@ -279,7 +290,7 @@ fn pct(ev: &mut Ev<'_>, args: &[Expr], quart: bool, exc: bool) -> EvalValue {
     })
 }
 
-fn pairs(ev: &mut Ev<'_>, args: &[Expr]) -> Result<(Vec<f64>, Vec<f64>), ErrorKind> {
+pub(crate) fn pairs(ev: &mut Ev<'_>, args: &[Expr]) -> Result<(Vec<f64>, Vec<f64>), ErrorKind> {
     let a = arg_array(ev, args, 0)?;
     let b = arg_array(ev, args, 1)?;
     if a.data.len() != b.data.len() {
