@@ -1,0 +1,13 @@
+[package]
+name = "sp_core"
+description = "L0 foundation: addresses, A1 references, values, errors, date serials"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

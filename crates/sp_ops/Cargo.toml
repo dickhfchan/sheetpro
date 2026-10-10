@@ -1,0 +1,16 @@
+[package]
+name = "sp_ops"
+description = "L2 operations: history, fill, sort, structural edits, clipboard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sp_core.workspace = true
+sp_model.workspace = true
+sp_formula.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

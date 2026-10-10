@@ -1,0 +1,21 @@
+[package]
+name = "xtask"
+description = "Project gates: parity, layers, scorecard, corpus, perf, panic-hunt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+sp_core.workspace = true
+sp_model.workspace = true
+sp_formula.workspace = true
+sp_io.workspace = true
+sp_engine.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+anyhow.workspace = true
+sha2.workspace = true
+sp_ops.workspace = true
+sp_render.workspace = true

@@ -1,0 +1,36 @@
+area = "Editing"
+
+[[item]]
+name = "Cell entry: numbers, dates, times, %, currency, booleans, errors, text, formulas"
+status = "done"
+note = "Typed formats applied to General cells"
+
+[[item]]
+name = "Undo/redo (100 levels) for every command"
+status = "done"
+note = "Structural edits snapshot the whole workbook (memory-heavy on big books)"
+
+[[item]]
+name = "Copy/cut/paste with reference shifting, paste special variants"
+status = "partial"
+note = "Cut does not yet re-point formulas that reference the moved cells; no OS clipboard interop"
+
+[[item]]
+name = "Fill down/right/up/left, AutoFill linear series"
+status = "partial"
+note = "No date/weekday/month-name series, no custom lists; no drag fill handle in the UI"
+
+[[item]]
+name = "Insert/delete rows and columns with formula fixups"
+status = "done"
+note = "Partial-range shifts (Insert Cells › shift down) not implemented"
+
+[[item]]
+name = "Find / Replace / Go To"
+status = "partial"
+note = "No dialogs in the shell yet (commands only)"
+
+[[item]]
+name = "Sort (quick + multi-key), remove duplicates, text to columns"
+status = "partial"
+note = "No AutoFilter, no custom sort orders, no sort by colour"

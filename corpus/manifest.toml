@@ -1,0 +1,1562 @@
+# Oracle corpus: real .xlsx files saved by the target app, with cached formula results.
+# Fetched by `cargo xtask corpus` into corpus/files/ (gitignored), sha256-verified.
+# Source: IronCalc test suite (Apache-2.0 OR MIT), pinned commit. See ATTRIBUTION.md.
+[source]
+repo = "ironcalc/IronCalc"
+commit = "c88f07f0c776ad42bc4cfd68dfc65f68195908f0"
+url_template = "https://raw.githubusercontent.com/{repo}/{commit}/{path}"
+
+[[file]]
+path = "xlsx/tests/DynamicArrays.xlsx"
+sha256 = "e0b4fce7adc049f93884c1f56e0bcac633fdbe8e0153b1a64ec981cc86cb9b22"
+size = 11591
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/NoGrid.xlsx"
+sha256 = "76501cecd5cde8d8968e8fefb4a359fd8d8728f42e9c870b43d974fb6bc1d3c8"
+size = 10923
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/bad_merge_cells.xlsx"
+sha256 = "e716f344d79a1c02040f3e5df2b79d67f623cddf43b28cfe6391562c74131a64"
+size = 6253
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/basic_text.xlsx"
+sha256 = "a916fdfcd4f3e5558b8e77d986140e7c20c541e5b63b5cabe25d7adad5af8d5c"
+size = 10336
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/calc_test_no_export/tables.xlsx"
+sha256 = "d603afdea61b0809f92561a55b202956f8b46f80235652cf6ef702f995993615"
+size = 35787
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATABASE/DAVERAGE.xlsx"
+sha256 = "a1bbce0187a5c7cdb81e064ad460bc9eadd98f52c4414a203809f25b3e4abb18"
+size = 9494
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATABASE/DCOUNT_DCOUNTA_DGET_DPRODUCT.xlsx"
+sha256 = "a71a99be89086710add80d20c74d3a3156a8f83b2e10a20c8e8a92bfeb4ca43d"
+size = 29610
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATABASE/DMIN_DMAX_DAVERAGE_DSUM.xlsx"
+sha256 = "c6a9898b0fc1823fcff955dafee8ea969b1205d900f732e4a4858eb62e1f8580"
+size = 20856
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATABASE/DVAR_DVARP_DSTDEV_DSTDEVP.xlsx"
+sha256 = "1b8b8d197220949a207a238c00ceb0e05b7566219633ac667cf3285da0925d9f"
+size = 21529
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/DATE.xlsx"
+sha256 = "0da753dc97e45e3ec83b66ec33ed0541842ad34fdb176793a1ed4279443facc9"
+size = 14994
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/DATEVALUE.xlsx"
+sha256 = "53804e241265467cc65a0f230da5b71c3a6760c6a711bf8dbe28db271bd13c4c"
+size = 14034
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/DATEVALUE_issue_1379.xlsx"
+sha256 = "a361b650e881c7535d42cc59e6659718d390733e6da493ef95990c4efdcc861c"
+size = 10914
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/DATEVALUE_issue_1380.xlsx"
+sha256 = "c04d6e6347c59cfcb494d5e2e96a3762963b9a3252c0c4e4276707a035f57b24"
+size = 10762
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/DATE_DAY_MONTH_YEAR.xlsx"
+sha256 = "09b9c0538f679b27601497d63a0798276c18ebe2c8ec20e254c15306d154eeac"
+size = 11611
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/DAYS_DAYS360.xlsx"
+sha256 = "b50495838997f434469c5f61ba9eb130672fd51e9354a0c1cbcfdcf969b2ab06"
+size = 17154
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/DAY_MONTH_YEAR.xlsx"
+sha256 = "79d778e9fd2be2ca4473e2494b16008cbaeff4628fa2930b3d6861077ad98fb8"
+size = 14564
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/EDATE.xlsx"
+sha256 = "ead3b43599d8fc9975091c6277f02616b5803d3c8967b8696bb9dc1fb5397a47"
+size = 14659
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/EOMONTH.xlsx"
+sha256 = "1aa909bebd1c72510179e081615941253a7e2be4e6e1d90c2ffea75459f51304"
+size = 13420
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/NETWORKDAYS_NETWORKDAYS.INTL.xlsx"
+sha256 = "74cdd75714f1eb4f20f5374474adfffded0c0ce614c427aa4f7b91c0940ccf35"
+size = 17007
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/NOW_TODAY.xlsx"
+sha256 = "c37c1c3fca194bf144044743f8e41ea961bcfcb7dfef937b3494f7e08a9affd4"
+size = 11348
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/TIMEVALUE.xlsx"
+sha256 = "e4e414b88cb26fbab5fe0481877ed3f478c812f693f8948beceaa8102d4118df"
+size = 13990
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/TIMEVALUE_issue_1402.xlsx"
+sha256 = "6c9772b8a6de87893fa35d2346b7f0a6006f5ba649fe1739faa85ed15596dcbd"
+size = 9626
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/TIME_HOUR_MINUTE_SECOND.xlsx"
+sha256 = "d5fcdb0133c800180cf72c73770939294a18bfc7c4ab66275e3af9ed27247ade"
+size = 18345
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/WORKDAY_WORKDAY.INTL.xlsx"
+sha256 = "b1fdaf233a1c3068569eb88381984ba38298ad8dd58f78c41f5fcb4e0e11c4b6"
+size = 16170
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/DATE_AND_TIME/YEARFRAC_DATEDIF.xlsx"
+sha256 = "518e98f1bb8dd136d3f5d988ff68174d32e7f42c4ef54fa4bb149148a2cecb44"
+size = 15939
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/ENGINEERING/BESSEL.xlsx"
+sha256 = "01bfd651caeb37b50bb5405f9356f2f9a82b53bb294ce14719cab5bdce21702e"
+size = 22801
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/ENGINEERING/BITs.xlsx"
+sha256 = "528e38cb16cadf52039ac6e619f6f2d2a3cc548caab580282bad50357d0d1431"
+size = 12219
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/ENGINEERING/COMPLEXs.xlsx"
+sha256 = "a3e458559750599f43c56522fdbafd0933758b683913aaa880ec1c3e368b22a8"
+size = 26016
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/ENGINEERING/CONVERT.xlsx"
+sha256 = "11494892e293372540eeebeafa835ccece1b6e4e7949622c700af263286bd330"
+size = 37600
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/ENGINEERING/ERFs.xlsx"
+sha256 = "3dc4d79ba7562744e951142198eedc029b5ab2ed1c74831e01885270d2c33b7e"
+size = 11645
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/ENGINEERING/GESTEP_DELTA.xlsx"
+sha256 = "67c5d1172a787a7ab92e031f6b590b18ce9331fd13ae0b1bc2918dd0925a03fc"
+size = 10221
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/ENGINEERING/NUMBER_SYSTEMS.xlsx"
+sha256 = "15c18f724368a81f03a44c4952842e7b982058f9ba9ff554b700dc8339973192"
+size = 22479
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/ACCRINT.xlsx"
+sha256 = "9ca179edb2ded4969a86cf9b9655f1ed9f0659ab392a50876fed5df421efd555"
+size = 9863
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/ACCRINTM.xlsx"
+sha256 = "7e1197dc382312cc35d72b397e1dd0d5809b51141bf0a0dc6f887c6f82de4f8a"
+size = 7376
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/ACCRINT_ACCRINTM.xlsx"
+sha256 = "42437e8fde02cf34b645e617f0ea3006e5c0144e22797e5abeda8506b5bc1d35"
+size = 10254
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/ACCRINT_extended.xlsx"
+sha256 = "92472e64589da89d1f0722cb343fd74ab60bb40eddbb1a3a9fa85105fa8160d3"
+size = 15592
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/COUPDAYS.xlsx"
+sha256 = "dc81b491130d889d862dc6b41706e43624bcd2f8892bae64091bb4ae99d26ba0"
+size = 12474
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/CUMPRINC_CUMIPMT.xlsx"
+sha256 = "b129aef2c75e95ef93b625d7a2fb4a3ac0248206bfc78378f72966079894c39a"
+size = 12003
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/DB_DDB.xlsx"
+sha256 = "b314d08eb808a86ddc5effe70d0e674cb5251546d679c03988cac40b3d0099a8"
+size = 11832
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/DISC.xlsx"
+sha256 = "bc9da2e6260d7558884dff1296c84f09ddddb82980d3b1337e53d268eb23cdc6"
+size = 10317
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/FV.xlsx"
+sha256 = "063566ff2febfce18a67639b92b5c33c8f1aa7533d49985e96cd71067f1ddb88"
+size = 11542
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/FVSCHEDULE.xlsx"
+sha256 = "40999b96bcca70231240e084bbf6411e9ed1e20d2a0fed90c80b95052652f3ce"
+size = 9353
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/INTRATE.xlsx"
+sha256 = "2abb852008ed7ed8984be224e1a480a545ee6ef49bff4c772a8af79a56a4c6c1"
+size = 9608
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/IPMT_PPMT.xlsx"
+sha256 = "1f43dafdddcd178545496eeafe1a96c11fd03081c0f2a59e6f12b0ec62fd8513"
+size = 13109
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/IRR.xlsx"
+sha256 = "c6c19df3bd1cdca2b41b9d3a8ddab64baa04b5b9dd711d0ca53430ea6cee33af"
+size = 18335
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/ISPMT.xlsx"
+sha256 = "c35b7a68ef772dd09f865b6930600b00c7cce6d177aef7b34337690584e5fb8c"
+size = 10155
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/MIRR.xlsx"
+sha256 = "4e85e1913c415f2039528fa2ae6a657e0ceea87d182a30c281beb472326db1fc"
+size = 20479
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/NOMINAL_EFFECT.xlsx"
+sha256 = "a17f8689a61a54bf8567fb7ab9a76d613498463baf2ea1d9fe8c25ab00359c0e"
+size = 11012
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/NPER.xlsx"
+sha256 = "b196543e9b721df2d54f1525de08aa29c54143d6b2c41aaf833778b6a75dc831"
+size = 10667
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/NPV.xlsx"
+sha256 = "863ab7365153260a7375bbaacb310e435de7a49d939fb345819af70fc796581c"
+size = 10571
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/PDURATION.xlsx"
+sha256 = "8b6a701fc472a1dc2e800a7379665664f420a50c4f32a786ece2d35a1982d674"
+size = 10023
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/PMT.xlsx"
+sha256 = "602904b17011854d7c214a1764ea6ef13cb3ba7c471cdb1d8b1a7867d2438e16"
+size = 14858
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/PRICE_YIELD.xlsx"
+sha256 = "ae1831b8b4efecb1e249a4c2c5c3786e3103cfcfe77e6c5638c20628074ce60c"
+size = 22022
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/PV.xlsx"
+sha256 = "d9f8f40ea62f8e5ceedd8c31959bef3870add624ec66fe0163a7fa32ace78f1c"
+size = 10732
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/RATE.xlsx"
+sha256 = "4dbf4090528bc6cb86424cbbcc9be2d58084738db7922eb651a4910cf31df609"
+size = 10869
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/RRI.xlsx"
+sha256 = "810015fb5f169fbeb5d668c4ed7d06989427cc8a56bca0ad042dc8554c3cd22a"
+size = 9877
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/SLN_SYD.xlsx"
+sha256 = "a73909111496c8a50c07772fb9bbc766b800993e9506e024b3a804461dbfa7ed"
+size = 10478
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/TBILLs.xlsx"
+sha256 = "357a0d6edb3c6321c90031736e1985732772bdfa7857ea35fba9ed7b17ce1454"
+size = 14483
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/XIRR.xlsx"
+sha256 = "aad0a6abe91178004f2b8b4e50effecd50d03afa828fa3b2a2394c3e33aec930"
+size = 12399
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/XNPV.xlsx"
+sha256 = "6c0458ae3dc0fcdbf43f398e48b5d72d03e5ac891b9899512f74eadb43cce674"
+size = 10925
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/FINANCIAL/accrint_cases.xlsx"
+sha256 = "9070ebc9a3306cddce3675850557afc8c52739baf91a6ff7940b86f8c07f1cd6"
+size = 29301
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/CELL.xlsx"
+sha256 = "77aaf43ca89753125bc293810fe2d31f1ca5789dde6ae54175fee309d441b888"
+size = 13015
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/ERROR.TYPE.xlsx"
+sha256 = "f5a586153c488bdf1ef9403188aee5bdca2cf57e84cf8a46ba982a7fead4a7f4"
+size = 11287
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/FORMULATEXT.xlsx"
+sha256 = "2433fa03bd6e329747aff1055dbd8e24088ea6b09eb8cd38572eef2bd578f54f"
+size = 10133
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/ISOMITTED.xlsx"
+sha256 = "6751fd00ca56e2f9d8a4abe95c8b15e0e4586e5068eb8669169697242b34264e"
+size = 9958
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/ISREF.xlsx"
+sha256 = "93c11fa8ea1f15764488daa1f388d7dbc8fae172d7aef7e2df4af1f3ab082045"
+size = 14210
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/ISREF_ISFORMULA_ISODD_ISEVEN.xlsx"
+sha256 = "dc5274b9a021f028cd7bc5eb85e052aeecc6fc183d8ddcf32d411a7a82a067e0"
+size = 11122
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/IS_INFORMATION.xlsx"
+sha256 = "761fa6511c9780442cb387b70dfb93123902e705014d5db9ab86007c3427ff17"
+size = 11504
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/N.xlsx"
+sha256 = "8b3e4cb8b518dba5bac4c9ccacaa55b903575c9c4c6e4c749c54e37e0b420ec4"
+size = 11272
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/SHEET_SHEETS.xlsx"
+sha256 = "4dc7e5697860b027a8a31b0d4054ab716b262b2ee5bebe2dca0661275a5fae92"
+size = 12953
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/TYPE.xlsx"
+sha256 = "f6e7e76250e5cb0d6a01f8636aaa2b8ff36e4fa050ffa46156902c016f4d1b52"
+size = 9465
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/INFORMATION/error_broadcast.xlsx"
+sha256 = "3e36fac873c4ba77f69314b4eeafc377786e3571376761360a95d7d7bfb0609e"
+size = 16215
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/AND_OR_XOR.xlsx"
+sha256 = "228158b0f9e2a2393f4e4539cc89e48adac48fe16411011cb61a0a05fc3d8add"
+size = 14999
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/BYCOL_BYROW.xlsx"
+sha256 = "1bc41b7de13002ae472b1faed6d903825f83064b6f9720215431a4d12c4b1fda"
+size = 9586
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/IFERROR.xlsx"
+sha256 = "6e96045ad6cc7c6a140da50d88e04f6428589ae000063f76fb99f99e3754c8ec"
+size = 15898
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/IFNA.xlsx"
+sha256 = "99dbfc165b3d2cf0333bd013cd0477ff6c9ff9ed27911cd0d030c623cec14658"
+size = 9163
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/IFS.xlsx"
+sha256 = "e45bbf01b7252386f735382e494cef8d59dc86687aeb0b5d9dd48343ed4d6e96"
+size = 10415
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/IF_ARRAY.xlsx"
+sha256 = "a9315ec3359ad9f370220cc1a40784b4b68b7f2b24cc16881d2b77cbc2c39096"
+size = 11733
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/LAMBDA.xlsx"
+sha256 = "6fda1c171601204eb5ce8d9b2a48706c5a60adbd6d60d59d13db5a24675f01bb"
+size = 10383
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/LET.xlsx"
+sha256 = "47fc0f71b5a425e98a6be79bcde5dea7a6edd0f680d4a7519fe24e517d958b5f"
+size = 9655
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/MAKEARRAY.xlsx"
+sha256 = "95f8a309e04e1a7f6e7302d51b50b184c5d33ccb220ab7e95ce81516fba6fadf"
+size = 9530
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/MAP_REDUCE.xlsx"
+sha256 = "8b9f9c220642084c74ac383536fd88b5ba447d6f4d400cfa57969ba6ac5df4be"
+size = 9649
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOGICAL/SCAN.xlsx"
+sha256 = "9af130312746e6b51ecefcb470d13bd35973f765f5c5f52f3a1da46b78cdc0bf"
+size = 10080
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/ADDRESS.xlsx"
+sha256 = "dbe9d0c57ac21e2880b39bf203038cfcdb097948471202d1b322fca4a9ac01fc"
+size = 12013
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/CHOOSE.xlsx"
+sha256 = "27fa086e079d9335aa0cf6acf046276642c8726e7cb73cb895d34ad98db6608c"
+size = 11418
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/CHOOSECOLS_CHOOSEROWS.xlsx"
+sha256 = "fb23175c5febaaf9466edb5854bb99a0c148c8f669a16e4362785818cf918fcf"
+size = 10044
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/DROP_TAKE.xlsx"
+sha256 = "dde80790d9da082ca34bcd2aa7e28a9baa984dd4f37303a0376e2bfe2964baec"
+size = 12032
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/EXPAND.xlsx"
+sha256 = "83026b2e83f6497a0bd986859eeb65af729eb7855e333fd83e8beb9a1468bad0"
+size = 10006
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/FILTER_ERRORS.xlsx"
+sha256 = "915f7533dbc81ae6f415e02d4ee93d8aec7d1b7579a95ae7f8e27189a9c72869"
+size = 11499
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/HSTACK_VSTACK.xlsx"
+sha256 = "9669b7682bd2aec837b756a9a3259d7a44a1845063e71fd1ad51c26744eebc5d"
+size = 10430
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/HVLOOKUP.xlsx"
+sha256 = "fafe04dd164e13dfbe76c440a75627fc23c822342c60c67ac2bad6ef4545f9fc"
+size = 13990
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/INDEX.xlsx"
+sha256 = "dfffcb7964345c68e779d935b2a892a860622007ba3cede83bea401d762d9609"
+size = 9906
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/INDIRECT.xlsx"
+sha256 = "229f65f288ba4fbeaca6865c59239d80f820525b300a0c006c3e8e8fd34c2f26"
+size = 23679
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/MATCH.xlsx"
+sha256 = "ea9d9235ab81c1793ee1b7509ecee2ea4f1fcfdbe1d2d81b884403542a4d45c4"
+size = 11564
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/MATCH_LOOKUP_arrays.xlsx"
+sha256 = "df6dd59a55f0c7c68d5eb25bbc300721902cd2cb4f4827c91ce4742ad88b87fe"
+size = 17288
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/ROW_COLUM.xlsx"
+sha256 = "ba390df3a9eeecfa0341bebaa71f65e5151e591e1cc9c2e2cd790ae69e9c1a78"
+size = 20691
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/SORT.xlsx"
+sha256 = "7da1d528d59838c570c4215801cc9d400c3042098f5fd7c164aeecafefb958c1"
+size = 13269
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/TOCOL.xlsx"
+sha256 = "aae8ec5b3255fbb5c61c01ba31923189a273b86fd189aaf831259d3979c666f4"
+size = 10401
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/TRANSPOSE.xlsx"
+sha256 = "faca608493f81c70673d4f45ce34592c4af24a0c5c03dbe8723fe7ba9a70c49a"
+size = 10073
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/TRIMRANGE.xlsx"
+sha256 = "6f5691ba73dfd6174c24fd8c8014739a622bc4ae7173e99981a74b8ceab48c2e"
+size = 9984
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/WRAPCOLS_ROWS.xlsx"
+sha256 = "4389209c7d116657671cb2bd3ada864c4c279382c39118d52b58b2bb87afabf0"
+size = 10286
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/XLOOKUP.xlsx"
+sha256 = "10af43589194e722ad58a82223f45bb40029d207757cd1d169f8f2a9a629fdc8"
+size = 27383
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/XMATCH.xlsx"
+sha256 = "95334ebb6b0d2cd2c62af922729c15a157a88f3bf0e987814124c10d8d0e0943"
+size = 10162
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/XMATCH_arrays.xlsx"
+sha256 = "e609156b429c0c6ea473c67c09f952f1985501e3c0e43ea7318b9e9b8df4ef0c"
+size = 6998
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/ABS.xlsx"
+sha256 = "45e7dfa1b136e5c6eed6a5db91e3abe9f2e728cc4b0d68392aea94cc558949f5"
+size = 9605
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/ARABIC_ROMAN.xlsx"
+sha256 = "feb194273b657a894f7ba1ea2d280827affac31b4ddf3fe7468813558a9af2e1"
+size = 459092
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/ATAN2_POWER.xlsx"
+sha256 = "0a15dfcf9a924faca1d92b756bac303f42bda349a1a9204c701119174c756c55"
+size = 10620
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/BASE.xlsx"
+sha256 = "9bb37b9059a8f45507865c28d8ecb69084b4e102c671833e90528a16e824711d"
+size = 10051
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/COMBIN_COMBINA.xlsx"
+sha256 = "dd573d894777fcf19c9fd591484bdb01603294357f23ffe7d1c22927ff9cea9f"
+size = 13061
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/DEGREES_RADIANS.xlsx"
+sha256 = "e57cf0c7a13dcf73eb41f2045bac8c10dabb00249271c4c7fb0bdb98211b6b19"
+size = 11015
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/EVEN_ODD.xlsx"
+sha256 = "80b70fb02283d5ed914ff451afe22afab06daf564c59e2fe34f38c2f2df303ab"
+size = 11185
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/EXP_SIGN.xlsx"
+sha256 = "38d69e293cd5dedab11b540b948ea9393f0b1478b45c1e0ea74a319e4b0409a7"
+size = 12954
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/FACT_DOUBLEFACT.xlsx"
+sha256 = "2b310ebdef1d959d1ae2865bb0bcad446d05e43c18798b743778e7322ed01d10"
+size = 9140
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/FLOOR_CEILING.xlsx"
+sha256 = "302d1bde1d95a52f4981c210e4aece1211d2dd71d373956b898bc4fd0afc0e36"
+size = 120674
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/GCD_LCM.xlsx"
+sha256 = "4e10271ab5cd01d00e1a34811d58cbfe94e41f9d0c5b8d2a8819334a48c8224a"
+size = 16269
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/LCM_GCD.xlsx"
+sha256 = "6c25bc6e52c1d59c5fa876d14865b85bd1e468db3ba8a0a0153bdffbce8e10cd"
+size = 13705
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/LOG_LOG10_LN.xlsx"
+sha256 = "e7f77bccac0ecb09ddfcc30c52718670301f157f14fa80dc5bf86f52c6f1bcb6"
+size = 13094
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MAX_MIN.xlsx"
+sha256 = "4b9927338ff91285f7a97daf08b40e3dc7419a14e8fcc35d79c97650cef45d21"
+size = 14559
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MIN_MAX_extras.xlsx"
+sha256 = "93065babdcb81578e9f98f31fb81fdbe2ad6ba5f04b3ea798096529c93fb4acc"
+size = 12710
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MMULT.xlsx"
+sha256 = "a2bfddc55e00876b51ee59f5366e62caab4c690807bcb3dd551ec712c8a63d49"
+size = 18538
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MOD_QUOTIENT.xlsx"
+sha256 = "a090f3fe30fec3418cbfe6e4bee120e5557b3052dba4fd5a7be745bc18419905"
+size = 11892
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MROUND_TRUNC_INT.xlsx"
+sha256 = "1b1417f61e59c2a83f60a41b2f661c133c74075dd00a223173e77f8823b46c83"
+size = 17194
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MULTINOMIAL.xlsx"
+sha256 = "a9972628460bf653006eeb2559bd3065207b40313a17de03c2e5b393f75c8a92"
+size = 9321
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MUNIT_MDETERM_MINVERSE.xlsx"
+sha256 = "ba121c847641fb04412ba00ed78c161bb27237fb876a4892dc0b43936318ca54"
+size = 10322
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/POWER.xlsx"
+sha256 = "606bb6ce26bfb19ee70803abef1192cb5263663318060585d2c92692a0ae731a"
+size = 17316
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/PRODUCT.xlsx"
+sha256 = "2202f7c651b8468ddac8ea2112a032aef0178c80eac96567c5be4fa1a23e6ffd"
+size = 12464
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/PRODUCT_SUM.xlsx"
+sha256 = "ba1eb90fdaf12c38ebaa193cbbc3985d3a37a185e956d48bbaaef3ad587fe2f1"
+size = 11170
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/ROUND.xlsx"
+sha256 = "91331a4d5ab6fbf3c82d867ef7f7419f1faf54726e01a79b70552434e0434ef1"
+size = 13069
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SEQUENCE.xlsx"
+sha256 = "a7582b77f2eb2740d8f5593e8840fcc11104dada29f7f2a94344f0123d6dbaab"
+size = 11670
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SERIESSUM.xlsx"
+sha256 = "9c2d2224f090846dcab14df611a7ac4d1497a0ae4d308afbb3cfb359181582fc"
+size = 9506
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SQRT_SQRTPI.xlsx"
+sha256 = "8226f00d293e9341fd832f5b7a1ea6c1cf6a6577ee97d4eb57a18de35add5c9a"
+size = 10213
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMIFS.xlsx"
+sha256 = "19d7c5cdc45635fe56dcb9b0d571b6b439a6e367683547fc5527c101b8ba2146"
+size = 14499
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMIF_AVERAGE_IF.xlsx"
+sha256 = "62666c82ed33ebf59bd1cfc6c765b1a0b3a784152b39b688aa2fa6c603c1b37e"
+size = 9931
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMIF_array.xlsx"
+sha256 = "c041d87eb5e23c3b02296227fbbf4125fcf7cf7ff98dafcfcce5462de15304b4"
+size = 13044
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMPRODUCT.xlsx"
+sha256 = "bfcea8b86b7d337d4d69dd8212292b474f9eb37e182d73cb1462e46a8b6800c4"
+size = 9301
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMSQ.xlsx"
+sha256 = "6fe42db6d99ac5d6ef8c06e6c65d7b1050d5792c88d504cb1eeebeeab6f5d74e"
+size = 12105
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMX2MY2_SUMX2PY2_SUMXMY2.xlsx"
+sha256 = "c6ee849190320d1883bf496e184b0b271cb6c00bdc1c327c5797fc9255b55c53"
+size = 9034
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/TRIGONOMETRIC.xlsx"
+sha256 = "1a6957677bf95c11a310d897c0459809b777360cf7009a17885dec63b97221b2"
+size = 42093
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/AVEDEV.xlsx"
+sha256 = "fe5d5873f67f2d1fac75995f8d4a5c264e39d2cc7e5ae48c9cb45bdba5f85d11"
+size = 8946
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/AVERAGE.xlsx"
+sha256 = "02da01001ff166852559633742fb29a50599aeec53ae4b3bbf0d3db105f2ffe3"
+size = 12065
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/BETADIST_BETAINV.xlsx"
+sha256 = "1c74117e0da08271473438a5dd467666906dd591707f91ebf495edfe28045a5a"
+size = 17240
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/BETA_GAMMA.xlsx"
+sha256 = "cb4ac6892a4931843b80afa094f1a9a52e01941043d06ee1f9c7c7e9d79dc788"
+size = 10988
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/BINOM.xlsx"
+sha256 = "38e91a715bb1875646bd5dc8c2f4b49ed6af50e61d4cc7c91042a1d78e837301"
+size = 26574
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/CHISQ.xlsx"
+sha256 = "25f2f46de2fd51e328b02e1a3fd5026868a401c4a64a171d1f3a9942c9bb0398"
+size = 9615
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/CHISQ_TEST.xlsx"
+sha256 = "ef1308415e8e38b0c6a53962b7bed9120641f1a1907fa6cf62a3a4a9fbe7acca"
+size = 8954
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/CONFIDENCE.xlsx"
+sha256 = "984bdfa95c7c92e292c9d623559c010e1e4946bebeb04dfd5dec5d2bf8b1495a"
+size = 14231
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/CORREL_SLOPE_INTERCEPT_RSQ_STEYX.xlsx"
+sha256 = "37ee44bf34abf8840f9cd5b7d865ae4023f1d1d7b75839fe00f7a3cf0d25716a"
+size = 9606
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/COUNT.xlsx"
+sha256 = "e4d5248dc099979118b9c9fcef55587eede601a554fd40c5448c8f9853dce1b7"
+size = 11114
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/COUNTIF.xlsx"
+sha256 = "24d439ff31382af1101e00ba1834edbef1cde61a47984f1ef5818f85650cb80a"
+size = 18854
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/COUNTIFS.xlsx"
+sha256 = "d3b0d8c0f3418bdf664d18951b188dc8a42e997e4d7c9a3882d6f1a43e5243f5"
+size = 17198
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/COVARIANCE.xlsx"
+sha256 = "e07b2c8d4c8a714ca63a8ee44d6deb36a09fa5e6feaa438e767b46b73c492cb9"
+size = 14043
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/DEVSQ.xlsx"
+sha256 = "8823757b58b5a12499da2aecdaaf8d3d9c1d4ccf90eb3c53d275b3e27f95bc53"
+size = 8940
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/EXPONDIST.xlsx"
+sha256 = "6a15c199595df7fb044e20151eec706e959ff4e0559b1b1f0b0add723c692605"
+size = 11931
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/EXPON_DIST.xlsx"
+sha256 = "4c3f74587794d84ec86c2c441cbbf6858315516b2bf2ba99060c3fbd92ea35c5"
+size = 9311
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/FISHER.xlsx"
+sha256 = "f147b3ffc8f434bf79ee6eeb2aee51a09c4f471582de7512390d0059f4abb1d2"
+size = 9149
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/FISHER_FISHERINV.xlsx"
+sha256 = "dd24351a5f6bb1a7cbbe5987807c90adb4e8327441c73aa20ee99a7ef417e238"
+size = 11739
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/FREQUENCY.xlsx"
+sha256 = "58570f82508650212783507562e8e95fa9338079c337805477bd75ecba1e588c"
+size = 10928
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/F_DIST.xlsx"
+sha256 = "c5364b86572d31b4407ca3a2ba75091041a498db2e9eaaed3b0ea6deb66026f2"
+size = 9492
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/F_TEST.xlsx"
+sha256 = "042535ea43650c388b1a19674e380e0bee585d94cb187dd51f5857ab2f6e938d"
+size = 9436
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/GAMMA.xlsx"
+sha256 = "c596c3511c734f4f554c6617c56b0b921d7f80dcd0ca276edad90bba089423f9"
+size = 16560
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/GAMMALN_GAMMALNPRECISE.xlsx"
+sha256 = "8e38bc5e3225c8ae66fa52d7011435a59065e5b4208d71fd41acb317ca9beedd"
+size = 11806
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/GAUSS.xlsx"
+sha256 = "08600574addd62b4f0ff73c8a8119195b4d7b03b8856dd2468d8dad0b8d7eff4"
+size = 10757
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/GEOMEAN.xlsx"
+sha256 = "3b21c943d6f8a6ed3e61e23a0b8612ebeaf8b621e081dbc80bdeb46a60658ebd"
+size = 13322
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/HYPERGEOM_DIST.xlsx"
+sha256 = "aae90860f3228486dd62eca17a78c68e470ecaf478f52c4d9c47420c50617769"
+size = 9422
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/LINEST_LOGEST.xlsx"
+sha256 = "8a307c57d3fa08c879b11d1999bf782b89dd363035aaf95066e2b9b3069390cb"
+size = 10460
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/LOGNORM.xlsx"
+sha256 = "15b82e17dfa2649fa8158cae0852d4c3a68c295a368f21bae8ae909690590a25"
+size = 14717
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/MEADIAN_KURT_SKEW_HARMEAN.xlsx"
+sha256 = "0d160f3d68173bb3f6e2863da97d9cfc50c3e86017ef8c60225dfed27e33af9f"
+size = 9251
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/MINA_MAXA.xlsx"
+sha256 = "84cd66172c931b1dbc60f700bda583349f81feec6efd83f760d957451c211b48"
+size = 9233
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/MIN_MAX.xlsx"
+sha256 = "573fc78d87b2626a1dac07d4a412da19ddb58caaa35f1320c7d269187d178611"
+size = 9284
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/MODE.xlsx"
+sha256 = "46ec207e57311bcef341a0bd2ed5c55c823c430a327cdd0e913dd79ed9921aed"
+size = 10352
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/NORM_DIST.xlsx"
+sha256 = "47f158d39a089ba71b9be0287397802c92aeb19791c6418936fad8ea94766649"
+size = 19399
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/PEARSON.xlsx"
+sha256 = "29df0ddf8d9998bf9f6a7d0773f01af8e1d8d3d46406a767d2fb99fc25bf583e"
+size = 8964
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/PERCENTIL_QUARTIL.xlsx"
+sha256 = "575da1b03145aa9c40c5f42e9fd596db0ba40bebd2186ef5b50a09c9a51714dc"
+size = 10631
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/PERMUT_PERMUTATIONA.xlsx"
+sha256 = "29f4f952e296fc26bc25a91bf76f0e1e2a7b8473f258703ca9de2bd20bddb837"
+size = 9936
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/PHI.xlsx"
+sha256 = "c9ae534b003b6813da8c94652b3773ad1acc16396517e911f98ed5150c15bbf1"
+size = 9116
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/POISSON.xlsx"
+sha256 = "d3579ead77fd0ecafc4ea319b311f56373fc8e338e13805d72b418802db3c105"
+size = 12237
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/PROB.xlsx"
+sha256 = "d9a7209698761ebd8c840f3d38bb79da3077190cf422933ff10b75e8ba06b596"
+size = 10001
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/RANK_EQ_RANK_AVG.xlsx"
+sha256 = "8e633347b197661323aa21e65470b0105cc40435394c6e06ce718f8fe51710f8"
+size = 9281
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/SMALL_LARGE.xlsx"
+sha256 = "de9a0eb13c83a51685b3ec985fb97116a73077bdd095e39cae5efdff5db82ce0"
+size = 9417
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/STANDARIZE.xlsx"
+sha256 = "3b3b782a20c200c4aa9dbdba9c1abc41f7cfb22ca9c8158028b19496759ababf"
+size = 9382
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/STDEV.xlsx"
+sha256 = "395d5bc06da2e3cd96e9c14b47172d66d679c34ebfd6fbd9d38435e608e755b2"
+size = 9370
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/TREND_GROWTH.xlsx"
+sha256 = "fb6a23f03af2c9b57f0a28b92e441bd5619359af70439ba31ba04df4788c5461"
+size = 10662
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/TRIMMEAN.xlsx"
+sha256 = "286fb9c275c1331918f51082dcc8a03383e74d1bef957ccb6c07f6253c70c5c6"
+size = 9695
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/T_DIST.xlsx"
+sha256 = "ad6cbdc61949cc6f004dd21f414d8fa1a50ff9d315323df8ea87b9287a00d24f"
+size = 20462
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/T_TEST.xlsx"
+sha256 = "01a7a49b31acd49e89f70e49c293377d8776025e7cb4c39aea39a6e2436f47b8"
+size = 9587
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/VARIANCE.xlsx"
+sha256 = "588463354848a1db73f4618d2682bc0b1a378f7e1ff89e39e17ff8bd627aea8c"
+size = 9339
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/WEIBULL_DIST.xlsx"
+sha256 = "d5018f616b00bf9610104ead44979546c6ed30af82c3566dbd81db8d10603a23"
+size = 9370
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/STATISTICAL/Z_TEST.xlsx"
+sha256 = "ea7dae0ba1a8df945ec7495bb6791b48bf9751c59c9009b4566fb3ec25f0303b"
+size = 9481
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/ARRAYTOTEXT.xlsx"
+sha256 = "c0f364e1f24cedd04240f3522c3f631a697819a5603f735e3d0155d78cf4855c"
+size = 9509
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/CHAR.xlsx"
+sha256 = "d01cba3825c966b7da35573288d00d19ddc677da0ac77d80ad659d7c26f96dc5"
+size = 13809
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/CONCAT.xlsx"
+sha256 = "20305f4950842b5680d9bd07333c220b37f6e8640e2cf14ecf80c1bf5ad56ba6"
+size = 10729
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/CONCATENATE.xlsx"
+sha256 = "8ecf30bfb65d02390d5c83c50a5fecada396c2361664eedd640fdd356766fb66"
+size = 10777
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/DOLLARs.xlsx"
+sha256 = "b6997ea2e3e5b770bc40dbed1afaf5907682bee0f719f4df5ab24c65a2e19800"
+size = 10137
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/EXACT.xlsx"
+sha256 = "01195d6fd44b96ad45f6e5aed1d873410ccedf6424a005496f720addcd5e7348"
+size = 9706
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/FIND_SEARCH.xlsx"
+sha256 = "c8e639454f99f19d6246a4b55cfc001edcdf7ec1d442d822692d05cbbff41afc"
+size = 10346
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/MID_LEFT_RIGHT_arrays.xlsx"
+sha256 = "5e12f87c9fd89a018a69c4a44212b86f65a023bc1e32045b70cb07efa662db90"
+size = 12946
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/MINUS_MINUS.xlsx"
+sha256 = "f533c381d5cbd50104db8026301c44797d5f7f73ee730f5efab84c0205812a27"
+size = 11109
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/PROPER.xlsx"
+sha256 = "cc14378eb64e1e85311248b59aa4b5f924c9276a999419798c112117820970b5"
+size = 9672
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/REGEX.xlsx"
+sha256 = "38b0677f28e0db01f36961576a42e1bd51d82ac7d80509be753564bd2aa710cc"
+size = 11438
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/REPT.xlsx"
+sha256 = "67f6dccb450503fd261f96557efe435e90d11c3aefc3e58a6f35c970be9a88ef"
+size = 9879
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/STRING_HANDLING.xlsx"
+sha256 = "bb09902e465cc3512f32720dbebe15a324805031d8f185db74b4363efa69407c"
+size = 11361
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/SUBSTITUTE.xlsx"
+sha256 = "4f8fb2474bc16dde285114199ddbc1d6fd7479bceda43b48d807665f9acb5966"
+size = 10210
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/TEXT.xlsx"
+sha256 = "c18d3d05f1c37ca48405f3d4873708be234fd11974499aa9da672957ab69febc"
+size = 16982
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/TEXTBEFORE_TEXTAFTER.xlsx"
+sha256 = "4dfaea426edbb51657a853c3090735cf0a4276fc581913e47f328a6cf51af863"
+size = 14719
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/TEXTJOIN.xlsx"
+sha256 = "4bba74c5324531853dbca7d7d5a7495cdd564d772bcdbf79b0e164656ccb37a5"
+size = 10896
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/TEXTSPLIT.xlsx"
+sha256 = "c9c5be6bd80ba4e564a2369c3831cc2b30636656bc4f4b4d5631538c52be73da"
+size = 10805
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/T_VALUE_VALUETOTEXT.xlsx"
+sha256 = "5ed8c1c639375a6feaf27254c44223123f505846322ab72aa4a44870ee78a5ad"
+size = 11345
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/UNICODE.xlsx"
+sha256 = "e4812329e2b94a6cb538e8085e783a7f5c9392fc4e4efa60c2f34caa444e34c4"
+size = 18655
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/TEXT/UPPER_LOWER.xlsx"
+sha256 = "2b5cc5c1e056b2222c42f733c8c0b3dcee4b08ec652c05cd0cb2964523a68cf3"
+size = 10485
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/arithmetic.xlsx"
+sha256 = "09cc6ea145863f8209840e3ff75dc8df08fe72d7fa5688296c111a008fb941f2"
+size = 11371
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/array_in_scalar_repro.xlsx"
+sha256 = "b4c1cbee3259b7759950a395fc4d6d512933dc848423a0589a5d2add270dbdac"
+size = 8306
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/consume_string.xlsx"
+sha256 = "e7dd765efdfeec4da797dde8943109027bcaa173fd3ce5af918be7103749a0e2"
+size = 9982
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/defined_names.xlsx"
+sha256 = "ee80f510b3576f95fb00abdba5a6e8ad747bf133d2315da2b6452e013a60dd4b"
+size = 16046
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/defined_names_for_unit_test.xlsx"
+sha256 = "1434d195f6e942511337bc784d66d719287891d4b9e1241d55ce7d291184b893"
+size = 9764
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/escape_strings.xlsx"
+sha256 = "6af2af580b237580f2d43e430d80b687d870a3290aa7354cdf76030974a686ef"
+size = 9344
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/issue_341.xlsx"
+sha256 = "fb9c576109db871fa6ab7c00dd276cc96ce164cf734395a5f13e9bd2428aa082"
+size = 9223
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/logical.xlsx"
+sha256 = "ab1654c024019f2af90da2bb96b0281fa6adee3372a8a7e9fd70e67a2e0b3d12"
+size = 14435
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/percentage.xlsx"
+sha256 = "17fa01ae63b22602f02d7e44ce2d966965a997406581efa57d3bdb4954a86ea1"
+size = 9168
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/quotes.xlsx"
+sha256 = "2fef90a6d3a5c6236a4096c7857b9d6518943a3c64b396b4b95eb9f8e6ffb229"
+size = 10066
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/range_operator.xlsx"
+sha256 = "62ee25f9dfbc91d9174c9bcffda4f7f57cb149338e18ee7e6d12f6aed7aa0936"
+size = 10595
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/simple_arrays.xlsx"
+sha256 = "9873beb6f649c76b89260fa301890d730a24cd661bbddde8e45e456a2b4dcda9"
+size = 9494
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/simple_functions.xlsx"
+sha256 = "2d70af29dfe7f314ee18842822b3c92a69349074a505c404adcc1010602530d1"
+size = 19508
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/calc_tests/spill_operator.xlsx"
+sha256 = "3ffec91c87e2d0a8e23af66ad0e7b0dec4ae6304f788495ea00e18ca514749d3"
+size = 10231
+kind = "calc"
+
+[[file]]
+path = "xlsx/tests/conditional_formatting/cf_tests.xlsx"
+sha256 = "6d47b1be1937274929ba7ed1239deae3c2ac0bf9781037c4190e605110508888"
+size = 20377
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/crossword_ranges.xlsx"
+sha256 = "17b883653db09b5730f145a867f52b5699bcbddf4469d9d2d6eaee76f611ffc7"
+size = 15018
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/custom_theme_colors.xlsx"
+sha256 = "43d177a5a164774dd010810070dafab821083b3e00f2f6f311e774a5bbb58e51"
+size = 13081
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/CHOOSE.xlsx"
+sha256 = "581752bf7c2d4c480fcfe000327e5af871421aa2a39f2bfa5408abe7b9fc54c8"
+size = 4385
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/COS.xlsx"
+sha256 = "0bee7d61c27c3d87edc2e98ddf8add63e106bf5922cc5bab1180ea92078f3b1d"
+size = 13860
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/DATE.xlsx"
+sha256 = "1893ea3248572faf8e23293c15b489761221b43c6de466a48e1e6aad3edd477e"
+size = 9979
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/DAY.xlsx"
+sha256 = "0dea214463903ef8dd9c2c108d84442a1ab6797550a493fa6d2f63c32b6cc6a6"
+size = 10717
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/ERF-PRECISE.xlsx"
+sha256 = "25d5dc2d3bc8503cd4b08dbed866a1302d96118cdb3ce759b1aa9c1d22cd783d"
+size = 11092
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/ERF.xlsx"
+sha256 = "47620272bb9e9d55337bf2f3b066624bfae96bb3f3514036d41efec3dcd05512"
+size = 11431
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/ERFC-PRECISE.xlsx"
+sha256 = "8874cc37aad755044053e16bfb33b2e9a193452a5f463e2c9760a3b31ff94ef5"
+size = 11250
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/ERFC.xlsx"
+sha256 = "c71eee5127adcbf94330aabc169f2b55ce06b8360062c740bcb443db10725e33"
+size = 11208
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/FV.xlsx"
+sha256 = "04b1e153d12d7d5c281078573d1ff542b4c0ac9a36bd84f00061dce071297ef7"
+size = 10987
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/MONTH.xlsx"
+sha256 = "a14bcd3d54b94238db63fe53c4569c5dd3e36911df4eb63a603342f9240e2b29"
+size = 10705
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/PV.xlsx"
+sha256 = "bece5f2b24cf96950b6011341bd1d5676e5a1a1fc441e108a06a0d3e54f4ccb1"
+size = 11005
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/SIN.xlsx"
+sha256 = "953b38444d14e8ce03c16f8066749d9ce88b9503ea194f26558ede2527468433"
+size = 10842
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/TAN.xlsx"
+sha256 = "8dd1634bd0c935cd8bfd3938489e407ba16036a34d6f90fe7351ac4a6499d3f5"
+size = 14098
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/docs/YEAR.xlsx"
+sha256 = "5ee44a8456d7bdf40fe51cb0052083b4a2758e2a87f17c53a68d37179e49fc8d"
+size = 10715
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/dynamic_arrays.xlsx"
+sha256 = "955f86b16cff403962d6f19b5c172653da0aaac7fa5bd9806db37ce15651d827"
+size = 10397
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/example.xlsx"
+sha256 = "35010189f3dbd9ec1881749cb1995d55fe35b7f3a9c07d6198abc55218bbc445"
+size = 41197
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/freeze.xlsx"
+sha256 = "88a3ca6d8ecad5953dc82b08230b056b1263c4c6cabf7b3e2894cfe4cdcd5755"
+size = 8595
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/gridlines_issue_1269.xlsx"
+sha256 = "c514eb9cc25689c6d25c5de5cc812ee0cd7a0e3edf318931414b267c8dee6b18"
+size = 10187
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/libreoffice_888_example.xlsx"
+sha256 = "5e87be8a402033de7c514162f49071ab3b3acdd3ff49504a036e4a881c393c2d"
+size = 11273
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/link_test.xlsx"
+sha256 = "0250b126df7928d9d79238948e087e1ec1d5862f6f003a3ad3b863cd88639069"
+size = 15354
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/missing_r_on_row.xlsx"
+sha256 = "9de7a98a91b60a51cb52d745f193d6d44f11ad16ac2a2b07da5466544cd726c1"
+size = 5688
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/openpyxl_example.xlsx"
+sha256 = "f33914b87aaf76ad49622499b5ce48bf07646456a40d6b559db4cede6ece7b1a"
+size = 4879
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/optional_xf_id.xlsx"
+sha256 = "1fa8f71de1056696578cf77e184c606696cd72887ee5b05b34f8d82bfa1645f4"
+size = 6353
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/shared_formula_volatile.xlsx"
+sha256 = "014491e448750e458f9a7a239876d87a1ff77222ae9e9188ac74cd00e8342e26"
+size = 5077
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/split.xlsx"
+sha256 = "0afc38b7b8e9fe2b5bebf0c14c873ce2bc40d7960d4a79865d8fd7df7d12ff97"
+size = 8561
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/templates/crossword.xlsx"
+sha256 = "5ee5a3eed562e5ce603154c82363a55c5629047c24af9ec81186885d74f9545f"
+size = 13004
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/templates/event_calendar.xlsx"
+sha256 = "2d2aadbbb7f2e91278e5d225c040497e2c7d05445cc38ae36c01d551df74fdc7"
+size = 33957
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/templates/gantt_project_tracker.xlsx"
+sha256 = "771c40af914a51f11633ae24fa3f365549a4d32bac83c7c189e15f36c9310927"
+size = 36981
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/templates/invoice.xlsx"
+sha256 = "7879d312f90fafb497b0f45115186a23730a92d44d1e914b8c2c492460ffcd39"
+size = 15552
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/templates/travel_expenses_tracker.xlsx"
+sha256 = "829e06370ddab439610be9456580f0f01c40ce8bd42949a6ce220bafbf55a05d"
+size = 21288
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/templates/weekly_timesheet.xlsx"
+sha256 = "4deed2bd9a9fb330d5285709da903320880c54c198783cfcb00643c2e6145364"
+size = 15307
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/templates/wordle.xlsx"
+sha256 = "4a5abae907614db174d363ed4cd45c8a77fb0c5fc775172276ef70c54cd93cdb"
+size = 28990
+kind = "io"
+
+[[file]]
+path = "xlsx/tests/templates/yearly_calendar.xlsx"
+sha256 = "e0887f733ff6262890f16bce11ff4920d88b1b9f0646a8be9ca257c82ac12f40"
+size = 17796
+kind = "io"
+

@@ -1,0 +1,16 @@
+[package]
+name = "sheetpro"
+description = "SheetPro desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sp_engine.workspace = true
+sp_ui.workspace = true
+eframe.workspace = true
+egui.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

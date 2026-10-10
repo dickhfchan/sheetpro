@@ -1,0 +1,23 @@
+[package]
+name = "sp_ui"
+description = "L6 egui shell (thin, data-driven) and offscreen screenshots"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sp_core.workspace = true
+sp_model.workspace = true
+sp_render.workspace = true
+sp_engine.workspace = true
+serde_json.workspace = true
+egui.workspace = true
+egui_kittest = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+
+[features]
+default = ["screenshot"]
+screenshot = ["dep:egui_kittest", "dep:image"]
+
+[lints]
+workspace = true

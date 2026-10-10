@@ -1,0 +1,19 @@
+[package]
+name = "sp"
+description = "SheetPro CLI: commands, headless control server, screenshots"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sp_core.workspace = true
+sp_engine.workspace = true
+sp_formula.workspace = true
+sp_io.workspace = true
+sp_ui.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

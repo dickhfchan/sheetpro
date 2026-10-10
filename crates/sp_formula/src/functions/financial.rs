@@ -1,0 +1,477 @@
+//! Financial functions (time value of money, cash-flow analysis, depreciation).
+
+use super::{Agg, Registry, arg_array, collect_numbers, ret};
+use crate::ast::Expr;
+use crate::eval::{Ev, EvalValue};
+use sp_core::{ErrorKind, Value};
+
+fn args_n(ev: &mut Ev<'_>, args: &[Expr], defaults: &[Option<f64>]) -> Result<Vec<f64>, ErrorKind> {
+    let mut out = Vec::with_capacity(defaults.len());
+    for (i, d) in defaults.iter().enumerate() {
+        let v = match (args.get(i), d) {
+            (None | Some(Expr::Missing), Some(d)) => *d,
+            (Some(e), _) => ev.num(e)?,
+            (None, None) => return Err(ErrorKind::Value),
+        };
+        out.push(v);
+    }
+    Ok(out)
+}
+
+fn fin(x: f64) -> Result<f64, ErrorKind> {
+    if x.is_finite() {
+        Ok(x)
+    } else {
+        Err(ErrorKind::Num)
+    }
+}
+
+pub fn pmt(rate: f64, nper: f64, pv: f64, fv: f64, typ: f64) -> Result<f64, ErrorKind> {
+    if nper == 0.0 {
+        return Err(ErrorKind::Num);
+    }
+    if rate == 0.0 {
+        return fin(-(pv + fv) / nper);
+    }
+    let t = if typ != 0.0 { 1.0 } else { 0.0 };
+    let f = (1.0 + rate).powf(nper);
+    fin(-(rate * (pv * f + fv)) / ((1.0 + rate * t) * (f - 1.0)))
+}
+
+pub fn fv(rate: f64, nper: f64, pmt: f64, pv: f64, typ: f64) -> Result<f64, ErrorKind> {
+    if rate == 0.0 {
+        return fin(-(pv + pmt * nper));
+    }
+    let t = if typ != 0.0 { 1.0 } else { 0.0 };
+    let f = (1.0 + rate).powf(nper);
+    fin(-(pv * f + pmt * (1.0 + rate * t) * (f - 1.0) / rate))
+}
+
+pub fn pv(rate: f64, nper: f64, pmt: f64, fv: f64, typ: f64) -> Result<f64, ErrorKind> {
+    if rate == 0.0 {
+        return fin(-(fv + pmt * nper));
+    }
+    let t = if typ != 0.0 { 1.0 } else { 0.0 };
+    let f = (1.0 + rate).powf(nper);
+    fin(-(fv + pmt * (1.0 + rate * t) * (f - 1.0) / rate) / f)
+}
+
+fn nper(rate: f64, pmt: f64, pv: f64, fv: f64, typ: f64) -> Result<f64, ErrorKind> {
+    if rate == 0.0 {
+        if pmt == 0.0 {
+            return Err(ErrorKind::Num);
+        }
+        return fin(-(pv + fv) / pmt);
+    }
+    let t = if typ != 0.0 { 1.0 } else { 0.0 };
+    let a = pmt * (1.0 + rate * t) / rate;
+    let num = a - fv;
+    let den = pv + a;
+    if num / den <= 0.0 {
+        return Err(ErrorKind::Num);
+    }
+    fin((num / den).ln() / (1.0 + rate).ln())
+}
+
+fn ipmt(rate: f64, per: f64, nper: f64, pv_: f64, fv_: f64, typ: f64) -> Result<f64, ErrorKind> {
+    if per < 1.0 || per > nper {
+        return Err(ErrorKind::Num);
+    }
+    let p = pmt(rate, nper, pv_, fv_, typ)?;
+    let t = typ != 0.0;
+    if per == 1.0 && t {
+        return Ok(0.0);
+    }
+    let balance = if t {
+        fv(rate, per - 2.0, p, pv_, 1.0)? - p
+    } else {
+        fv(rate, per - 1.0, p, pv_, 0.0)?
+    };
+    fin(balance * rate)
+}
+
+fn rate(nper: f64, pmt_: f64, pv_: f64, fv_: f64, typ: f64, guess: f64) -> Result<f64, ErrorKind> {
+    let f = |r: f64| -> f64 {
+        if r.abs() < 1e-12 {
+            pv_ + pmt_ * nper + fv_
+        } else {
+            let t = if typ != 0.0 { 1.0 } else { 0.0 };
+            let g = (1.0 + r).powf(nper);
+            pv_ * g + pmt_ * (1.0 + r * t) * (g - 1.0) / r + fv_
+        }
+    };
+    let mut r = guess;
+    for _ in 0..100 {
+        let y = f(r);
+        let h = 1e-7_f64.max(r.abs() * 1e-7);
+        let dy = (f(r + h) - f(r - h)) / (2.0 * h);
+        if dy == 0.0 || !dy.is_finite() {
+            return Err(ErrorKind::Num);
+        }
+        let nr = r - y / dy;
+        if !nr.is_finite() || nr <= -1.0 {
+            return Err(ErrorKind::Num);
+        }
+        if (nr - r).abs() < 1e-10 {
+            return Ok(nr);
+        }
+        r = nr;
+    }
+    Err(ErrorKind::Num)
+}
+
+fn npv_of(rate: f64, flows: &[f64]) -> f64 {
+    flows
+        .iter()
+        .enumerate()
+        .map(|(i, c)| c / (1.0 + rate).powi(i as i32 + 1))
+        .sum()
+}
+
+fn irr(flows: &[f64], guess: f64) -> Result<f64, ErrorKind> {
+    if !flows.iter().any(|c| *c > 0.0) || !flows.iter().any(|c| *c < 0.0) {
+        return Err(ErrorKind::Num);
+    }
+    let f = |r: f64| {
+        flows
+            .iter()
+            .enumerate()
+            .map(|(i, c)| c / (1.0 + r).powi(i as i32))
+            .sum::<f64>()
+    };
+    let mut r = guess;
+    for _ in 0..100 {
+        let y = f(r);
+        let dy: f64 = flows
+            .iter()
+            .enumerate()
+            .map(|(i, c)| -(i as f64) * c / (1.0 + r).powi(i as i32 + 1))
+            .sum();
+        if dy == 0.0 || !dy.is_finite() {
+            return Err(ErrorKind::Num);
+        }
+        let nr = r - y / dy;
+        if !nr.is_finite() || nr <= -1.0 {
+            return Err(ErrorKind::Num);
+        }
+        if (nr - r).abs() < 1e-10 {
+            return Ok(nr);
+        }
+        r = nr;
+    }
+    Err(ErrorKind::Num)
+}
+
+fn flows_from(ev: &mut Ev<'_>, args: &[Expr], i: usize) -> Result<Vec<f64>, ErrorKind> {
+    let a = arg_array(ev, args, i)?;
+    let mut out = Vec::new();
+    for v in &a.data {
+        match v {
+            Value::Number(n) => out.push(*n),
+            Value::Error(e) => return Err(*e),
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
+fn ddb(cost: f64, salvage: f64, life: f64, period: f64, factor: f64) -> Result<f64, ErrorKind> {
+    if cost < 0.0 || salvage < 0.0 || life <= 0.0 || period <= 0.0 || period > life || factor <= 0.0
+    {
+        return Err(ErrorKind::Num);
+    }
+    let mut book = cost;
+    let mut dep = 0.0;
+    for _ in 0..period.ceil() as u64 {
+        dep = (book * factor / life).min((book - salvage).max(0.0));
+        book -= dep;
+    }
+    Ok(dep)
+}
+
+fn db(cost: f64, salvage: f64, life: f64, period: f64, month: f64) -> Result<f64, ErrorKind> {
+    if cost < 0.0
+        || salvage < 0.0
+        || life <= 0.0
+        || period <= 0.0
+        || !(1.0..=12.0).contains(&month)
+        || period > life + 1.0
+    {
+        return Err(ErrorKind::Num);
+    }
+    if cost == 0.0 {
+        return Ok(0.0);
+    }
+    let rate = ((1.0 - (salvage / cost).powf(1.0 / life)) * 1000.0).round() / 1000.0;
+    let mut total = cost * rate * month / 12.0;
+    if period == 1.0 {
+        return Ok(total);
+    }
+    let mut dep = 0.0;
+    for p in 2..=(period as u64) {
+        dep = if p as f64 == life + 1.0 {
+            (cost - total) * rate * (12.0 - month) / 12.0
+        } else {
+            (cost - total) * rate
+        };
+        total += dep;
+    }
+    Ok(dep)
+}
+
+pub fn register(r: &mut Registry) {
+    r.add("PMT", 3, 5, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, Some(0.0), Some(0.0)]).and_then(|v| {
+                match v.as_slice() {
+                    [r, n, p, f, t] => pmt(*r, *n, *p, *f, *t),
+                    _ => Err(ErrorKind::Value),
+                }
+            }),
+        )
+    });
+    r.add("FV", 3, 5, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, Some(0.0), Some(0.0)]).and_then(|v| {
+                match v.as_slice() {
+                    [r, n, p, pv_, t] => fv(*r, *n, *p, *pv_, *t),
+                    _ => Err(ErrorKind::Value),
+                }
+            }),
+        )
+    });
+    r.add("PV", 3, 5, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, Some(0.0), Some(0.0)]).and_then(|v| {
+                match v.as_slice() {
+                    [r, n, p, f, t] => pv(*r, *n, *p, *f, *t),
+                    _ => Err(ErrorKind::Value),
+                }
+            }),
+        )
+    });
+    r.add("NPER", 3, 5, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, Some(0.0), Some(0.0)]).and_then(|v| {
+                match v.as_slice() {
+                    [r, p, pv_, f, t] => nper(*r, *p, *pv_, *f, *t),
+                    _ => Err(ErrorKind::Value),
+                }
+            }),
+        )
+    });
+    r.add("IPMT", 4, 6, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, None, Some(0.0), Some(0.0)]).and_then(|v| {
+                match v.as_slice() {
+                    [r, per, n, p, f, t] => ipmt(*r, *per, *n, *p, *f, *t),
+                    _ => Err(ErrorKind::Value),
+                }
+            }),
+        )
+    });
+    r.add("PPMT", 4, 6, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, None, Some(0.0), Some(0.0)]).and_then(|v| {
+                match v.as_slice() {
+                    [r, per, n, p, f, t] => {
+                        Ok(pmt(*r, *n, *p, *f, *t)? - ipmt(*r, *per, *n, *p, *f, *t)?)
+                    }
+                    _ => Err(ErrorKind::Value),
+                }
+            }),
+        )
+    });
+    r.add("RATE", 3, 6, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, Some(0.0), Some(0.0), Some(0.1)]).and_then(
+                |v| match v.as_slice() {
+                    [n, p, pv_, f, t, g] => rate(*n, *p, *pv_, *f, *t, *g),
+                    _ => Err(ErrorKind::Value),
+                },
+            ),
+        )
+    });
+    r.add("NPV", 2, 255, |ev, a| {
+        let Some(re) = a.first() else {
+            return EvalValue::err(ErrorKind::Value);
+        };
+        let rate = match ev.num(re) {
+            Ok(r) => r,
+            Err(e) => return EvalValue::err(e),
+        };
+        if rate == -1.0 {
+            return EvalValue::err(ErrorKind::Div0);
+        }
+        ret(collect_numbers(ev, a.get(1..).unwrap_or(&[]), Agg::Numbers).map(|f| npv_of(rate, &f)))
+    });
+    r.add("IRR", 1, 2, |ev, a| {
+        let flows = match flows_from(ev, a, 0) {
+            Ok(f) => f,
+            Err(e) => return EvalValue::err(e),
+        };
+        let g = match ev.num_or(a, 1, 0.1) {
+            Ok(g) => g,
+            Err(e) => return EvalValue::err(e),
+        };
+        ret(irr(&flows, g))
+    });
+    r.add("MIRR", 3, 3, |ev, a| {
+        let flows = match flows_from(ev, a, 0) {
+            Ok(f) => f,
+            Err(e) => return EvalValue::err(e),
+        };
+        let (fr, rr) = match (a.get(1).map(|e| ev.num(e)), a.get(2).map(|e| ev.num(e))) {
+            (Some(Ok(x)), Some(Ok(y))) => (x, y),
+            (Some(Err(e)), _) | (_, Some(Err(e))) => return EvalValue::err(e),
+            _ => return EvalValue::err(ErrorKind::Value),
+        };
+        let n = flows.len() as f64;
+        let pos: f64 = flows
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| **c > 0.0)
+            .map(|(i, c)| c * (1.0 + rr).powf(n - 1.0 - i as f64))
+            .sum();
+        let neg: f64 = flows
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| **c < 0.0)
+            .map(|(i, c)| c / (1.0 + fr).powi(i as i32))
+            .sum();
+        if pos == 0.0 || neg == 0.0 {
+            return EvalValue::err(ErrorKind::Div0);
+        }
+        ret(fin((-pos / neg).powf(1.0 / (n - 1.0)) - 1.0))
+    });
+    r.add("SLN", 3, 3, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None]).and_then(|v| match v.as_slice() {
+                [c, s, l] if *l != 0.0 => Ok((c - s) / l),
+                [_, _, _] => Err(ErrorKind::Div0),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("SYD", 4, 4, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, None]).and_then(|v| match v.as_slice() {
+                [c, s, l, p] if *l > 0.0 && *p > 0.0 && p <= l => {
+                    Ok((c - s) * (l - p + 1.0) * 2.0 / (l * (l + 1.0)))
+                }
+                [_, _, _, _] => Err(ErrorKind::Num),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("DDB", 4, 5, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, None, Some(2.0)]).and_then(|v| match v.as_slice() {
+                [c, s, l, p, f] => ddb(*c, *s, *l, *p, *f),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("DB", 4, 5, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, None, Some(12.0)]).and_then(|v| match v.as_slice() {
+                [c, s, l, p, m] => db(*c, *s, *l, *p, *m),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("EFFECT", 2, 2, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None]).and_then(|v| match v.as_slice() {
+                [r, n] if *r > 0.0 && n.trunc() >= 1.0 => {
+                    fin((1.0 + r / n.trunc()).powf(n.trunc()) - 1.0)
+                }
+                [_, _] => Err(ErrorKind::Num),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("NOMINAL", 2, 2, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None]).and_then(|v| match v.as_slice() {
+                [r, n] if *r > 0.0 && n.trunc() >= 1.0 => {
+                    fin(((1.0 + r).powf(1.0 / n.trunc()) - 1.0) * n.trunc())
+                }
+                [_, _] => Err(ErrorKind::Num),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("PDURATION", 3, 3, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None]).and_then(|v| match v.as_slice() {
+                [r, p, f] if *r > 0.0 && *p > 0.0 && *f > 0.0 => {
+                    fin((f.ln() - p.ln()) / (1.0 + r).ln())
+                }
+                [_, _, _] => Err(ErrorKind::Num),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("RRI", 3, 3, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None]).and_then(|v| match v.as_slice() {
+                [n, p, f] if *n > 0.0 && *p != 0.0 => fin((f / p).powf(1.0 / n) - 1.0),
+                [_, _, _] => Err(ErrorKind::Num),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("ISPMT", 4, 4, |ev, a| {
+        ret(
+            args_n(ev, a, &[None, None, None, None]).and_then(|v| match v.as_slice() {
+                [r, per, n, p] if *n != 0.0 => Ok(p * r * (per / n - 1.0)),
+                [_, _, _, _] => Err(ErrorKind::Div0),
+                _ => Err(ErrorKind::Value),
+            }),
+        )
+    });
+    r.add("FVSCHEDULE", 2, 2, |ev, a| {
+        let Some(p) = a.first() else {
+            return EvalValue::err(ErrorKind::Value);
+        };
+        let principal = match ev.num(p) {
+            Ok(x) => x,
+            Err(e) => return EvalValue::err(e),
+        };
+        match arg_array(ev, a, 1) {
+            Ok(arr) => {
+                let mut acc = principal;
+                for v in &arr.data {
+                    match v {
+                        Value::Number(r) => acc *= 1.0 + r,
+                        Value::Empty => {}
+                        Value::Error(e) => return EvalValue::err(*e),
+                        _ => return EvalValue::err(ErrorKind::Value),
+                    }
+                }
+                EvalValue::num(acc)
+            }
+            Err(e) => EvalValue::err(e),
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tvm() {
+        let p = pmt(0.08 / 12.0, 10.0, 10_000.0, 0.0, 0.0).unwrap();
+        assert!((p - -1_037.032_089).abs() < 1e-5, "{p}");
+        let f = fv(0.06 / 12.0, 10.0, -200.0, -500.0, 1.0).unwrap();
+        assert!((f - 2_581.403_374).abs() < 1e-5, "{f}");
+        let r = irr(
+            &[-70000.0, 12000.0, 15000.0, 18000.0, 21000.0, 26000.0],
+            0.1,
+        )
+        .unwrap();
+        assert!((r - 0.086_630_948).abs() < 1e-8, "{r}");
+    }
+}

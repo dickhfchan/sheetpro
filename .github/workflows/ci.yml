@@ -1,0 +1,17 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  gates:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Fetch oracle corpus
+        run: cargo xtask corpus
+      - name: All gates
+        run: cargo xtask check

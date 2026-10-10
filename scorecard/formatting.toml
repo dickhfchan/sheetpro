@@ -1,0 +1,36 @@
+area = "Formatting"
+
+[[item]]
+name = "Number-format engine (sections, colours, dates/times, elapsed, scientific, scaling)"
+status = "partial"
+note = "Fractions (# ?/?), locale tags beyond currency symbol, conditions with >2 sections untested"
+
+[[item]]
+name = "Font: bold/italic/underline/strike/size/colour"
+status = "partial"
+note = "Font family is stored but the grid draws one family"
+
+[[item]]
+name = "Fill colour"
+status = "done"
+note = ""
+
+[[item]]
+name = "Borders"
+status = "partial"
+note = "Stored and saved to .xlsx, but not drawn by the grid yet"
+
+[[item]]
+name = "Alignment, wrap, indent, rotation"
+status = "partial"
+note = "Horizontal alignment drawn; wrap/indent/rotation/vertical alignment stored but not drawn"
+
+[[item]]
+name = "Merge cells"
+status = "partial"
+note = "Merged text centred over the area; borders over merges not drawn"
+
+[[item]]
+name = "Conditional formatting"
+status = "missing"
+note = ""

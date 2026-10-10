@@ -1,0 +1,31 @@
+area = "Files"
+
+[[item]]
+name = ".xlsx read: values, formulas (incl. shared), styles subset, merges, sizes, names, freeze"
+status = "partial"
+note = "No tables, charts, images, comments, data validation, conditional formats (dropped on load)"
+
+[[item]]
+name = ".xlsx write: valid package, _xlfn prefixes, styles, merges, names"
+status = "partial"
+note = "Unsupported parts from the source file are not preserved on save"
+
+[[item]]
+name = "CSV/TSV import/export"
+status = "done"
+note = ""
+
+[[item]]
+name = "Atomic save (temp file + rename)"
+status = "done"
+note = ""
+
+[[item]]
+name = "Autosave / crash recovery"
+status = "missing"
+note = ""
+
+[[item]]
+name = "PDF export / printing"
+status = "missing"
+note = ""

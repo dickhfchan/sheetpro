@@ -1,0 +1,53 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*", "xtask"]
+default-members = ["crates/*", "apps/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://example.invalid/sheetpro"
+
+[workspace.dependencies]
+sp_core = { path = "crates/sp_core" }
+sp_model = { path = "crates/sp_model" }
+sp_formula = { path = "crates/sp_formula" }
+sp_ops = { path = "crates/sp_ops" }
+sp_render = { path = "crates/sp_render" }
+sp_io = { path = "crates/sp_io" }
+sp_engine = { path = "crates/sp_engine" }
+sp_ui = { path = "crates/sp_ui" }
+
+serde = { version = "=1.0.228", features = ["derive", "rc"] }
+serde_json = "=1.0.151"
+toml = "=1.1.5"
+thiserror = "=2.0.20"
+anyhow = "=1.0.104"
+clap = { version = "=4.6.6", features = ["derive"] }
+quick-xml = "=0.42.0"
+zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
+csv = "=1.4.0"
+eframe = { version = "=0.36.2", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+egui = "=0.36.2"
+egui_kittest = { version = "=0.36.2", features = ["wgpu", "snapshot"] }
+sha2 = "=0.11.0"
+image = { version = "=0.25.9", default-features = false, features = ["png"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"

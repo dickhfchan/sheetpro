@@ -1,0 +1,31 @@
+# Performance budgets at 100k rows (4 columns: number, text, 2 formulas → 200k formulas).
+# `cargo xtask perf --quick` runs 20k rows against budget/5.
+# Tighten budgets as performance improves; loosening one needs a devlog entry saying why.
+
+[bench.recalc_full_cold]
+ms = 1500.0
+description = "Full recalculation, cold AST cache (parse + evaluate 200k formulas)"
+
+[bench.recalc_full_warm]
+ms = 800.0
+description = "Full recalculation, warm AST cache"
+
+[bench.edit_one_cell]
+ms = 50.0
+description = "Type one value into a 100k-row sheet (undo record + recalc). Target app: instant."
+
+[bench.xlsx_save]
+ms = 1500.0
+description = "Save 400k cells to .xlsx"
+
+[bench.xlsx_load]
+ms = 1500.0
+description = "Load 400k cells from .xlsx"
+
+[bench.grid_layout_screen]
+ms = 8.0
+description = "Lay out one 1600x1000 screen at row 50k (must fit in a frame)"
+
+[bench.sort_rows]
+ms = 2000.0
+description = "Sort 100k rows x 4 cols descending by column A"

@@ -1,0 +1,31 @@
+area = "Shell"
+
+[[item]]
+name = "Ribbon generated from catalog (missing commands shown disabled)"
+status = "done"
+note = "Text buttons only, no icons or galleries; commands needing params run with defaults"
+
+[[item]]
+name = "Grid: virtualised drawing, headings, selection, gridlines, frozen panes"
+status = "partial"
+note = "No column/row resize by dragging; no drag fill handle"
+
+[[item]]
+name = "Formula bar + in-cell editing"
+status = "partial"
+note = "Edits in the formula bar; in-cell overlay displays the buffer but has no caret"
+
+[[item]]
+name = "Keyboard shortcuts via catalog"
+status = "partial"
+note = "Ctrl+key names are mapped; macOS Cmd counts as Ctrl; untested against every catalog shortcut"
+
+[[item]]
+name = "Dialogs (Format Cells, Find, Sort, Paste Special…)"
+status = "missing"
+note = ""
+
+[[item]]
+name = "Headless screenshots + JSON control channel"
+status = "done"
+note = "sp screenshot / sp control / --control-port"

@@ -1,0 +1,31 @@
+area = "Formula engine"
+
+[[item]]
+name = "Parser: operators, precedence, refs, sheet-qualified refs, whole rows/cols, arrays"
+status = "done"
+note = "Structured refs (Table1[Col]) and external refs ([Book]Sheet!A1) are rejected"
+
+[[item]]
+name = "Recalc: dependency ordering, long chains, cycles"
+status = "partial"
+note = "Full recalc on every edit (no incremental dirty tracking yet); cycles evaluate to 0 with no warning UI"
+
+[[item]]
+name = "Dynamic arrays / spill"
+status = "missing"
+note = "Array results show the top-left value only; no #SPILL!"
+
+[[item]]
+name = "LAMBDA family (LAMBDA, MAP, REDUCE, SCAN, BYROW…)"
+status = "missing"
+note = ""
+
+[[item]]
+name = "Implicit intersection / @ operator"
+status = "partial"
+note = "Multi-cell refs in scalar context intersect with the formula row/col; @ parsed as no-op"
+
+[[item]]
+name = "Iterative calculation setting"
+status = "missing"
+note = ""

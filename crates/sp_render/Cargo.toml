@@ -1,0 +1,13 @@
+[package]
+name = "sp_render"
+description = "L3 number formats, display text, grid geometry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sp_core.workspace = true
+sp_model.workspace = true
+
+[lints]
+workspace = true
