@@ -3,19 +3,59 @@
 use super::{Registry, arg_array, m1, ret};
 use crate::ast::Expr;
 use crate::eval::{Ev, EvalValue};
-use sp_core::date::{date_to_serial, days_in_month, serial_to_date, serial_to_time, weekday};
-use sp_core::parse::{parse_date, parse_time};
+use sp_core::date::{
+    date_to_serial, days_in_month, in_range, serial_to_date, serial_to_time, weekday,
+};
+use sp_core::parse::{parse_date_time_text, parse_number};
 use sp_core::{ErrorKind, Value};
 
 fn ymd(serial: f64) -> Result<(i64, u32, u32), ErrorKind> {
     serial_to_date(serial).ok_or(ErrorKind::Num)
 }
 
+/// Coerce text the way date functions do: a plain number (`"45658"`), else date/time text.
+fn text_serial(s: &str) -> Result<f64, ErrorKind> {
+    parse_number(s)
+        .map(|(n, _)| n)
+        .or_else(|| parse_date_time_text(s, current_year()))
+        .ok_or(ErrorKind::Value)
+}
+
 fn date_arg(ev: &mut Ev<'_>, e: &Expr) -> Result<f64, ErrorKind> {
     let v = ev.eval_scalar(e);
     match v {
-        Value::Text(s) => parse_date(&s, current_year()).ok_or(ErrorKind::Value),
+        Value::Text(s) => text_serial(&s),
         other => crate::eval::to_number(&other),
+    }
+}
+
+/// Numeric argument of the analysis functions (EDATE, WORKDAY, ...): like `date_arg`, but a
+/// logical is `#VALUE!` rather than 0/1.
+fn strict_num(ev: &mut Ev<'_>, e: &Expr) -> Result<f64, ErrorKind> {
+    match ev.eval_scalar(e) {
+        Value::Bool(_) => Err(ErrorKind::Value),
+        Value::Text(s) => text_serial(&s),
+        other => crate::eval::to_number(&other),
+    }
+}
+
+/// A date serial argument that must lie in the representable range (`#NUM!` otherwise).
+fn strict_date(ev: &mut Ev<'_>, e: &Expr) -> Result<f64, ErrorKind> {
+    let s = strict_num(ev, e)?;
+    if in_range(s) {
+        Ok(s)
+    } else {
+        Err(ErrorKind::Num)
+    }
+}
+
+/// Text-only argument of DATEVALUE / TIMEVALUE: numbers, logicals and blanks are `#VALUE!`.
+fn text_only(ev: &mut Ev<'_>, args: &[Expr]) -> Result<f64, ErrorKind> {
+    let e = args.first().ok_or(ErrorKind::Value)?;
+    match ev.eval_scalar(e) {
+        Value::Text(s) => parse_date_time_text(&s, current_year()).ok_or(ErrorKind::Value),
+        Value::Error(x) => Err(x),
+        _ => Err(ErrorKind::Value),
     }
 }
 
@@ -31,6 +71,8 @@ fn date(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
             if !(0.0..10000.0).contains(&y) {
                 return EvalValue::err(ErrorKind::Num);
             }
+            // Years 0..=1899 are offsets from 1900.
+            let y = if y < 1900.0 { y + 1900.0 } else { y };
             ret(date_to_serial(y as i64, m.trunc() as i64, d.trunc() as i64).ok_or(ErrorKind::Num))
         }
         _ => EvalValue::err(v.iter().find_map(|r| r.err()).unwrap_or(ErrorKind::Value)),
@@ -62,10 +104,14 @@ fn edate(ev: &mut Ev<'_>, args: &[Expr], eom: bool) -> EvalValue {
     let (Some(a), Some(b)) = (args.first(), args.get(1)) else {
         return EvalValue::err(ErrorKind::Value);
     };
-    let (s, m) = match (date_arg(ev, a), ev.num(b)) {
-        (Ok(s), Ok(m)) => (s, m.trunc() as i64),
+    let (s, m) = match (strict_date(ev, a), strict_num(ev, b)) {
+        (Ok(s), Ok(m)) => (s, m.trunc()),
         (Err(e), _) | (_, Err(e)) => return EvalValue::err(e),
     };
+    if m.abs() > 1.0e6 {
+        return EvalValue::err(ErrorKind::Num);
+    }
+    let m = m as i64;
     let Ok((y, mo, d)) = ymd(s) else {
         return EvalValue::err(ErrorKind::Num);
     };
@@ -74,6 +120,25 @@ fn edate(ev: &mut Ev<'_>, args: &[Expr], eom: bool) -> EvalValue {
     let dim = days_in_month(ny, nm);
     let nd = if eom { dim } else { d.min(dim) };
     ret(date_to_serial(ny, i64::from(nm), i64::from(nd)).ok_or(ErrorKind::Num))
+}
+
+fn days(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
+    let (Some(a), Some(b)) = (args.first(), args.get(1)) else {
+        return EvalValue::err(ErrorKind::Value);
+    };
+    let range = |r: Result<f64, ErrorKind>| {
+        r.and_then(|x| {
+            if in_range(x) {
+                Ok(x.trunc())
+            } else {
+                Err(ErrorKind::Num)
+            }
+        })
+    };
+    match (range(date_arg(ev, a)), range(date_arg(ev, b))) {
+        (Ok(e), Ok(s)) => EvalValue::num(e - s),
+        (Err(x), _) | (_, Err(x)) => EvalValue::err(x),
+    }
 }
 
 fn weekday_fn(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
@@ -116,7 +181,15 @@ fn days360(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         Ok(b) => b,
         Err(e) => return EvalValue::err(e),
     };
-    let (Ok((y1, m1, d1)), Ok((y2, m2, d2))) = (ymd(s), ymd(e)) else {
+    // DAYS360 reads the calendar date after rounding to the nearest second (observed:
+    // x.9999999 counts as the next day, x.0000001 as the same day).
+    let to_day = |x: f64| {
+        if x < 0.0 {
+            return Err(ErrorKind::Num);
+        }
+        ymd((x * 86_400.0).round() / 86_400.0)
+    };
+    let (Ok((y1, m1, d1)), Ok((y2, m2, d2))) = (to_day(s), to_day(e)) else {
         return EvalValue::err(ErrorKind::Num);
     };
     let (mut d1, mut d2) = (i64::from(d1), i64::from(d2));
@@ -138,15 +211,29 @@ fn days360(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     EvalValue::num(((y2 - y1) * 360 + (i64::from(m2) - i64::from(m1)) * 30 + (d2 - d1)) as f64)
 }
 
+/// Holiday serials: blanks are skipped, errors propagate, logicals and non-date text are
+/// `#VALUE!`, serials outside the date range are `#NUM!`.
 fn holidays(ev: &mut Ev<'_>, args: &[Expr], i: usize) -> Result<Vec<f64>, ErrorKind> {
     match args.get(i) {
         None | Some(Expr::Missing) => Ok(Vec::new()),
-        Some(_) => Ok(arg_array(ev, args, i)?
-            .data
-            .iter()
-            .filter_map(|v| v.as_number())
-            .map(f64::floor)
-            .collect()),
+        Some(_) => {
+            let arr = arg_array(ev, args, i)?;
+            let mut out = Vec::new();
+            for v in &arr.data {
+                let n = match v {
+                    Value::Empty => continue,
+                    Value::Number(n) => *n,
+                    Value::Text(s) => text_serial(s)?,
+                    Value::Bool(_) => return Err(ErrorKind::Value),
+                    Value::Error(e) => return Err(*e),
+                };
+                if !in_range(n) {
+                    return Err(ErrorKind::Num);
+                }
+                out.push(n.floor());
+            }
+            Ok(out)
+        }
     }
 }
 
@@ -163,9 +250,6 @@ fn weekend_mask(ev: &mut Ev<'_>, args: &[Expr], i: usize) -> Result<[bool; 7], E
                 if let Some(slot) = m.get_mut(k) {
                     *slot = c == '1';
                 }
-            }
-            if m.iter().all(|b| *b) {
-                return Err(ErrorKind::Value);
             }
             Ok(m)
         }
@@ -207,7 +291,7 @@ fn networkdays(ev: &mut Ev<'_>, args: &[Expr], intl: bool) -> EvalValue {
     let (Some(a), Some(b)) = (args.first(), args.get(1)) else {
         return EvalValue::err(ErrorKind::Value);
     };
-    let (s, e) = match (date_arg(ev, a), date_arg(ev, b)) {
+    let (s, e) = match (strict_date(ev, a), strict_date(ev, b)) {
         (Ok(s), Ok(e)) => (s.floor(), e.floor()),
         (Err(x), _) | (_, Err(x)) => return EvalValue::err(x),
     };
@@ -243,8 +327,9 @@ fn workday(ev: &mut Ev<'_>, args: &[Expr], intl: bool) -> EvalValue {
     let (Some(a), Some(b)) = (args.first(), args.get(1)) else {
         return EvalValue::err(ErrorKind::Value);
     };
-    let (s, days) = match (date_arg(ev, a), ev.num(b)) {
-        (Ok(s), Ok(d)) => (s.floor(), d.trunc()),
+    // Fractional day counts round toward negative infinity (observed: -1e-9 → -1).
+    let (s, days) = match (strict_date(ev, a), strict_num(ev, b)) {
+        (Ok(s), Ok(d)) => (s.floor(), d.floor()),
         (Err(x), _) | (_, Err(x)) => return EvalValue::err(x),
     };
     let (mask, hi) = if intl {
@@ -262,6 +347,9 @@ fn workday(ev: &mut Ev<'_>, args: &[Expr], intl: bool) -> EvalValue {
     };
     if days.abs() > 3_000_000.0 {
         return EvalValue::err(ErrorKind::Num);
+    }
+    if mask.iter().all(|w| *w) {
+        return EvalValue::err(ErrorKind::Value);
     }
     let step = if days >= 0.0 { 1.0 } else { -1.0 };
     let mut left = days.abs();
@@ -329,7 +417,11 @@ fn yearfrac(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         (Ok(s), Ok(e)) => (s.floor(), e.floor()),
         (Err(x), _) | (_, Err(x)) => return EvalValue::err(x),
     };
-    let basis = match ev.num_or(args, 2, 0.0) {
+    let basis = match args.get(2) {
+        None | Some(Expr::Missing) => Ok(0.0),
+        Some(x) => strict_num(ev, x),
+    };
+    let basis = match basis {
         Ok(b) => b.trunc() as i64,
         Err(x) => return EvalValue::err(x),
     };
@@ -460,42 +552,13 @@ pub fn register(r: &mut Registry) {
     r.add("WEEKDAY", 1, 2, weekday_fn);
     r.add("EDATE", 2, 2, |ev, a| edate(ev, a, false));
     r.add("EOMONTH", 2, 2, |ev, a| edate(ev, a, true));
-    r.add("DAYS", 2, 2, |ev, a| {
-        match (
-            a.first().map(|e| date_arg(ev, e)),
-            a.get(1).map(|e| date_arg(ev, e)),
-        ) {
-            (Some(Ok(e)), Some(Ok(s))) => EvalValue::num(e.floor() - s.floor()),
-            (Some(Err(x)), _) | (_, Some(Err(x))) => EvalValue::err(x),
-            _ => EvalValue::err(ErrorKind::Value),
-        }
-    });
+    r.add("DAYS", 2, 2, days);
     r.add("DAYS360", 2, 3, days360);
     r.add("DATEVALUE", 1, 1, |ev, a| {
-        match a.first().map(|e| ev.text(e)) {
-            Some(Ok(s)) => {
-                let date_part = s
-                    .split_once(' ')
-                    .filter(|(_, t)| parse_time(t).is_some())
-                    .map_or(s.as_str(), |(d, _)| d);
-                ret(parse_date(date_part, current_year()).ok_or(ErrorKind::Value))
-            }
-            Some(Err(e)) => EvalValue::err(e),
-            None => EvalValue::err(ErrorKind::Value),
-        }
+        ret(text_only(ev, a).map(f64::floor))
     });
     r.add("TIMEVALUE", 1, 1, |ev, a| {
-        match a.first().map(|e| ev.text(e)) {
-            Some(Ok(s)) => {
-                let t = s
-                    .split_once(' ')
-                    .and_then(|(d, t)| parse_date(d, 2000).and(parse_time(t)))
-                    .or_else(|| parse_time(&s));
-                ret(t.map(f64::fract).ok_or(ErrorKind::Value))
-            }
-            Some(Err(e)) => EvalValue::err(e),
-            None => EvalValue::err(ErrorKind::Value),
-        }
+        ret(text_only(ev, a).map(f64::fract))
     });
     r.add("NETWORKDAYS", 2, 3, |ev, a| networkdays(ev, a, false));
     r.add("NETWORKDAYS.INTL", 2, 4, |ev, a| networkdays(ev, a, true));
@@ -507,4 +570,172 @@ pub fn register(r: &mut Registry) {
     });
     r.add("YEARFRAC", 2, 3, yearfrac);
     r.add("DATEDIF", 3, 3, datedif);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{AstCache, RecalcOptions, recalc};
+    use sp_core::{CellAddr, ErrorKind, Value};
+    use sp_model::{Cell, Workbook};
+
+    /// Evaluate `formula` with A1 = `a1`, B1 = `b1`, C1 = `c1` (Empty = leave blank).
+    fn eval3(formula: &str, a1: Value, b1: Value, c1: Value) -> Value {
+        let mut wb = Workbook::new();
+        for (a, v) in [("A1", a1), ("B1", b1), ("C1", c1)] {
+            if !matches!(v, Value::Empty)
+                && let Ok(addr) = CellAddr::parse(a)
+            {
+                wb.sheets[0].set(addr, Cell::constant(v));
+            }
+        }
+        let z = CellAddr::parse("Z1").unwrap();
+        wb.sheets[0].set(z, Cell::formula(formula));
+        let mut cache = AstCache::default();
+        recalc(
+            &mut wb,
+            &mut cache,
+            RecalcOptions {
+                now: Some(46000.5),
+                seed: 1,
+            },
+        );
+        wb.sheets[0].value(z).clone()
+    }
+
+    fn ev(formula: &str) -> Value {
+        eval3(formula, Value::Empty, Value::Empty, Value::Empty)
+    }
+
+    fn n(x: f64) -> Value {
+        Value::Number(x)
+    }
+    fn t(s: &str) -> Value {
+        Value::text(s)
+    }
+    const E: Value = Value::Empty;
+    const VAL: Value = Value::Error(ErrorKind::Value);
+    const NUM: Value = Value::Error(ErrorKind::Num);
+
+    #[test]
+    fn date_and_phantom_leap_day() {
+        assert_eq!(ev("DATE(1900,2,29)"), n(60.0));
+        assert_eq!(ev("DATE(1900,3,0)"), n(60.0));
+        assert_eq!(ev("DATE(108,1,1)"), ev("DATE(2008,1,1)"));
+        assert_eq!(ev("DATE(-1,1,1)"), NUM);
+    }
+
+    #[test]
+    fn datevalue_text_forms() {
+        assert_eq!(ev("DATEVALUE(\"29-Feb-1900\")"), n(60.0));
+        assert_eq!(ev("DATEVALUE(\"1900-02-29\")"), n(60.0));
+        assert_eq!(ev("DATEVALUE(\"1789-05-05\")"), VAL);
+        assert_eq!(ev("DATEVALUE(\"26-01-01\")"), n(36917.0));
+        assert_eq!(ev("DATEVALUE(\"2026-01-01 24:00:00\")"), n(46024.0));
+        assert_eq!(ev("DATEVALUE(\"2026-01-01 23:59:59\")"), n(46023.0));
+        assert_eq!(ev("DATEVALUE(\"2026 - 01 - 01\")"), n(46023.0));
+        assert_eq!(ev("DATEVALUE(\"2026.01.01\")"), VAL);
+        // Non-text arguments are rejected.
+        assert_eq!(eval3("DATEVALUE(A1)", n(45854.0), E, E), VAL);
+        assert_eq!(eval3("DATEVALUE(A1)", Value::Bool(true), E, E), VAL);
+        assert_eq!(eval3("DATEVALUE(A1)", E, E, E), VAL);
+    }
+
+    #[test]
+    fn timevalue_text_forms() {
+        assert_eq!(ev("TIMEVALUE(\"4 : 35\")"), ev("TIMEVALUE(\"4:35\")"));
+        assert_eq!(ev("TIMEVALUE(\"23:59:60\")"), n(0.0));
+        assert_eq!(ev("TIMEVALUE(\"24:00\")"), n(0.0));
+        assert_eq!(ev("TIMEVALUE(\"0:0:86400\")"), VAL);
+        assert_eq!(ev("TIMEVALUE(\"13:00 PM\")"), VAL);
+        assert_eq!(eval3("TIMEVALUE(A1)", n(0.5), E, E), VAL);
+    }
+
+    #[test]
+    fn day_month_year_numeric_text() {
+        assert_eq!(eval3("DAY(A1)", t("45658"), E, E), n(1.0));
+        assert_eq!(eval3("YEAR(A1)", t("45658"), E, E), n(2025.0));
+        assert_eq!(eval3("DAY(A1)", t("\"45658\""), E, E), VAL);
+    }
+
+    #[test]
+    fn edate_eomonth_validation() {
+        assert_eq!(ev("EDATE(61,-7)"), NUM);
+        assert_eq!(ev("EDATE(1,-1)"), NUM);
+        assert_eq!(ev("EDATE(2958465,1)"), NUM);
+        assert_eq!(ev("EDATE(32111,100000)"), NUM);
+        assert_eq!(eval3("EDATE(A1,B1)", Value::Bool(true), n(1.0), E), VAL);
+        assert_eq!(eval3("EDATE(A1,B1)", n(32111.0), Value::Bool(true), E), VAL);
+        assert_eq!(
+            eval3("EOMONTH(A1,B1)", n(44987.0), Value::Bool(false), E),
+            VAL
+        );
+        assert_eq!(eval3("EOMONTH(A1,B1)", t("44987"), n(1.0), E), n(45046.0));
+        assert_eq!(eval3("EOMONTH(A1,B1)", n(2958466.0), n(0.0), E), NUM);
+    }
+
+    #[test]
+    fn days_and_days360() {
+        assert_eq!(ev("DAYS(-5,-10)"), NUM);
+        assert_eq!(ev("DAYS(2958466,2958465)"), NUM);
+        assert_eq!(ev("DAYS(\"July 1, 2026\",\"June 1, 2026\")"), VAL);
+        assert_eq!(ev("DAYS(\"45000\",\"44999\")"), n(1.0));
+        assert_eq!(ev("DAYS(45658.9999999,45658.0000001)"), n(0.0));
+        // DAYS360 rounds to the nearest second before reading the calendar date.
+        assert_eq!(ev("DAYS360(45992.000001,46000.999999)"), n(9.0));
+        assert_eq!(ev("DAYS360(45658.0000001,45658.9999999)"), n(1.0));
+        assert_eq!(ev("DAYS360(45658.9999999,45659.0000001)"), n(0.0));
+        assert_eq!(ev("DAYS360(\"45000\",\"44999\")"), n(-1.0));
+    }
+
+    #[test]
+    fn networkdays_validation() {
+        assert_eq!(ev("NETWORKDAYS(-10,-5)"), NUM);
+        assert_eq!(ev("NETWORKDAYS(2958465,2958466)"), NUM);
+        assert_eq!(
+            eval3("NETWORKDAYS(A1,B1)", Value::Bool(true), n(61.0), E),
+            VAL
+        );
+        assert_eq!(eval3("NETWORKDAYS(45658,46023,A1)", t("abc"), E, E), VAL);
+        assert_eq!(
+            eval3("NETWORKDAYS(45658,46023,A1)", Value::Bool(true), E, E),
+            VAL
+        );
+        assert_eq!(eval3("NETWORKDAYS(45658,46023,A1)", n(-2.0), E, E), NUM);
+        assert_eq!(
+            eval3(
+                "NETWORKDAYS(45658,46387,A1:C1)",
+                n(45671.0),
+                Value::Error(ErrorKind::Div0),
+                Value::Error(ErrorKind::NA)
+            ),
+            Value::Error(ErrorKind::Div0)
+        );
+        assert_eq!(ev("NETWORKDAYS.INTL(45658,46387,\"1111111\")"), n(0.0));
+        assert_eq!(ev("NETWORKDAYS.INTL(45658,46387,\"1\")"), VAL);
+    }
+
+    #[test]
+    fn workday_validation() {
+        assert_eq!(eval3("WORKDAY(A1,B1)", Value::Bool(true), n(1.0), E), VAL);
+        assert_eq!(
+            eval3("WORKDAY(A1,B1)", n(46004.0), Value::Bool(true), E),
+            VAL
+        );
+        assert_eq!(ev("WORKDAY(-1,1)"), NUM);
+        assert_eq!(ev("WORKDAY(45667,10,-2)"), NUM);
+        assert_eq!(eval3("WORKDAY(45667,10,A1)", t("abc"), E, E), VAL);
+        // Fractional day counts floor.
+        assert_eq!(ev("WORKDAY(45667,-0.9999999)"), n(45666.0));
+        assert_eq!(ev("WORKDAY(45667,0.9999999)"), n(45667.0));
+        assert_eq!(ev("WORKDAY(\"45658\",5)"), n(45665.0));
+        assert_eq!(ev("WORKDAY.INTL(45667,10,\"1111111\")"), VAL);
+    }
+
+    #[test]
+    fn yearfrac_logical_basis() {
+        assert_eq!(
+            eval3("YEARFRAC(45292,45657,A1)", Value::Bool(true), E, E),
+            VAL
+        );
+    }
 }
