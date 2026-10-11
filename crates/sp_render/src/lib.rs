@@ -2,10 +2,13 @@
 //! draws a `GridView` with whatever toolkit it uses.
 
 pub mod chart;
+pub mod condfmt;
+pub mod tablestyle;
 
 use sp_core::numfmt::{FmtColor, format_value};
 use sp_core::{CellAddr, CellRange, MAX_COLS, MAX_ROWS, Value};
-use sp_model::{Border, BorderStyle, Color, HAlign, Sheet, Style, VAlign, Workbook};
+use sp_model::{Border, BorderStyle, Color, DiffStyle, HAlign, Sheet, Style, VAlign, Workbook};
+use std::collections::HashMap;
 
 /// Horizontal indent per `Style.indent` level, in px at 100% zoom (about one default-font
 /// space-and-a-half, matching the target app's ~9 px step).
@@ -60,6 +63,10 @@ pub struct DisplayCell {
     pub borders: CellBorders,
     /// The value is a number (numbers show `###` instead of overflowing).
     pub is_number: bool,
+    /// Conditional-format data bar drawn behind the text.
+    pub data_bar: Option<condfmt::DataBarDraw>,
+    /// Conditional-format icon drawn at the left edge.
+    pub icon: Option<condfmt::IconDraw>,
 }
 
 /// The four borders of one cell.
@@ -193,7 +200,139 @@ pub fn display_cell(
         rotation: style.rotation.clamp(-90, 90),
         borders: CellBorders::of(style),
         is_number: is_num,
+        data_bar: None,
+        icon: None,
     }
+}
+
+/// Apply a differential format on top of `s`. With `weak`, only attributes the cell left
+/// at their defaults change (table styles yield to direct formatting).
+pub fn apply_diff(s: &mut Style, d: &DiffStyle, weak: bool) {
+    let base = Style::default();
+    let free = |own: bool| !weak || own;
+    if let Some(c) = d.font_color
+        && free(s.font_color.is_none())
+    {
+        s.font_color = Some(c);
+    }
+    if let Some(c) = d.fill
+        && free(s.fill.is_none())
+    {
+        s.fill = Some(c);
+    }
+    if let Some(b) = d.bold
+        && free(!s.bold)
+    {
+        s.bold = b;
+    }
+    if let Some(b) = d.italic
+        && free(!s.italic)
+    {
+        s.italic = b;
+    }
+    if let Some(b) = d.underline
+        && free(s.underline == 0)
+    {
+        s.underline = u8::from(b);
+    }
+    if let Some(b) = d.strike
+        && free(!s.strike)
+    {
+        s.strike = b;
+    }
+    if let Some(f) = &d.num_fmt
+        && free(s.num_fmt == base.num_fmt)
+    {
+        s.num_fmt.clone_from(f);
+    }
+    if let Some(b) = d.border {
+        for side in [
+            &mut s.border_left,
+            &mut s.border_right,
+            &mut s.border_top,
+            &mut s.border_bottom,
+        ] {
+            if free(side.style == BorderStyle::None) {
+                *side = b;
+            }
+        }
+    }
+}
+
+/// Table styles and conditional formats resolved for the visible cells: the effective style
+/// of each affected cell plus any data bar / icon.
+pub fn overlays(
+    wb: &Workbook,
+    sheet: &Sheet,
+    rows: &[(u32, f32, f32)],
+    cols: &[(u32, f32, f32)],
+) -> HashMap<CellAddr, (Style, Option<condfmt::CfOverride>)> {
+    let mut out = HashMap::new();
+    let (Some(r0), Some(r1), Some(c0), Some(c1)) = (
+        rows.iter().map(|r| r.0).min(),
+        rows.iter().map(|r| r.0).max(),
+        cols.iter().map(|c| c.0).min(),
+        cols.iter().map(|c| c.0).max(),
+    ) else {
+        return out;
+    };
+    let span = CellRange::new(CellAddr::new(r0, c0), CellAddr::new(r1, c1));
+    let tables: Vec<&sp_model::Table> = sheet
+        .tables
+        .iter()
+        .filter(|t| t.range.intersect(&span).is_some())
+        .collect();
+    let cf_live = sheet
+        .cond_formats
+        .iter()
+        .any(|f| f.ranges.iter().any(|r| r.intersect(&span).is_some()));
+    if tables.is_empty() && !cf_live {
+        return out;
+    }
+    let idx = wb
+        .sheets
+        .iter()
+        .position(|s| std::ptr::eq(s, sheet))
+        .or_else(|| wb.sheet_index(&sheet.name))
+        .unwrap_or(0);
+    let mut cf = condfmt::CfEval::new(wb, idx, sheet);
+    for (r, _, _) in rows {
+        for (c, _, _) in cols {
+            let a = CellAddr::new(*r, *c);
+            let tbl = tables.iter().find(|t| t.range.contains(a));
+            let table = tbl.and_then(|t| tablestyle::cell_style(t, a));
+            let edges = tbl.map_or((None, None), |t| tablestyle::cell_edges(t, a));
+            let over = if cf_live && sheet.cond_formats.iter().any(|f| f.covers(a)) {
+                cf.cell(a, sheet.value(a))
+            } else {
+                None
+            };
+            if table.is_none() && over.is_none() && edges == (None, None) {
+                continue;
+            }
+            let mut st = sheet
+                .get(a)
+                .map_or_else(Style::default, |c| wb.styles.get(c.style).clone());
+            if let Some(t) = &table {
+                apply_diff(&mut st, t, true);
+            }
+            for (edge, side) in [
+                (edges.0, &mut st.border_top),
+                (edges.1, &mut st.border_bottom),
+            ] {
+                if let Some(e) = edge
+                    && side.style == BorderStyle::None
+                {
+                    *side = e;
+                }
+            }
+            if let Some(o) = &over {
+                apply_diff(&mut st, &o.style, false);
+            }
+            out.insert(a, (st, over));
+        }
+    }
+    out
 }
 
 /// Visible portion of a sheet at a scroll position and zoom.
@@ -279,27 +418,45 @@ pub fn layout(
         .collect();
     let merge_of = |a: CellAddr| visible_merges.iter().copied().find(|m| m.contains(a));
 
-    let style_at = |a: CellAddr| sheet.get(a).map(|c| wb.styles.get(c.style));
+    let over = overlays(wb, sheet, &rows, &cols);
+    let style_at = |a: CellAddr| {
+        over.get(&a)
+            .map(|o| &o.0)
+            .or_else(|| sheet.get(a).map(|c| wb.styles.get(c.style)))
+    };
+    let decorate = |mut d: DisplayCell| {
+        if let Some((_, Some(o))) = over.get(&d.addr) {
+            d.data_bar = o.data_bar;
+            d.icon.clone_from(&o.icon);
+            if o.hide_value && !show_formulas {
+                d.text.clear();
+            }
+        }
+        d
+    };
 
     let mut cells = Vec::new();
     for (r, _, _) in &rows {
-        let Some(row) = sheet.cells.get(r) else {
-            continue;
-        };
+        let row = sheet.cells.get(r);
         for (c, _, _) in &cols {
-            if let Some(cell) = row.get(c) {
-                let a = CellAddr::new(*r, *c);
-                if merge_of(a).is_some() {
-                    continue;
-                }
-                cells.push(display_cell(
-                    a,
-                    &cell.value,
-                    cell.formula_src(),
-                    wb.styles.get(cell.style),
-                    show_formulas,
-                ));
+            let a = CellAddr::new(*r, *c);
+            let cell = row.and_then(|row| row.get(c));
+            if cell.is_none() && !over.contains_key(&a) {
+                continue;
             }
+            if merge_of(a).is_some() {
+                continue;
+            }
+            let Some(style) = style_at(a) else {
+                continue;
+            };
+            cells.push(decorate(display_cell(
+                a,
+                cell.map_or(&Value::Empty, |c| &c.value),
+                cell.and_then(|c| c.formula_src()),
+                style,
+                show_formulas,
+            )));
         }
     }
 
@@ -313,13 +470,13 @@ pub fn layout(
                 row_height_px(sheet.row_height(r)) * zoom
             });
             let cell = sheet.get(m.start).map(|c| {
-                display_cell(
+                decorate(display_cell(
                     m.start,
                     &c.value,
                     c.formula_src(),
-                    wb.styles.get(c.style),
+                    style_at(m.start).unwrap_or_else(|| wb.styles.get(c.style)),
                     show_formulas,
-                )
+                ))
             });
             MergeView {
                 range: *m,
@@ -706,6 +863,55 @@ mod tests {
             (v.borders[0].y, v.borders[0].style),
             (0.0, BorderStyle::Dashed)
         );
+    }
+
+    #[test]
+    fn table_and_cf_overlays() {
+        let mut wb = Workbook::new();
+        let red = wb.styles.derive(sp_model::StyleId::DEFAULT, |s| {
+            s.fill = Some(Color(255, 0, 0))
+        });
+        let s = &mut wb.sheets[0];
+        s.set(CellAddr::new(0, 0), Cell::constant(Value::text("H")));
+        s.set(
+            CellAddr::new(1, 0),
+            Cell {
+                style: red,
+                ..Cell::constant(Value::Number(1.0))
+            },
+        );
+        s.set(CellAddr::new(2, 0), Cell::constant(Value::Number(50.0)));
+        s.tables.push(sp_model::Table::new(
+            1,
+            "T",
+            CellRange::parse("A1:B4").unwrap(),
+            vec!["H".into(), "I".into()],
+        ));
+        s.cond_formats.push(sp_model::CondFormat {
+            ranges: vec![CellRange::parse("A2:A4").unwrap()],
+            rules: vec![sp_model::CfRule {
+                kind: sp_model::CfKind::CellIs {
+                    op: sp_model::CfOp::Greater,
+                    f1: "10".into(),
+                    f2: String::new(),
+                },
+                style: DiffStyle {
+                    bold: Some(true),
+                    ..DiffStyle::default()
+                },
+                priority: 1,
+                stop_if_true: false,
+            }],
+        });
+        let v = view(&wb);
+        let at = |r, c| v.cells.iter().find(|d| d.addr == CellAddr::new(r, c));
+        // Header styled, direct fill beats the band, CF bolds A3, empty B2 gets the band.
+        assert_eq!(at(0, 0).unwrap().color, Some(Color::WHITE));
+        assert_eq!(at(1, 0).unwrap().fill, Some(Color(255, 0, 0)));
+        assert!(at(2, 0).unwrap().bold);
+        assert!(at(1, 1).unwrap().fill.is_some());
+        assert!(at(1, 1).unwrap().text.is_empty());
+        assert!(at(5, 0).is_none());
     }
 
     #[test]

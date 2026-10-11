@@ -1,9 +1,11 @@
 //! .xlsx writer: a minimal, valid SpreadsheetML package.
 
 use crate::IoError;
+use crate::xlsx_passthrough as pass;
 use crate::xml::esc;
 use sp_core::{Value, col_to_letters};
 use sp_formula::{Expr, parse, to_formula};
+use sp_model::passthrough::RawRel;
 use sp_model::{Border, BorderStyle, Content, HAlign, Style, VAlign, Visibility, Workbook};
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -125,7 +127,7 @@ fn needs_prefix(name: &str) -> Option<&'static str> {
 /// Formula text as stored in the file (prefixes added; no leading `=`).
 pub fn file_formula(src: &str) -> String {
     match parse(src) {
-        Ok(e) => file_expr(e),
+        Ok(e) => file_expr(e, None),
         // Keep unparseable text untouched so nothing is lost.
         Err(_) => src.to_string(),
     }
@@ -140,6 +142,7 @@ struct FileFormula {
 
 fn formula_for_cell(src: &str, sheet: &sp_model::Sheet, at: sp_core::CellAddr) -> FileFormula {
     let area = sheet.spill_at_anchor(at);
+    let table = sheet.table_at(at).map(|t| t.name.as_str());
     let Ok(e) = parse(src) else {
         return FileFormula {
             text: src.to_string(),
@@ -153,23 +156,36 @@ fn formula_for_cell(src: &str, sheet: &sp_model::Sheet, at: sp_core::CellAddr) -
             a.range
         };
         return FileFormula {
-            text: file_expr(e),
+            text: file_expr(e, table),
             array: Some((r.to_a1(), !a.fixed)),
         };
     }
     match e.clone().from_legacy() {
         Some(plain) => FileFormula {
-            text: file_expr(plain),
+            text: file_expr(plain, table),
             array: None,
         },
         None => FileFormula {
-            text: file_expr(e),
+            text: file_expr(e, table),
             array: Some((at.to_a1(), true)),
         },
     }
 }
 
-fn file_expr(mut e: Expr) -> String {
+/// `table`: the table containing the formula's cell, which qualifies `[@Col]`-style
+/// references (files always name the table and spell `@` as `[#This Row]`).
+fn file_expr(mut e: Expr, table: Option<&str>) -> String {
+    e.walk_mut(&mut |n| {
+        if let Expr::Table(t) = n {
+            if t.table.is_none() {
+                t.table = table.map(str::to_string);
+            }
+            if t.table.is_some() {
+                // A name node prints verbatim.
+                *n = Expr::Name(sp_formula::structref::print_file(t));
+            }
+        }
+    });
     // LET / LAMBDA parameter names carry the `_xlpm.` prefix in files.
     let mut params: Vec<String> = Vec::new();
     e.walk(&mut |n| {
@@ -426,310 +442,546 @@ fn fmt_num(n: f64) -> String {
     if s.contains('e') { format!("{n:E}") } else { s }
 }
 
+/// Shared-string table being built while writing cells.
+#[derive(Default)]
+struct Sst {
+    list: Vec<String>,
+    idx: HashMap<String, usize>,
+    count: usize,
+}
+
+/// `<sheetData>…</sheetData>` for one sheet; returns whether a dynamic array was written.
+fn write_sheet_data(
+    x: &mut String,
+    sheet: &sp_model::Sheet,
+    styles: &StylesXml,
+    sst: &mut Sst,
+) -> bool {
+    let mut uses_dynamic = false;
+    x.push_str("<sheetData>");
+    let mut rows: Vec<u32> = sheet
+        .cells
+        .keys()
+        .chain(sheet.row_heights.keys())
+        .chain(sheet.hidden_rows.iter())
+        .chain(sheet.outline.rows.keys())
+        .copied()
+        .collect();
+    rows.sort_unstable();
+    rows.dedup();
+    for r in rows {
+        let _ = write!(x, r#"<row r="{}""#, r + 1);
+        if let Some(h) = sheet.row_heights.get(&r) {
+            let _ = write!(x, r#" ht="{h}" customHeight="1""#);
+        }
+        if sheet.hidden_rows.contains(&r) {
+            x.push_str(r#" hidden="1""#);
+        }
+        x.push_str(&crate::xlsx_extras::outline_attr(sheet, r, true));
+        x.push('>');
+        if let Some(cells) = sheet.cells.get(&r) {
+            for (c, cell) in cells {
+                let addr = format!("{}{}", col_to_letters(*c), r + 1);
+                let s = styles
+                    .xf_index
+                    .get(cell.style.0 as usize)
+                    .copied()
+                    .unwrap_or(0);
+                let s_attr = if s == 0 {
+                    String::new()
+                } else {
+                    format!(r#" s="{s}""#)
+                };
+                let mut cm = "";
+                let f_xml = match &cell.content {
+                    Content::Formula(f) => {
+                        let ff = formula_for_cell(f, sheet, sp_core::CellAddr::new(r, *c));
+                        match ff.array {
+                            Some((rf, dynamic)) => {
+                                if dynamic {
+                                    cm = r#" cm="1""#;
+                                    uses_dynamic = true;
+                                }
+                                format!(r#"<f t="array" ref="{rf}">{}</f>"#, esc(&ff.text))
+                            }
+                            None => format!("<f>{}</f>", esc(&ff.text)),
+                        }
+                    }
+                    Content::Value(_) => String::new(),
+                };
+                let s_attr = format!("{s_attr}{cm}");
+                let is_formula = !f_xml.is_empty();
+                match &cell.value {
+                    Value::Empty if !is_formula => {
+                        let _ = write!(x, r#"<c r="{addr}"{s_attr}/>"#);
+                    }
+                    Value::Empty => {
+                        let _ = write!(x, r#"<c r="{addr}"{s_attr}>{f_xml}</c>"#);
+                    }
+                    Value::Number(n) => {
+                        let _ = write!(
+                            x,
+                            r#"<c r="{addr}"{s_attr}>{f_xml}<v>{}</v></c>"#,
+                            fmt_num(*n)
+                        );
+                    }
+                    Value::Bool(b) => {
+                        let _ = write!(
+                            x,
+                            r#"<c r="{addr}"{s_attr} t="b">{f_xml}<v>{}</v></c>"#,
+                            u8::from(*b)
+                        );
+                    }
+                    Value::Error(e) => {
+                        let _ = write!(
+                            x,
+                            r#"<c r="{addr}"{s_attr} t="e">{f_xml}<v>{}</v></c>"#,
+                            // Newer error kinds need rich-value metadata; a formula's
+                            // cached result is saved as the classic equivalent.
+                            match e {
+                                sp_core::ErrorKind::Spill
+                                | sp_core::ErrorKind::Calc
+                                | sp_core::ErrorKind::Circ
+                                | sp_core::ErrorKind::GettingData
+                                    if is_formula =>
+                                {
+                                    "#VALUE!"
+                                }
+                                other => other.as_str(),
+                            }
+                        );
+                    }
+                    Value::Text(t) if is_formula => {
+                        let _ = write!(
+                            x,
+                            r#"<c r="{addr}"{s_attr} t="str">{f_xml}<v>{}</v></c>"#,
+                            esc(t)
+                        );
+                    }
+                    Value::Text(t) => {
+                        let list = &mut sst.list;
+                        let idx = *sst.idx.entry(t.to_string()).or_insert_with(|| {
+                            list.push(t.to_string());
+                            list.len() - 1
+                        });
+                        sst.count += 1;
+                        let _ = write!(x, r#"<c r="{addr}"{s_attr} t="s"><v>{idx}</v></c>"#);
+                    }
+                }
+            }
+        }
+        x.push_str("</row>");
+    }
+    x.push_str("</sheetData>");
+
+    uses_dynamic
+}
+
+/// Generated head elements of a worksheet (before `sheetData`), as (name, XML).
+fn sheet_head(wb: &Workbook, i: usize, sheet: &sp_model::Sheet) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let pr = crate::xlsx_extras::sheet_pr_xml(sheet);
+    if !pr.is_empty() {
+        out.push(("sheetPr".into(), pr));
+    }
+    if let Some(u) = sheet.used_range() {
+        out.push((
+            "dimension".into(),
+            format!(r#"<dimension ref="{}"/>"#, u.to_a1()),
+        ));
+    }
+    let mut x = format!(
+        r#"<sheetViews><sheetView workbookViewId="0"{}{}>"#,
+        if i == wb.active {
+            r#" tabSelected="1""#
+        } else {
+            ""
+        },
+        if sheet.show_gridlines {
+            ""
+        } else {
+            r#" showGridLines="0""#
+        }
+    );
+    if let Some(f) = sheet.freeze.filter(|f| f.row > 0 || f.col > 0) {
+        let mut p = String::from("<pane");
+        if f.col > 0 {
+            let _ = write!(p, r#" xSplit="{}""#, f.col);
+        }
+        if f.row > 0 {
+            let _ = write!(p, r#" ySplit="{}""#, f.row);
+        }
+        let pane = match (f.row > 0, f.col > 0) {
+            (true, true) => "bottomRight",
+            (true, false) => "bottomLeft",
+            _ => "topRight",
+        };
+        let _ = write!(
+            p,
+            r#" topLeftCell="{}" activePane="{pane}" state="frozen"/>"#,
+            f.to_a1()
+        );
+        x.push_str(&p);
+    }
+    x.push_str("</sheetView></sheetViews>");
+    out.push(("sheetViews".into(), x));
+    out.push((
+        "sheetFormatPr".into(),
+        format!(
+            r#"<sheetFormatPr defaultRowHeight="{}"/>"#,
+            sheet.default_row_height
+        ),
+    ));
+    let mut cols: Vec<u32> = sheet
+        .col_widths
+        .keys()
+        .chain(sheet.hidden_cols.iter())
+        .chain(sheet.outline.cols.keys())
+        .copied()
+        .collect();
+    cols.sort_unstable();
+    cols.dedup();
+    if !cols.is_empty() {
+        let mut x = String::from("<cols>");
+        for c in cols {
+            let w = sheet
+                .col_widths
+                .get(&c)
+                .copied()
+                .unwrap_or(sheet.default_col_width);
+            let _ = write!(
+                x,
+                r#"<col min="{0}" max="{0}" width="{w}" customWidth="1"{1}{2}/>"#,
+                c + 1,
+                if sheet.hidden_cols.contains(&c) {
+                    r#" hidden="1""#
+                } else {
+                    ""
+                },
+                crate::xlsx_extras::outline_attr(sheet, c, false)
+            );
+        }
+        x.push_str("</cols>");
+        out.push(("cols".into(), x));
+    }
+    out
+}
+
+/// Sheet ids: the original ones where still unique, fresh ones otherwise.
+fn sheet_ids(wb: &Workbook) -> Vec<u32> {
+    let mut used: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let mut ids: Vec<Option<u32>> = wb
+        .sheets
+        .iter()
+        .map(|s| {
+            s.passthrough
+                .sheet_id
+                .filter(|id| *id > 0 && used.insert(*id))
+        })
+        .collect();
+    let mut next = 1u32;
+    for id in &mut ids {
+        if id.is_none() {
+            while used.contains(&next) {
+                next = next.saturating_add(1);
+            }
+            used.insert(next);
+            *id = Some(next);
+        }
+    }
+    ids.into_iter().map(|i| i.unwrap_or(1)).collect()
+}
+
+/// Sequential `rIdN` ids that skip ids taken by pass-through relationships.
+struct IdAlloc<'a> {
+    next: usize,
+    reserved: &'a std::collections::HashSet<String>,
+}
+
+impl IdAlloc<'_> {
+    fn take(&mut self) -> String {
+        loop {
+            self.next += 1;
+            let id = format!("rId{}", self.next);
+            if !self.reserved.contains(&id) {
+                return id;
+            }
+        }
+    }
+}
+
 pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
+    let prepared = crate::xlsx_charts::prepare_for_save(wb);
+    let wb: &Workbook = &prepared;
     let mut zip = zip::ZipWriter::new(w);
     let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-    let put = |zip: &mut zip::ZipWriter<W>, name: &str, data: &str| -> Result<(), IoError> {
+    let put = |zip: &mut zip::ZipWriter<W>, name: &str, data: &[u8]| -> Result<(), IoError> {
         zip.start_file(name, opts)
             .map_err(|e| IoError::Zip(e.to_string()))?;
-        zip.write_all(data.as_bytes())
-            .map_err(|e| IoError::Zip(e.to_string()))
+        zip.write_all(data).map_err(|e| IoError::Zip(e.to_string()))
     };
 
-    let mut sst: Vec<String> = Vec::new();
-    let mut sst_idx: HashMap<String, usize> = HashMap::new();
-    let mut sst_count = 0usize;
+    let mut sst = Sst::default();
     let styles = build_styles(wb);
+
+    // Part names we generate, reserved before pass-through parts are placed.
+    let mut reserved: Vec<String> = [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "xl/workbook.xml",
+        "xl/_rels/workbook.xml.rels",
+        "xl/styles.xml",
+        "xl/sharedStrings.xml",
+        "docProps/core.xml",
+        "docProps/app.xml",
+        "xl/metadata.xml",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let mut generated: Vec<String> = Vec::new();
+    for (i, sheet) in wb.sheets.iter().enumerate() {
+        let n = i + 1;
+        let names = [
+            format!("xl/worksheets/sheet{n}.xml"),
+            format!("xl/worksheets/_rels/sheet{n}.xml.rels"),
+            format!("xl/comments{n}.xml"),
+            format!("xl/drawings/vmlDrawing{n}.vml"),
+        ];
+        if sheet.passthrough.sheet_part.is_none() {
+            generated.push(names[0].clone());
+        }
+        reserved.extend(names);
+    }
+    generated.extend(
+        ["xl/workbook.xml", "xl/styles.xml", "xl/sharedStrings.xml"]
+            .iter()
+            .map(|s| s.to_string()),
+    );
+    reserved.extend(crate::xlsx_cf::table_part_names(wb));
+    let chart_plan = crate::xlsx_charts::ChartPlan::new(wb);
+    reserved.extend(chart_plan.part_names());
+    generated.extend(chart_plan.part_names());
+    let emit = pass::Emit::plan(wb, &reserved, &generated);
 
     let mut ct = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>"#,
     );
-    let mut wb_rels = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
-    );
-    let mut sheets_xml = String::new();
-    let mut uses_dynamic = false;
-
-    let mut chart_no = 0;
-    for (i, sheet) in wb.sheets.iter().enumerate() {
-        let n = i + 1;
+    // A workbook carrying a VBA project must declare the macro-enabled main content type.
+    if wb
+        .passthrough
+        .rels
+        .iter()
+        .any(|r| pass::rel_kind(&r.rel_type) == "vbaProject")
+    {
+        ct = ct.replace(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+            "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+        );
+    }
+    let override_ct = |ct: &mut String, path: &str, t: &str| {
         let _ = write!(
             ct,
-            r#"<Override PartName="/xl/worksheets/sheet{n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>"#
+            r#"<Override PartName="/{}" ContentType="{}"/>"#,
+            esc(path),
+            esc(t)
         );
-        let _ = write!(
-            wb_rels,
-            r#"<Relationship Id="rId{n}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{n}.xml"/>"#
-        );
+    };
+
+    // Workbook relationships: pass-through ones keep their ids (workbook.xml references
+    // them); ours are allocated around them.
+    let wb_pt = &wb.passthrough;
+    let wb_reserved: std::collections::HashSet<String> =
+        wb_pt.rels.iter().map(|r| r.id.clone()).collect();
+    let mut wb_ids = IdAlloc {
+        next: 0,
+        reserved: &wb_reserved,
+    };
+    let mut wb_rels: Vec<RawRel> = Vec::new();
+    let mut sheets_xml = String::new();
+    let mut uses_dynamic = false;
+    let mut cfw = crate::xlsx_cf::CfWriter::new();
+    let ids = sheet_ids(wb);
+
+    for (i, sheet) in wb.sheets.iter().enumerate() {
+        let n = i + 1;
         let state = match sheet.visibility {
             Visibility::Visible => "",
             Visibility::Hidden => r#" state="hidden""#,
             Visibility::VeryHidden => r#" state="veryHidden""#,
         };
+        let rid = wb_ids.take();
+        let sheet_id = ids.get(i).copied().unwrap_or(1);
         let _ = write!(
             sheets_xml,
-            r#"<sheet name="{}" sheetId="{n}"{state} r:id="rId{n}"/>"#,
+            r#"<sheet name="{}" sheetId="{sheet_id}"{state} r:id="{rid}"/>"#,
             esc(&sheet.name)
         );
+        let pt = &sheet.passthrough;
 
-        let mut x = String::from(
-            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">"#,
+        // A chart sheet (or other non-worksheet sheet) is written back verbatim.
+        if let (Some(os), Some(path)) = (&pt.sheet_part, emit.opaque_paths.get(&i)) {
+            wb_rels.push(RawRel {
+                id: rid,
+                rel_type: os.rel_type.clone(),
+                target: format!("/{path}"),
+                external: false,
+            });
+            override_ct(&mut ct, path, &os.part.content_type);
+            put(&mut zip, path, &os.part.data)?;
+            if !os.part.rels.is_empty() {
+                let rels = emit.rels_for(Some(i), &os.part.rels);
+                put(
+                    &mut zip,
+                    &pass::rels_path(path),
+                    pass::rels_xml(&rels).as_bytes(),
+                )?;
+            }
+            continue;
+        }
+
+        wb_rels.push(RawRel {
+            id: rid,
+            rel_type: format!("{}/worksheet", pass::REL_NS),
+            target: format!("worksheets/sheet{n}.xml"),
+            external: false,
+        });
+        override_ct(
+            &mut ct,
+            &format!("xl/worksheets/sheet{n}.xml"),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml",
         );
-        x.push_str(&crate::xlsx_extras::sheet_pr_xml(sheet));
-        if let Some(u) = sheet.used_range() {
-            let _ = write!(x, r#"<dimension ref="{}"/>"#, u.to_a1());
-        }
-        let _ = write!(
-            x,
-            r#"<sheetViews><sheetView workbookViewId="0"{}{}>"#,
-            if i == wb.active {
-                r#" tabSelected="1""#
-            } else {
-                ""
-            },
-            if sheet.show_gridlines {
-                ""
-            } else {
-                r#" showGridLines="0""#
-            }
+
+        // Pass-through relationships whose targets are written keep their ids.
+        let pt_rels = emit.rels_for(Some(i), &pt.rels);
+        let valid: std::collections::HashSet<String> =
+            pt_rels.iter().map(|r| r.id.clone()).collect();
+        let mut rels = crate::xlsx_extras::SheetRels::with_reserved(
+            pt.rels.iter().map(|r| r.id.clone()).collect(),
         );
-        if let Some(f) = sheet.freeze.filter(|f| f.row > 0 || f.col > 0) {
-            let mut p = String::from("<pane");
-            if f.col > 0 {
-                let _ = write!(p, r#" xSplit="{}""#, f.col);
-            }
-            if f.row > 0 {
-                let _ = write!(p, r#" ySplit="{}""#, f.row);
-            }
-            let pane = match (f.row > 0, f.col > 0) {
-                (true, true) => "bottomRight",
-                (true, false) => "bottomLeft",
-                _ => "topRight",
-            };
-            let _ = write!(
-                p,
-                r#" topLeftCell="{}" activePane="{pane}" state="frozen"/>"#,
-                f.to_a1()
-            );
-            x.push_str(&p);
-        }
-        x.push_str("</sheetView></sheetViews>");
-        let _ = write!(
-            x,
-            r#"<sheetFormatPr defaultRowHeight="{}"/>"#,
-            sheet.default_row_height
-        );
-        let mut cols: Vec<u32> = sheet
-            .col_widths
-            .keys()
-            .chain(sheet.hidden_cols.iter())
-            .chain(sheet.outline.cols.keys())
-            .copied()
-            .collect();
-        cols.sort_unstable();
-        cols.dedup();
-        if !cols.is_empty() {
-            x.push_str("<cols>");
-            for c in cols {
-                let w = sheet
-                    .col_widths
-                    .get(&c)
-                    .copied()
-                    .unwrap_or(sheet.default_col_width);
-                let _ = write!(
-                    x,
-                    r#"<col min="{0}" max="{0}" width="{w}" customWidth="1"{1}{2}/>"#,
-                    c + 1,
-                    if sheet.hidden_cols.contains(&c) {
-                        r#" hidden="1""#
-                    } else {
-                        ""
-                    },
-                    crate::xlsx_extras::outline_attr(sheet, c, false)
-                );
-            }
-            x.push_str("</cols>");
-        }
-        x.push_str("<sheetData>");
-        let mut rows: Vec<u32> = sheet
-            .cells
-            .keys()
-            .chain(sheet.row_heights.keys())
-            .chain(sheet.hidden_rows.iter())
-            .chain(sheet.outline.rows.keys())
-            .copied()
-            .collect();
-        rows.sort_unstable();
-        rows.dedup();
-        for r in rows {
-            let _ = write!(x, r#"<row r="{}""#, r + 1);
-            if let Some(h) = sheet.row_heights.get(&r) {
-                let _ = write!(x, r#" ht="{h}" customHeight="1""#);
-            }
-            if sheet.hidden_rows.contains(&r) {
-                x.push_str(r#" hidden="1""#);
-            }
-            x.push_str(&crate::xlsx_extras::outline_attr(sheet, r, true));
-            x.push('>');
-            if let Some(cells) = sheet.cells.get(&r) {
-                for (c, cell) in cells {
-                    let addr = format!("{}{}", col_to_letters(*c), r + 1);
-                    let s = styles
-                        .xf_index
-                        .get(cell.style.0 as usize)
-                        .copied()
-                        .unwrap_or(0);
-                    let s_attr = if s == 0 {
-                        String::new()
-                    } else {
-                        format!(r#" s="{s}""#)
-                    };
-                    let mut cm = "";
-                    let f_xml = match &cell.content {
-                        Content::Formula(f) => {
-                            let ff = formula_for_cell(f, sheet, sp_core::CellAddr::new(r, *c));
-                            match ff.array {
-                                Some((rf, dynamic)) => {
-                                    if dynamic {
-                                        cm = r#" cm="1""#;
-                                        uses_dynamic = true;
-                                    }
-                                    format!(r#"<f t="array" ref="{rf}">{}</f>"#, esc(&ff.text))
-                                }
-                                None => format!("<f>{}</f>", esc(&ff.text)),
-                            }
-                        }
-                        Content::Value(_) => String::new(),
-                    };
-                    let s_attr = format!("{s_attr}{cm}");
-                    let is_formula = !f_xml.is_empty();
-                    match &cell.value {
-                        Value::Empty if !is_formula => {
-                            let _ = write!(x, r#"<c r="{addr}"{s_attr}/>"#);
-                        }
-                        Value::Empty => {
-                            let _ = write!(x, r#"<c r="{addr}"{s_attr}>{f_xml}</c>"#);
-                        }
-                        Value::Number(n) => {
-                            let _ = write!(
-                                x,
-                                r#"<c r="{addr}"{s_attr}>{f_xml}<v>{}</v></c>"#,
-                                fmt_num(*n)
-                            );
-                        }
-                        Value::Bool(b) => {
-                            let _ = write!(
-                                x,
-                                r#"<c r="{addr}"{s_attr} t="b">{f_xml}<v>{}</v></c>"#,
-                                u8::from(*b)
-                            );
-                        }
-                        Value::Error(e) => {
-                            let _ = write!(
-                                x,
-                                r#"<c r="{addr}"{s_attr} t="e">{f_xml}<v>{}</v></c>"#,
-                                // Newer error kinds need rich-value metadata; a formula's
-                                // cached result is saved as the classic equivalent.
-                                match e {
-                                    sp_core::ErrorKind::Spill
-                                    | sp_core::ErrorKind::Calc
-                                    | sp_core::ErrorKind::Circ
-                                    | sp_core::ErrorKind::GettingData
-                                        if is_formula =>
-                                    {
-                                        "#VALUE!"
-                                    }
-                                    other => other.as_str(),
-                                }
-                            );
-                        }
-                        Value::Text(t) if is_formula => {
-                            let _ = write!(
-                                x,
-                                r#"<c r="{addr}"{s_attr} t="str">{f_xml}<v>{}</v></c>"#,
-                                esc(t)
-                            );
-                        }
-                        Value::Text(t) => {
-                            let idx = *sst_idx.entry(t.to_string()).or_insert_with(|| {
-                                sst.push(t.to_string());
-                                sst.len() - 1
-                            });
-                            sst_count += 1;
-                            let _ = write!(x, r#"<c r="{addr}"{s_attr} t="s"><v>{idx}</v></c>"#);
-                        }
-                    }
-                }
-            }
-            x.push_str("</row>");
-        }
-        x.push_str("</sheetData>");
-        x.push_str(&crate::xlsx_extras::before_merges_xml(sheet));
+        let mut known = sheet_head(wb, i, sheet);
+        known.extend(pass::split_known(&crate::xlsx_extras::before_merges_xml(
+            sheet,
+        )));
         if !sheet.merges.is_empty() {
-            let _ = write!(x, r#"<mergeCells count="{}">"#, sheet.merges.len());
-            for m in &sheet.merges {
-                let _ = write!(x, r#"<mergeCell ref="{}"/>"#, m.to_a1());
+            let mut m = format!(r#"<mergeCells count="{}">"#, sheet.merges.len());
+            for r in &sheet.merges {
+                let _ = write!(m, r#"<mergeCell ref="{}"/>"#, r.to_a1());
             }
-            x.push_str("</mergeCells>");
+            m.push_str("</mergeCells>");
+            known.push(("mergeCells".into(), m));
         }
-        let mut rels = crate::xlsx_extras::SheetRels::default();
-        x.push_str(&crate::xlsx_extras::after_merges_xml(sheet, n, &mut rels));
-        let drawn =
-            crate::xlsx_charts::write_sheet_drawings(wb, i, n, &mut chart_no, &mut rels, &mut x);
-        ct.push_str(&drawn.content_types);
-        for (part, body) in &drawn.parts {
-            put(&mut zip, part, body)?;
+        known.extend(pass::split_known(&cfw.sheet_cf_xml(sheet)));
+        known.extend(pass::split_known(&crate::xlsx_extras::after_merges_xml(
+            sheet, n, &mut rels,
+        )));
+        known.extend(cfw.sheet_tail(sheet, &mut rels, pt));
+        crate::xlsx_charts::merge_sparkline_ext(&mut known, sheet, pt);
+        let drawn = crate::xlsx_charts::write_sheet_drawings(wb, i, &chart_plan, &mut rels);
+        if let Some(el) = drawn.element {
+            known.push(("drawing".to_string(), el));
+        }
+        let (items, used_ids) =
+            pass::merge_elements(pass::WORKSHEET_ORDER, &known, pt, &|_| false, &valid);
+        let all_ids = pass::referenced_ids(pt);
+        for r in &pt_rels {
+            if used_ids.contains(&r.id) || !all_ids.contains(&r.id) {
+                rels.push_raw(&r.id, &r.rel_type, &r.target, r.external);
+            }
+        }
+
+        let mut x = format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"{}>"#,
+            pass::root_attrs_xml(pt)
+        );
+        let data_rank = 2 * pass::WORKSHEET_ORDER
+            .iter()
+            .position(|e| *e == "sheetData")
+            .unwrap_or(5);
+        for (_, el) in items.iter().filter(|(r, _)| *r < data_rank) {
+            x.push_str(el);
+        }
+        uses_dynamic |= write_sheet_data(&mut x, sheet, &styles, &mut sst);
+        for (_, el) in items.iter().filter(|(r, _)| *r >= data_rank) {
+            x.push_str(el);
         }
         x.push_str("</worksheet>");
-        put(&mut zip, &format!("xl/worksheets/sheet{n}.xml"), &x)?;
+        for (part, body, t) in &drawn.parts {
+            if !t.is_empty() {
+                override_ct(&mut ct, part, t);
+            }
+            put(&mut zip, part, body.as_bytes())?;
+        }
+        put(
+            &mut zip,
+            &format!("xl/worksheets/sheet{n}.xml"),
+            x.as_bytes(),
+        )?;
         if !sheet.comments.is_empty() {
-            let _ = write!(
-                ct,
-                r#"<Override PartName="/xl/comments{n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>"#
+            override_ct(
+                &mut ct,
+                &format!("xl/comments{n}.xml"),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml",
             );
             put(
                 &mut zip,
                 &format!("xl/comments{n}.xml"),
-                &crate::xlsx_extras::comments_xml(sheet),
+                crate::xlsx_extras::comments_xml(sheet).as_bytes(),
             )?;
             put(
                 &mut zip,
                 &format!("xl/drawings/vmlDrawing{n}.vml"),
-                &crate::xlsx_extras::vml_xml(sheet, n),
+                crate::xlsx_extras::vml_xml(sheet, n).as_bytes(),
             )?;
         }
         if !rels.is_empty() {
             put(
                 &mut zip,
                 &format!("xl/worksheets/_rels/sheet{n}.xml.rels"),
-                &rels.xml(),
+                rels.xml().as_bytes(),
             )?;
         }
     }
-    let ns = wb.sheets.len();
-    let _ = write!(
-        wb_rels,
-        r#"<Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>"#,
-        ns + 1
-    );
-    let _ = write!(
-        wb_rels,
-        r#"<Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>"#,
-        ns + 2
-    );
-    if uses_dynamic {
-        let _ = write!(
-            wb_rels,
-            r#"<Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata" Target="metadata.xml"/>"#,
-            ns + 3
-        );
-        ct.push_str(r#"<Override PartName="/xl/metadata.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml"/>"#);
-        put(&mut zip, "xl/metadata.xml", DYNAMIC_ARRAY_METADATA)?;
+    for (rel_type, target) in [
+        ("styles", "styles.xml"),
+        ("sharedStrings", "sharedStrings.xml"),
+    ] {
+        wb_rels.push(RawRel {
+            id: wb_ids.take(),
+            rel_type: format!("{}/{rel_type}", pass::REL_NS),
+            target: target.into(),
+            external: false,
+        });
     }
-    wb_rels.push_str("</Relationships>");
+    let styles_out = cfw.styles_xml(&styles.xml);
+    for (path, data) in cfw.finish() {
+        override_ct(&mut ct, &path, pass::TABLE_CONTENT_TYPE);
+        put(&mut zip, &path, data.as_bytes())?;
+    }
+    if uses_dynamic {
+        wb_rels.push(RawRel {
+            id: wb_ids.take(),
+            rel_type: format!("{}/sheetMetadata", pass::REL_NS),
+            target: "metadata.xml".into(),
+            external: false,
+        });
+        ct.push_str(r#"<Override PartName="/xl/metadata.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml"/>"#);
+        put(
+            &mut zip,
+            "xl/metadata.xml",
+            DYNAMIC_ARRAY_METADATA.as_bytes(),
+        )?;
+    }
+
+    // Unmodelled parts, verbatim.
+    for (path, data, t) in emit.files() {
+        if !t.is_empty() {
+            override_ct(&mut ct, &path, &t);
+        }
+        put(&mut zip, &path, &data)?;
+    }
     ct.push_str("</Types>");
 
     let mut names = String::new();
@@ -754,18 +1006,50 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     } else {
         r#"<calcPr calcId="191029"/>"#
     };
-    let workbook = format!(
+    let mut known: Vec<(String, String)> = Vec::new();
+    let prot = crate::xlsx_extras::workbook_protection_xml(wb);
+    if !prot.is_empty() {
+        known.push(("workbookProtection".into(), prot));
+    }
+    known.push((
+        "bookViews".into(),
+        format!(
+            r#"<bookViews><workbookView activeTab="{}"/></bookViews>"#,
+            wb.active
+        ),
+    ));
+    known.push(("sheets".into(), format!("<sheets>{sheets_xml}</sheets>")));
+    if !names.is_empty() {
+        known.push(("definedNames".into(), names));
+    }
+    known.push(("calcPr".into(), calc.to_string()));
+    let pt_rels = emit.rels_for(None, &wb_pt.rels);
+    let valid: std::collections::HashSet<String> = pt_rels.iter().map(|r| r.id.clone()).collect();
+    let (items, used_ids) =
+        pass::merge_elements(pass::WORKBOOK_ORDER, &known, wb_pt, &|_| false, &valid);
+    let all_ids = pass::referenced_ids(wb_pt);
+    for r in pt_rels {
+        if used_ids.contains(&r.id) || !all_ids.contains(&r.id) {
+            wb_rels.push(r);
+        }
+    }
+    let mut workbook = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">{}<bookViews><workbookView activeTab="{}"/></bookViews><sheets>{sheets_xml}</sheets>{names}{calc}</workbook>"#,
-        crate::xlsx_extras::workbook_protection_xml(wb),
-        wb.active
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"{}>"#,
+        pass::root_attrs_xml(wb_pt)
     );
+    for (_, el) in &items {
+        workbook.push_str(el);
+    }
+    workbook.push_str("</workbook>");
+
     let mut sst_xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="{sst_count}" uniqueCount="{}">"#,
-        sst.len()
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="{}" uniqueCount="{}">"#,
+        sst.count,
+        sst.list.len()
     );
-    for s in &sst {
+    for s in &sst.list {
         let sp = if s.starts_with(' ') || s.ends_with(' ') || s.contains('\n') {
             r#" xml:space="preserve""#
         } else {
@@ -782,17 +1066,53 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     );
     let app = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>SheetPro</Application></Properties>"#;
-    let root_rels = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>"#;
+    let mut root_rels: Vec<RawRel> = [
+        (
+            "officeDocument",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+            "xl/workbook.xml",
+        ),
+        (
+            "core",
+            "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+            "docProps/core.xml",
+        ),
+        (
+            "app",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+            "docProps/app.xml",
+        ),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(k, (_, t, target))| RawRel {
+        id: format!("rId{}", k + 1),
+        rel_type: t.to_string(),
+        target: target.to_string(),
+        external: false,
+    })
+    .collect();
+    for r in emit.rels_for(None, &wb_pt.package_rels) {
+        let id = format!("rId{}", root_rels.len() + 1);
+        root_rels.push(RawRel { id, ..r });
+    }
 
-    put(&mut zip, "[Content_Types].xml", &ct)?;
-    put(&mut zip, "_rels/.rels", root_rels)?;
-    put(&mut zip, "xl/workbook.xml", &workbook)?;
-    put(&mut zip, "xl/_rels/workbook.xml.rels", &wb_rels)?;
-    put(&mut zip, "xl/styles.xml", &styles.xml)?;
-    put(&mut zip, "xl/sharedStrings.xml", &sst_xml)?;
-    put(&mut zip, "docProps/core.xml", &core)?;
-    put(&mut zip, "docProps/app.xml", app)?;
+    put(&mut zip, "[Content_Types].xml", ct.as_bytes())?;
+    put(
+        &mut zip,
+        "_rels/.rels",
+        pass::rels_xml(&root_rels).as_bytes(),
+    )?;
+    put(&mut zip, "xl/workbook.xml", workbook.as_bytes())?;
+    put(
+        &mut zip,
+        "xl/_rels/workbook.xml.rels",
+        pass::rels_xml(&wb_rels).as_bytes(),
+    )?;
+    put(&mut zip, "xl/styles.xml", styles_out.as_bytes())?;
+    put(&mut zip, "xl/sharedStrings.xml", sst_xml.as_bytes())?;
+    put(&mut zip, "docProps/core.xml", core.as_bytes())?;
+    put(&mut zip, "docProps/app.xml", app.as_bytes())?;
     zip.finish().map_err(|e| IoError::Zip(e.to_string()))?;
     Ok(())
 }

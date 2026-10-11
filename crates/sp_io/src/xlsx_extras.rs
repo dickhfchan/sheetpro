@@ -246,18 +246,51 @@ pub fn before_merges_xml(sheet: &Sheet) -> String {
     x
 }
 
-/// Relationships a worksheet needs (hyperlink targets, comments, VML).
+/// Relationships a worksheet needs (hyperlink targets, comments, VML, pass-through).
 #[derive(Default)]
 pub struct SheetRels {
+    /// (id, full type URI, target, external).
     pub rels: Vec<(String, String, String, bool)>,
+    /// Ids taken by pass-through relationships (never allocated here).
+    pub reserved: std::collections::HashSet<String>,
+    next: usize,
 }
 
 impl SheetRels {
-    fn add(&mut self, kind: &str, target: &str, external: bool) -> String {
-        let id = format!("rId{}", self.rels.len() + 1);
-        self.rels
-            .push((id.clone(), kind.to_string(), target.to_string(), external));
+    /// Empty set whose allocated ids avoid `reserved`.
+    pub fn with_reserved(reserved: std::collections::HashSet<String>) -> Self {
+        SheetRels {
+            reserved,
+            ..SheetRels::default()
+        }
+    }
+
+    /// Allocate a fresh id (avoiding reserved pass-through ids) for a new relationship.
+    pub fn add(&mut self, kind: &str, target: &str, external: bool) -> String {
+        let id = loop {
+            self.next += 1;
+            let id = format!("rId{}", self.next);
+            if !self.reserved.contains(&id) {
+                break id;
+            }
+        };
+        self.rels.push((
+            id.clone(),
+            format!("{REL_NS}/{kind}"),
+            target.to_string(),
+            external,
+        ));
         id
+    }
+
+    /// Add a relationship with a fixed id and full type (pass-through).
+    pub fn push_raw(&mut self, id: &str, rel_type: &str, target: &str, external: bool) {
+        self.rels.push((
+            id.to_string(),
+            rel_type.to_string(),
+            target.to_string(),
+            external,
+        ));
     }
 
     pub fn is_empty(&self) -> bool {
@@ -272,7 +305,8 @@ impl SheetRels {
         for (id, kind, target, external) in &self.rels {
             let _ = write!(
                 x,
-                r#"<Relationship Id="{id}" Type="{REL_NS}/{kind}" Target="{}"{}/>"#,
+                r#"<Relationship Id="{id}" Type="{}" Target="{}"{}/>"#,
+                esc(kind),
                 esc(target),
                 if *external {
                     r#" TargetMode="External""#
@@ -534,11 +568,13 @@ pub fn parse_rels(xml: &str, base_dir: &str) -> Result<Rels, IoError> {
         .collect())
 }
 
-/// Find the end of `sheetData` and split the document there.
-fn split_at_sheet_data(xml: &str) -> Option<(&str, &str)> {
-    let pos = xml.rfind("sheetData")?;
-    let start = xml.get(..pos)?.rfind('<')?;
-    let close = pos + xml.get(pos..)?.find('>')?;
+/// Split a worksheet around `sheetData`: (text before its start tag, text after its end tag).
+/// Only these small pieces are re-parsed; the cell data is never scanned twice.
+pub fn split_at_sheet_data(xml: &str) -> Option<(&str, &str)> {
+    let first = xml.find("sheetData")?;
+    let start = xml.get(..first)?.rfind('<')?;
+    let last = xml.rfind("sheetData")?;
+    let close = last + xml.get(last..)?.find('>')?;
     Some((xml.get(..start)?, xml.get(close + 1..)?))
 }
 

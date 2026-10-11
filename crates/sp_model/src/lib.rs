@@ -1,19 +1,26 @@
 //! L1 data model: workbook, sheets, cells, styles, defined names. Pure data.
 
 pub mod chart;
+pub mod condfmt;
 pub mod features;
+pub mod passthrough;
 pub mod style;
+pub mod table;
 
 use serde::{Deserialize, Serialize};
 use sp_core::{CellAddr, CellRange, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub use condfmt::{
+    CfKind, CfOp, CfRule, Cfvo, CfvoKind, CondFormat, DiffStyle, TextOp, TimePeriod,
+};
 pub use features::{
     AllowEditRange, AutoFilter, Comment, CommentKind, CommentReply, DataValidation, ErrorStyle,
     FilterColumn, FilterCond, FilterCriteria, Hyperlink, Margins, Orientation, Outline, PageSetup,
     PasswordHash, SheetProtection, ValidationKind, ValidationOp, WorkbookProtection,
 };
 pub use style::{Border, BorderStyle, Color, HAlign, Style, StyleId, StyleTable, VAlign};
+pub use table::{Table, TableColumn};
 
 /// What the user entered into a cell.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -170,6 +177,15 @@ pub struct Sheet {
     /// Floating charts and sparkline groups (see `chart.rs`).
     #[serde(default)]
     pub drawings: chart::Drawings,
+    /// Conditional formats (see `condfmt.rs`).
+    #[serde(default)]
+    pub cond_formats: Vec<CondFormat>,
+    /// Structured tables (see `table.rs`).
+    #[serde(default)]
+    pub tables: Vec<Table>,
+    /// File content we don't model, re-emitted on save (see `passthrough.rs`).
+    #[serde(default)]
+    pub passthrough: passthrough::Passthrough,
 }
 
 pub const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -201,6 +217,9 @@ impl Sheet {
             page_setup: PageSetup::default(),
             spills: Vec::new(),
             drawings: chart::Drawings::default(),
+            cond_formats: Vec::new(),
+            tables: Vec::new(),
+            passthrough: Default::default(),
         }
     }
 
@@ -348,6 +367,9 @@ pub struct Workbook {
     pub props: DocProps,
     #[serde(default)]
     pub protection: Option<WorkbookProtection>,
+    /// File content we don't model, re-emitted on save (see `passthrough.rs`).
+    #[serde(default)]
+    pub passthrough: passthrough::Passthrough,
 }
 
 impl Default for Workbook {
@@ -370,6 +392,7 @@ impl Workbook {
             calc_mode: CalcMode::Automatic,
             props: DocProps::default(),
             protection: None,
+            passthrough: Default::default(),
         }
     }
 

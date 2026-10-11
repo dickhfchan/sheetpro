@@ -3,7 +3,7 @@
 //! in `sp_model::chart`. Element names follow ECMA-376 / MS-XLSX (interoperability facts).
 
 use crate::IoError;
-use crate::xlsx_extras::{Rels, SheetRels, parse_rels};
+use crate::xlsx_extras::SheetRels;
 use crate::xml::{Node, esc, parse_dom};
 use sp_core::addr::split_sheet_prefix;
 use sp_core::{CellAddr, CellRange, MAX_COLS, MAX_ROWS, Value};
@@ -11,6 +11,7 @@ use sp_model::chart::{
     Anchor, Chart, ChartKind, EMU_PER_PX, Grouping, LegendPos, Series, SeriesKind, Sparkline,
     SparklineGroup, SparklineKind,
 };
+use sp_model::passthrough::Passthrough;
 use sp_model::{Color, Sheet, Workbook};
 use std::fmt::Write as _;
 
@@ -38,18 +39,13 @@ const MAX_CHARTS: usize = 1000;
 // ---------------------------------------------------------------------------------------
 // Writer
 
-/// Parts produced for one sheet: (zip path, content) plus `[Content_Types]` overrides.
+/// What one sheet's charts add to the package.
 #[derive(Default)]
 pub struct DrawingParts {
-    pub parts: Vec<(String, String)>,
-    pub content_types: String,
-}
-
-fn rel_add(rels: &mut SheetRels, kind: &str, target: &str) -> String {
-    let id = format!("rId{}", rels.rels.len() + 1);
-    rels.rels
-        .push((id.clone(), kind.to_string(), target.to_string(), false));
-    id
+    /// The worksheet's `<drawing r:id="…"/>` element.
+    pub element: Option<String>,
+    /// (part name, content, content type).
+    pub parts: Vec<(String, String, String)>,
 }
 
 /// Resolve reference text against `sheet` to (sheet index, range).
@@ -592,9 +588,55 @@ fn frame_xml(id: usize, name: &str, uri: &str, prefix: &str, ns: &str, rid: &str
     )
 }
 
-fn sparklines_xml(sheet: &Sheet) -> String {
+/// One `twoCellAnchor` holding chart `c` (relationship `rid`); declares its own namespaces
+/// so it can also be appended to a drawing part written by another application.
+fn anchor_xml(id: usize, c: &Chart, rid: &str) -> String {
+    let name = if c.name.is_empty() {
+        format!("Chart {id}")
+    } else {
+        c.name.clone()
+    };
+    let mut d = format!(
+        "<xdr:twoCellAnchor xmlns:xdr=\"{NS_XDR}\" xmlns:a=\"{NS_A}\" xmlns:r=\"{NS_R}\">{}{}",
+        marker_xml("from", c.anchor.from, c.anchor.from_off),
+        marker_xml("to", c.anchor.to, c.anchor.to_off)
+    );
+    if c.kind == ChartKind::Histogram {
+        let _ = write!(
+            d,
+            "<mc:AlternateContent xmlns:mc=\"{NS_MC}\"><mc:Choice xmlns:cx1=\"{NS_CX1}\" Requires=\"cx1\">{}</mc:Choice><mc:Fallback><xdr:sp macro=\"\" textlink=\"\"><xdr:nvSpPr><xdr:cNvPr id=\"{id}\" name=\"{}\"/><xdr:cNvSpPr/></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></xdr:spPr></xdr:sp></mc:Fallback></mc:AlternateContent>",
+            frame_xml(id, &name, NS_CX, "cx", NS_CX, rid),
+            esc(&name)
+        );
+    } else {
+        d.push_str(&frame_xml(id, &name, NS_C, "c", NS_C, rid));
+    }
+    d.push_str("<xdr:clientData/></xdr:twoCellAnchor>");
+    d
+}
+
+/// The chart part for `c`: (relationship type, content type, xml).
+fn chart_part(wb: &Workbook, si: usize, c: &Chart) -> (&'static str, &'static str, String) {
+    if c.kind == ChartKind::Histogram {
+        (REL_CHARTEX, CT_CHARTEX, chartex_xml(wb, si, c))
+    } else {
+        (REL_CHART, CT_CHART, chart_xml(wb, si, c))
+    }
+}
+
+fn chart_path(c: &Chart, g: usize) -> String {
+    // (used for charts appended to a passed-through drawing)
+    if c.kind == ChartKind::Histogram {
+        format!("xl/charts/chartEx{g}.xml")
+    } else {
+        format!("xl/charts/chart{g}.xml")
+    }
+}
+
+/// The sparkline-groups `<ext>` for a sheet's worksheet `extLst`.
+fn sparkline_ext(sheet: &Sheet) -> String {
     let mut x = format!(
-        "<extLst><ext uri=\"{SPARKLINE_EXT}\" xmlns:x14=\"{NS_X14}\"><x14:sparklineGroups xmlns:xm=\"{NS_XM}\">"
+        "<ext uri=\"{SPARKLINE_EXT}\" xmlns:x14=\"{NS_X14}\"><x14:sparklineGroups xmlns:xm=\"{NS_XM}\">"
     );
     for g in &sheet.drawings.sparklines {
         x.push_str("<x14:sparklineGroup displayEmptyCellsAs=\"gap\"");
@@ -617,7 +659,8 @@ fn sparklines_xml(sheet: &Sheet) -> String {
         }
         x.push('>');
         let rgb = |c: Color| format!("FF{}", hex(c));
-        let defaults = [
+        // Schema order: series, negative, axis, markers, first, last, high, low.
+        for (tag, c) in [
             ("colorSeries", g.color.unwrap_or(Color(46, 110, 190))),
             (
                 "colorNegative",
@@ -629,9 +672,7 @@ fn sparklines_xml(sheet: &Sheet) -> String {
             ),
             ("colorHigh", g.high_color.unwrap_or(Color(232, 126, 44))),
             ("colorLow", g.low_color.unwrap_or(Color(232, 126, 44))),
-        ];
-        // Schema order: series, negative, axis, markers, first, last, high, low.
-        for (tag, c) in defaults {
+        ] {
             let _ = write!(x, "<x14:{tag} rgb=\"{}\"/>", rgb(c));
         }
         x.push_str("<x14:sparklines>");
@@ -645,100 +686,289 @@ fn sparklines_xml(sheet: &Sheet) -> String {
         }
         x.push_str("</x14:sparklines></x14:sparklineGroup>");
     }
-    x.push_str("</x14:sparklineGroups></ext></extLst>");
+    x.push_str("</x14:sparklineGroups></ext>");
     x
 }
 
-/// Add sheet `si`'s charts and sparklines to its worksheet XML `x` (everything up to, not
-/// including, `</worksheet>`), registering relationships in `rels`. `n` is the 1-based sheet
-/// number; `next_chart` numbers chart parts across the workbook.
+/// Put the sheet's sparklines into the worksheet `extLst` being generated: on top of the
+/// one already in `known` (conditional formatting may have built it) or else the captured
+/// one, replacing any sparkline `<ext>` there so the URI appears once.
+pub fn merge_sparkline_ext(known: &mut Vec<(String, String)>, sheet: &Sheet, pt: &Passthrough) {
+    let generated = known.iter().position(|(n, _)| n == "extLst");
+    let base: Option<String> = match generated {
+        Some(i) => known.get(i).map(|(_, x)| x.clone()),
+        None => pt
+            .elements
+            .iter()
+            .find(|e| crate::xml::local(&e.name) == "extLst")
+            .map(|e| e.xml.clone()),
+    };
+    let is_spark = |x: &str| {
+        x.to_ascii_uppercase()
+            .contains(&SPARKLINE_EXT.to_ascii_uppercase())
+    };
+    let mut kept: Vec<String> = Vec::new();
+    let mut had = false;
+    if let Some(b) = base.as_deref().filter(|b| !b.is_empty())
+        && let Ok((_, children)) = crate::xlsx_passthrough::scan_children(b, true)
+    {
+        for ch in children {
+            if is_spark(ch.xml) {
+                had = true;
+            } else {
+                kept.push(ch.xml.to_string());
+            }
+        }
+    }
+    let ours = !sheet.drawings.sparklines.is_empty();
+    if !ours && !had {
+        return; // nothing of ours; whatever is there passes through unchanged
+    }
+    let mut x = String::new();
+    if ours || !kept.is_empty() {
+        x.push_str("<extLst>");
+        for k in &kept {
+            x.push_str(k);
+        }
+        if ours {
+            x.push_str(&sparkline_ext(sheet));
+        }
+        x.push_str("</extLst>");
+    }
+    match generated.and_then(|i| known.get_mut(i)) {
+        Some(slot) => slot.1 = x,
+        None => known.push(("extLst".to_string(), x)),
+    }
+}
+
+/// The captured `<drawing>` element of a sheet and the drawing part it points to.
+fn captured_drawing(pt: &Passthrough) -> Option<(usize, String, String)> {
+    let (i, el) = pt
+        .elements
+        .iter()
+        .enumerate()
+        .find(|(_, e)| crate::xml::local(&e.name) == "drawing")?;
+    let rid = parse_dom(&el.xml).ok()?.attr("id")?.to_string();
+    let rel = pt.rels.iter().find(|r| r.id == rid && !r.external)?;
+    Some((i, rid, rel.target.clone()))
+}
+
+/// Whether this sheet's charts go into a drawing part the writer generates (no drawing was
+/// passed through from the file).
+fn writes_own_drawing(sheet: &Sheet) -> bool {
+    !sheet.drawings.charts.is_empty()
+        && sheet.passthrough.sheet_part.is_none()
+        && captured_drawing(&sheet.passthrough).is_none()
+}
+
+/// Part names for the drawings and charts the writer generates, chosen to avoid every
+/// captured part name (so pass-through parts keep theirs).
+#[derive(Default)]
+pub struct ChartPlan {
+    /// Sheet index → (drawing part, chart parts in chart order).
+    sheets: std::collections::HashMap<usize, (String, Vec<String>)>,
+}
+
+impl ChartPlan {
+    pub fn new(wb: &Workbook) -> ChartPlan {
+        let mut taken: std::collections::HashSet<String> = wb
+            .passthrough
+            .parts
+            .iter()
+            .chain(wb.sheets.iter().flat_map(|s| s.passthrough.parts.iter()))
+            .chain(
+                wb.sheets
+                    .iter()
+                    .filter_map(|s| s.passthrough.sheet_part.as_ref().map(|o| &o.part)),
+            )
+            .map(|p| p.path.to_ascii_lowercase())
+            .collect();
+        let mut fresh = |make: &dyn Fn(usize) -> String, start: usize| {
+            let mut k = start;
+            loop {
+                let cand = make(k);
+                if taken.insert(cand.to_ascii_lowercase()) || k > start + 1_000_000 {
+                    return cand;
+                }
+                k += 1;
+            }
+        };
+        let mut plan = ChartPlan::default();
+        let mut g = 1;
+        for (i, sh) in wb.sheets.iter().enumerate() {
+            if !writes_own_drawing(sh) {
+                continue;
+            }
+            let drawing = fresh(&|k| format!("xl/drawings/drawing{k}.xml"), i + 1);
+            let charts = sh
+                .drawings
+                .charts
+                .iter()
+                .map(|c| {
+                    let hist = c.kind == ChartKind::Histogram;
+                    let p = fresh(
+                        &|k| {
+                            if hist {
+                                format!("xl/charts/chartEx{k}.xml")
+                            } else {
+                                format!("xl/charts/chart{k}.xml")
+                            }
+                        },
+                        g,
+                    );
+                    g += 1;
+                    p
+                })
+                .collect();
+            plan.sheets.insert(i, (drawing, charts));
+        }
+        plan
+    }
+
+    /// Every part name the plan generates (reserve before placing pass-through parts).
+    pub fn part_names(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for (d, charts) in self.sheets.values() {
+            out.push(d.clone());
+            out.push(crate::xlsx_passthrough::rels_path(d));
+            out.extend(charts.iter().cloned());
+        }
+        out
+    }
+}
+
+/// Charts added in SheetPro to a sheet whose drawing part was passed through from the file
+/// (it holds pictures, shapes or chart kinds we don't model) are appended to that part, as
+/// pass-through parts, so the sheet keeps a single drawing. Returns the workbook to write.
+pub fn prepare_for_save(wb: &Workbook) -> std::borrow::Cow<'_, Workbook> {
+    let needs = wb
+        .sheets
+        .iter()
+        .any(|s| !s.drawings.charts.is_empty() && captured_drawing(&s.passthrough).is_some());
+    if !needs {
+        return std::borrow::Cow::Borrowed(wb);
+    }
+    let mut out = wb.clone();
+    let mut taken: std::collections::HashSet<String> = wb
+        .passthrough
+        .parts
+        .iter()
+        .chain(wb.sheets.iter().flat_map(|s| s.passthrough.parts.iter()))
+        .map(|p| p.path.to_ascii_lowercase())
+        .collect();
+    let mut m = 0usize;
+    for (si, sheet) in out.sheets.iter_mut().enumerate() {
+        if sheet.drawings.charts.is_empty() {
+            continue;
+        }
+        let Some((_, _, target)) = captured_drawing(&sheet.passthrough) else {
+            continue;
+        };
+        let charts = std::mem::take(&mut sheet.drawings.charts);
+        let pt = &mut sheet.passthrough;
+        let Some(di) = pt.parts.iter().position(|p| p.path == target) else {
+            continue; // drawing shared with other sheets: left as it was
+        };
+        let Some(mut text) = pt
+            .parts
+            .get(di)
+            .and_then(|p| std::str::from_utf8(&p.data).ok())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        let Some(close) = text.rfind("</") else {
+            continue;
+        };
+        let mut anchors = String::new();
+        let mut new_parts = Vec::new();
+        let mut new_rels = Vec::new();
+        let existing_ids: std::collections::HashSet<String> = pt
+            .parts
+            .get(di)
+            .map(|p| p.rels.iter().map(|r| r.id.clone()).collect())
+            .unwrap_or_default();
+        for (k, c) in charts.iter().enumerate() {
+            let path = loop {
+                m += 1;
+                let cand = chart_path(c, 1000 + m);
+                if taken.insert(cand.to_ascii_lowercase()) {
+                    break cand;
+                }
+            };
+            let mut j = k;
+            let rid = loop {
+                j += 1;
+                let id = format!("rIdSp{j}");
+                if !existing_ids.contains(&id) {
+                    break id;
+                }
+            };
+            anchors.push_str(&anchor_xml(5000 + k, c, &rid));
+            let (rel_type, ct, xml) = chart_part(wb, si, c);
+            new_rels.push(sp_model::passthrough::RawRel {
+                id: rid,
+                rel_type: rel_type.to_string(),
+                target: path.clone(),
+                external: false,
+            });
+            new_parts.push(sp_model::passthrough::RawPart {
+                path,
+                content_type: ct.to_string(),
+                data: std::sync::Arc::from(xml.into_bytes()),
+                rels: Vec::new(),
+            });
+        }
+        text.insert_str(close, &anchors);
+        if let Some(d) = pt.parts.get_mut(di) {
+            d.data = std::sync::Arc::from(text.into_bytes());
+            d.rels.extend(new_rels);
+        }
+        pt.parts.extend(new_parts);
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+/// Sheet `si`'s charts as a drawing part plus chart parts (names from `plan`), with the
+/// worksheet's `drawing` relationship registered in `rels`.
 pub fn write_sheet_drawings(
     wb: &Workbook,
     si: usize,
-    n: usize,
-    next_chart: &mut usize,
+    plan: &ChartPlan,
     rels: &mut SheetRels,
-    x: &mut String,
 ) -> DrawingParts {
     let mut out = DrawingParts::default();
-    let Some(sheet) = wb.sheet(si) else {
+    let (Some(sheet), Some((dpath, cpaths))) = (wb.sheet(si), plan.sheets.get(&si)) else {
         return out;
     };
-    if !sheet.drawings.charts.is_empty() {
-        let id = rel_add(rels, "drawing", &format!("../drawings/drawing{n}.xml"));
-        let tag = format!("<drawing r:id=\"{id}\"/>");
-        // `drawing` precedes `legacyDrawing` in the worksheet schema.
-        match x.find("<legacyDrawing ") {
-            Some(pos) => x.insert_str(pos, &tag),
-            None => x.push_str(&tag),
-        }
-        let mut d = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<xdr:wsDr xmlns:xdr=\"{NS_XDR}\" xmlns:a=\"{NS_A}\" xmlns:r=\"{NS_R}\">"
-        );
-        let mut drels = String::from(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
-        );
-        for (k, c) in sheet.drawings.charts.iter().enumerate() {
-            *next_chart += 1;
-            let g = *next_chart;
-            let rid = format!("rId{}", k + 1);
-            let name = if c.name.is_empty() {
-                format!("Chart {}", k + 1)
-            } else {
-                c.name.clone()
-            };
-            let _ = write!(
-                d,
-                "<xdr:twoCellAnchor>{}{}",
-                marker_xml("from", c.anchor.from, c.anchor.from_off),
-                marker_xml("to", c.anchor.to, c.anchor.to_off)
-            );
-            if c.kind == ChartKind::Histogram {
-                let _ = write!(
-                    d,
-                    "<mc:AlternateContent xmlns:mc=\"{NS_MC}\"><mc:Choice xmlns:cx1=\"{NS_CX1}\" Requires=\"cx1\">{}</mc:Choice><mc:Fallback><xdr:sp macro=\"\" textlink=\"\"><xdr:nvSpPr><xdr:cNvPr id=\"{}\" name=\"{}\"/><xdr:cNvSpPr/></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></xdr:spPr></xdr:sp></mc:Fallback></mc:AlternateContent>",
-                    frame_xml(k + 2, &name, NS_CX, "cx", NS_CX, &rid),
-                    k + 2,
-                    esc(&name)
-                );
-                let _ = write!(
-                    drels,
-                    "<Relationship Id=\"{rid}\" Type=\"{REL_CHARTEX}\" Target=\"../charts/chartEx{g}.xml\"/>"
-                );
-                let _ = write!(
-                    out.content_types,
-                    "<Override PartName=\"/xl/charts/chartEx{g}.xml\" ContentType=\"{CT_CHARTEX}\"/>"
-                );
-                out.parts
-                    .push((format!("xl/charts/chartEx{g}.xml"), chartex_xml(wb, si, c)));
-            } else {
-                d.push_str(&frame_xml(k + 2, &name, NS_C, "c", NS_C, &rid));
-                let _ = write!(
-                    drels,
-                    "<Relationship Id=\"{rid}\" Type=\"{REL_CHART}\" Target=\"../charts/chart{g}.xml\"/>"
-                );
-                let _ = write!(
-                    out.content_types,
-                    "<Override PartName=\"/xl/charts/chart{g}.xml\" ContentType=\"{CT_CHART}\"/>"
-                );
-                out.parts
-                    .push((format!("xl/charts/chart{g}.xml"), chart_xml(wb, si, c)));
-            }
-            d.push_str("<xdr:clientData/></xdr:twoCellAnchor>");
-        }
-        d.push_str("</xdr:wsDr>");
-        drels.push_str("</Relationships>");
+    let dfile = dpath.rsplit('/').next().unwrap_or(dpath);
+    let id = rels.add("drawing", &format!("../drawings/{dfile}"), false);
+    out.element = Some(format!("<drawing r:id=\"{id}\"/>"));
+    let mut d = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<xdr:wsDr xmlns:xdr=\"{NS_XDR}\" xmlns:a=\"{NS_A}\" xmlns:r=\"{NS_R}\">"
+    );
+    let mut drels = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
+    );
+    for (k, (c, path)) in sheet.drawings.charts.iter().zip(cpaths).enumerate() {
+        let rid = format!("rId{}", k + 1);
+        d.push_str(&anchor_xml(k + 2, c, &rid));
+        let (rel_type, ct, xml) = chart_part(wb, si, c);
+        let file = path.rsplit('/').next().unwrap_or(path);
         let _ = write!(
-            out.content_types,
-            "<Override PartName=\"/xl/drawings/drawing{n}.xml\" ContentType=\"{CT_DRAWING}\"/>"
+            drels,
+            "<Relationship Id=\"{rid}\" Type=\"{rel_type}\" Target=\"../charts/{file}\"/>"
         );
-        out.parts.push((format!("xl/drawings/drawing{n}.xml"), d));
-        out.parts
-            .push((format!("xl/drawings/_rels/drawing{n}.xml.rels"), drels));
+        out.parts.push((path.clone(), xml, ct.to_string()));
     }
-    if !sheet.drawings.sparklines.is_empty() {
-        x.push_str(&sparklines_xml(sheet));
-    }
+    d.push_str("</xdr:wsDr>");
+    drels.push_str("</Relationships>");
+    out.parts.push((dpath.clone(), d, CT_DRAWING.to_string()));
+    out.parts.push((
+        crate::xlsx_passthrough::rels_path(dpath),
+        drels,
+        String::new(),
+    ));
     out
 }
 
@@ -955,20 +1185,18 @@ fn series_of(ser: &Node, kind: SeriesKind) -> Series {
 
 fn group_kind(n: &Node) -> Option<(ChartKind, SeriesKind)> {
     Some(match n.name.as_str() {
-        "barChart" | "bar3DChart" => {
+        "barChart" => {
             if val(n, "barDir") == Some("bar") {
                 (ChartKind::Bar, SeriesKind::Column)
             } else {
                 (ChartKind::Column, SeriesKind::Column)
             }
         }
-        "lineChart" | "line3DChart" | "stockChart" | "radarChart" => {
-            (ChartKind::Line, SeriesKind::Line)
-        }
-        "areaChart" | "area3DChart" => (ChartKind::Area, SeriesKind::Area),
-        "pieChart" | "pie3DChart" | "ofPieChart" => (ChartKind::Pie, SeriesKind::Column),
+        "lineChart" => (ChartKind::Line, SeriesKind::Line),
+        "areaChart" => (ChartKind::Area, SeriesKind::Area),
+        "pieChart" => (ChartKind::Pie, SeriesKind::Column),
         "doughnutChart" => (ChartKind::Doughnut, SeriesKind::Column),
-        "scatterChart" | "bubbleChart" => (ChartKind::Scatter, SeriesKind::Line),
+        "scatterChart" => (ChartKind::Scatter, SeriesKind::Line),
         _ => return None,
     })
 }
@@ -994,6 +1222,14 @@ pub fn parse_chart(xml: &str) -> Result<Option<Chart>, IoError> {
     let Some(plot) = ch.child("plotArea") else {
         return Ok(None);
     };
+    // Any plot type we don't model (3D, stock, radar, bubble, surface…): not ours.
+    if plot
+        .children
+        .iter()
+        .any(|g| g.name.ends_with("Chart") && group_kind(g).is_none())
+    {
+        return Ok(None);
+    }
     let groups: Vec<(&Node, ChartKind, SeriesKind)> = plot
         .children
         .iter()
@@ -1243,64 +1479,103 @@ fn parse_sparklines(sheet_xml: &str, sheet: &mut Sheet) -> Result<(), IoError> {
     Ok(())
 }
 
-/// Read a sheet's charts (through its drawing part) and sparklines. `read` fetches a zip
-/// part by path. Unknown or unsupported objects are skipped.
-pub fn read_sheet_drawings(
-    read: &mut dyn FnMut(&str) -> Result<Option<String>, IoError>,
-    rels: &Rels,
-    sheet_xml: &str,
-    sheet: &mut Sheet,
-) -> Result<(), IoError> {
-    parse_sparklines(sheet_xml, sheet)?;
-    let mut drawings: Vec<&String> = rels
-        .values()
-        .filter(|(t, ext)| {
-            !ext && t
-                .rsplit('/')
-                .next()
-                .is_some_and(|f| f.starts_with("drawing") && f.ends_with(".xml"))
-        })
-        .map(|(t, _)| t)
-        .collect();
-    drawings.sort();
-    for path in drawings {
-        let Some(dx) = read(path)? else { continue };
-        let (dir, file) = path.rsplit_once('/').unwrap_or(("", path));
-        let drels = match read(&format!("{dir}/_rels/{file}.rels"))? {
-            Some(x) => parse_rels(&x, dir).unwrap_or_default(),
-            None => Rels::default(),
-        };
-        let root = parse_dom(&dx)?;
-        let Some(ws) = doc(&root, "wsDr") else {
+/// Read a sheet's sparklines (worksheet `extLst`).
+pub fn read_sheet_sparklines(sheet_xml: &str, sheet: &mut Sheet) -> Result<(), IoError> {
+    parse_sparklines(sheet_xml, sheet)
+}
+
+/// Chart parts' own relationships that carry nothing we must keep (style/colour presets).
+const COSMETIC_CHART_RELS: &[&str] = &["chartStyle", "chartColorStyle", "themeOverride"];
+
+/// The charts of a captured drawing part, if every object in it is a chart we model
+/// (otherwise `None`: the drawing stays passed through). Also returns the part names the
+/// charts occupy.
+fn model_drawing(
+    sheet: &Sheet,
+    parts: &[&sp_model::passthrough::RawPart],
+    drawing: &sp_model::passthrough::RawPart,
+) -> Option<(Vec<Chart>, Vec<String>)> {
+    let text = std::str::from_utf8(&drawing.data).ok()?;
+    let root = parse_dom(text).ok()?;
+    let ws = doc(&root, "wsDr")?;
+    let mut charts = Vec::new();
+    let mut paths = vec![drawing.path.clone()];
+    for anchor in &ws.children {
+        if !matches!(
+            anchor.name.as_str(),
+            "twoCellAnchor" | "oneCellAnchor" | "absoluteAnchor"
+        ) || charts.len() >= MAX_CHARTS
+        {
+            return None;
+        }
+        // Exactly one chart frame and nothing else drawable.
+        if ["pic", "sp", "grpSp", "cxnSp", "contentPart"]
+            .iter()
+            .any(|k| anchor.children.iter().any(|c| c.name == *k))
+        {
+            return None;
+        }
+        let rid = find(anchor, "chart").and_then(|c| c.attr("id"))?;
+        let rel = drawing.rels.iter().find(|r| r.id == rid && !r.external)?;
+        let part = parts.iter().find(|p| p.path == rel.target)?;
+        if part
+            .rels
+            .iter()
+            .any(|r| !COSMETIC_CHART_RELS.contains(&crate::xlsx_passthrough::rel_kind(&r.rel_type)))
+        {
+            return None;
+        }
+        let mut c = parse_chart(std::str::from_utf8(&part.data).ok()?).ok()??;
+        c.anchor = anchor_of(sheet, anchor);
+        c.name = find(anchor, "cNvPr")
+            .and_then(|n| n.attr("name"))
+            .unwrap_or("")
+            .to_string();
+        charts.push(c);
+        paths.push(part.path.clone());
+        paths.extend(
+            part.rels
+                .iter()
+                .filter(|r| !r.external)
+                .map(|r| r.target.clone()),
+        );
+    }
+    (!charts.is_empty()).then_some((charts, paths))
+}
+
+/// After pass-through capture: a sheet whose drawing holds only charts we model takes them
+/// into `Sheet::drawings` and drops the captured `drawing` element, relationship and parts,
+/// so each chart is written exactly once (by `write_sheet_drawings`). Drawings with anything
+/// else stay passed through verbatim, their charts unmodelled.
+pub fn adopt_captured_charts(wb: &mut Workbook) {
+    let wb_parts = wb.passthrough.parts.clone();
+    for sheet in &mut wb.sheets {
+        let Some((el, rid, target)) = captured_drawing(&sheet.passthrough) else {
             continue;
         };
-        for anchor in &ws.children {
-            if !matches!(
-                anchor.name.as_str(),
-                "twoCellAnchor" | "oneCellAnchor" | "absoluteAnchor"
-            ) || sheet.drawings.charts.len() >= MAX_CHARTS
-            {
-                continue;
+        let modelled = {
+            let all: Vec<&sp_model::passthrough::RawPart> = sheet
+                .passthrough
+                .parts
+                .iter()
+                .chain(wb_parts.iter())
+                .collect();
+            match all.iter().find(|p| p.path == target) {
+                Some(d) => model_drawing(sheet, &all, d),
+                None => None,
             }
-            let Some(rid) = find(anchor, "chart").and_then(|c| c.attr("id")) else {
-                continue;
-            };
-            let Some((target, false)) = drels.get(rid) else {
-                continue;
-            };
-            let Some(cx) = read(target)? else { continue };
-            let Some(mut c) = parse_chart(&cx)? else {
-                continue;
-            };
-            c.anchor = anchor_of(sheet, anchor);
-            c.name = find(anchor, "cNvPr")
-                .and_then(|n| n.attr("name"))
-                .unwrap_or("")
-                .to_string();
-            sheet.drawings.charts.push(c);
+        };
+        let Some((charts, paths)) = modelled else {
+            continue;
+        };
+        sheet.drawings.charts.extend(charts);
+        let pt = &mut sheet.passthrough;
+        if el < pt.elements.len() {
+            pt.elements.remove(el);
         }
+        pt.rels.retain(|r| r.id != rid);
+        pt.parts.retain(|p| !paths.contains(&p.path));
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1512,6 +1787,156 @@ mod tests {
         assert_eq!(c.series[0].values, "Sheet1!$B$2:$B$5");
         assert_eq!(c.legend, LegendPos::Right);
         assert_eq!(c.title, None);
+    }
+}
+
+#[cfg(test)]
+mod passthrough_tests {
+    use super::*;
+    use sp_model::passthrough::{RawElement, RawPart, RawRel};
+
+    fn rel(id: &str, kind: &str, target: &str) -> RawRel {
+        RawRel {
+            id: id.into(),
+            rel_type: format!("{NS_R}/{kind}"),
+            target: target.into(),
+            external: false,
+        }
+    }
+
+    fn save(wb: &Workbook) -> Vec<u8> {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        crate::xlsx_write::write_xlsx(wb, &mut buf).unwrap();
+        buf.into_inner()
+    }
+
+    fn text(bytes: &[u8], name: &str) -> Option<String> {
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut s = String::new();
+        std::io::Read::read_to_string(&mut z.by_name(name).ok()?, &mut s).ok()?;
+        Some(s)
+    }
+
+    fn chart() -> Chart {
+        Chart {
+            name: "New".into(),
+            series: vec![Series {
+                values: "Sheet1!$A$1:$A$3".into(),
+                ..Series::default()
+            }],
+            anchor: Anchor {
+                from: CellAddr::new(1, 1),
+                to: CellAddr::new(10, 6),
+                ..Anchor::default()
+            },
+            ..Chart::default()
+        }
+    }
+
+    /// A drawing with a picture stays passed through; a chart added in SheetPro is appended
+    /// to it (one drawing per sheet), and reloading does not duplicate it.
+    #[test]
+    fn new_chart_joins_a_passed_through_drawing() {
+        let mut wb = Workbook::new();
+        let s = &mut wb.sheets[0];
+        let drawing = format!(
+            "<xdr:wsDr xmlns:xdr=\"{NS_XDR}\" xmlns:a=\"{NS_A}\" xmlns:r=\"{NS_R}\"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx=\"9525\" cy=\"9525\"/><xdr:pic><xdr:blipFill><a:blip r:embed=\"rId1\"/></xdr:blipFill></xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>"
+        );
+        s.passthrough.elements.push(RawElement {
+            name: "drawing".into(),
+            after: "pageMargins".into(),
+            xml: "<drawing r:id=\"rId1\"/>".into(),
+        });
+        s.passthrough
+            .rels
+            .push(rel("rId1", "drawing", "xl/drawings/drawing1.xml"));
+        s.passthrough.parts = vec![
+            RawPart {
+                path: "xl/drawings/drawing1.xml".into(),
+                content_type: CT_DRAWING.into(),
+                data: std::sync::Arc::from(drawing.into_bytes()),
+                rels: vec![rel("rId1", "image", "xl/media/image1.png")],
+            },
+            RawPart {
+                path: "xl/media/image1.png".into(),
+                content_type: "image/png".into(),
+                data: std::sync::Arc::from(b"\x89PNG".to_vec()),
+                rels: Vec::new(),
+            },
+        ];
+        s.drawings.charts.push(chart());
+        let out = save(&wb);
+        assert_eq!(
+            crate::xlsx_passthrough::validate_package(&out),
+            Vec::<String>::new()
+        );
+        let d = text(&out, "xl/drawings/drawing1.xml").unwrap();
+        assert!(d.contains("xdr:pic") && d.contains("c:chart"), "{d}");
+        let (back, _) = crate::xlsx_read::read_xlsx(std::io::Cursor::new(out.clone())).unwrap();
+        assert!(back.sheets[0].drawings.charts.is_empty());
+        let out2 = save(&back);
+        assert_eq!(
+            crate::xlsx_passthrough::validate_package(&out2),
+            Vec::<String>::new()
+        );
+        let d2 = text(&out2, "xl/drawings/drawing1.xml").unwrap();
+        assert_eq!(d2.matches("c:chart ").count(), 1);
+        let sheet = text(&out2, "xl/worksheets/sheet1.xml").unwrap();
+        assert_eq!(sheet.matches("<drawing ").count(), 1);
+    }
+
+    /// Our own drawing never collides with a captured part name.
+    #[test]
+    fn generated_parts_avoid_captured_names() {
+        let mut wb = Workbook::new();
+        wb.sheets[0].passthrough.parts.push(RawPart {
+            path: "xl/charts/chart1.xml".into(),
+            content_type: CT_CHART.into(),
+            data: std::sync::Arc::from(b"<x/>".to_vec()),
+            rels: Vec::new(),
+        });
+        wb.sheets[0].drawings.charts.push(chart());
+        let out = save(&wb);
+        assert_eq!(text(&out, "xl/charts/chart1.xml").as_deref(), Some("<x/>"));
+        assert!(text(&out, "xl/charts/chart2.xml").is_some());
+        let (back, _) = crate::xlsx_read::read_xlsx(std::io::Cursor::new(out)).unwrap();
+        assert_eq!(back.sheets[0].drawings.charts.len(), 1);
+    }
+
+    /// The sparkline `<ext>` replaces a captured one and joins other captured extensions.
+    #[test]
+    fn sparkline_ext_is_written_once() {
+        let mut wb = Workbook::new();
+        let s = &mut wb.sheets[0];
+        s.passthrough.elements.push(RawElement {
+            name: "extLst".into(),
+            after: "pageMargins".into(),
+            xml: format!(
+                "<extLst><ext uri=\"u\"><y/></ext><ext uri=\"{SPARKLINE_EXT}\" xmlns:x14=\"{NS_X14}\"><x14:sparklineGroups/></ext></extLst>"
+            ),
+        });
+        s.drawings.sparklines.push(SparklineGroup {
+            items: vec![Sparkline {
+                location: CellAddr::new(0, 3),
+                data: "Sheet1!A1:C1".into(),
+            }],
+            ..SparklineGroup::default()
+        });
+        let out = save(&wb);
+        assert_eq!(
+            crate::xlsx_passthrough::validate_package(&out),
+            Vec::<String>::new()
+        );
+        let sheet = text(&out, "xl/worksheets/sheet1.xml").unwrap();
+        assert_eq!(sheet.matches(SPARKLINE_EXT).count(), 1);
+        assert!(sheet.contains("<ext uri=\"u\"><y/></ext>"));
+        // Deleting the sparklines drops the stale captured ext too.
+        let (mut back, _) = crate::xlsx_read::read_xlsx(std::io::Cursor::new(out)).unwrap();
+        assert_eq!(back.sheets[0].drawings.sparklines.len(), 1);
+        back.sheets[0].drawings.sparklines.clear();
+        let sheet = text(&save(&back), "xl/worksheets/sheet1.xml").unwrap();
+        assert_eq!(sheet.matches(SPARKLINE_EXT).count(), 0);
+        assert!(sheet.contains("<ext uri=\"u\">"));
     }
 }
 

@@ -472,6 +472,202 @@ impl Outline {
 pub const MAX_OUTLINE_LEVEL: u8 = 7;
 
 // ---------------------------------------------------------------------------------------
+// Structural shifting
+
+/// A row/column insert (`count > 0`) or delete (`count < 0`) of `|count|` lines starting at
+/// index `at`, applied to sheet features (comments, links, validations, filters, outline…).
+/// Mirrors how formula references adjust: spans grow when lines are inserted strictly
+/// inside them, shrink on partial deletes, and vanish (`None`) when fully deleted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LineShift {
+    /// `true` = rows, `false` = columns.
+    pub rows: bool,
+    pub at: u32,
+    pub count: i64,
+    /// Number of lines on the axis (`MAX_ROWS` / `MAX_COLS`).
+    pub max: u32,
+}
+
+impl LineShift {
+    /// New position of line `v`; `None` when deleted or pushed off the sheet.
+    pub fn index(&self, v: u32) -> Option<u32> {
+        let (v64, at) = (i64::from(v), i64::from(self.at));
+        if self.count >= 0 {
+            if v64 < at {
+                return Some(v);
+            }
+            let n = v64.checked_add(self.count)?;
+            return (n < i64::from(self.max)).then_some(n as u32);
+        }
+        let del = self.count.checked_neg()?;
+        if v64 < at {
+            Some(v)
+        } else if v64 < at.saturating_add(del) {
+            None
+        } else {
+            u32::try_from(v64 - del).ok()
+        }
+    }
+
+    /// New bounds of the span `[lo, hi]`.
+    pub fn span(&self, lo: u32, hi: u32) -> Option<(u32, u32)> {
+        if self.count >= 0 {
+            let lo2 = self.index(lo)?;
+            let hi2 = self.index(hi).unwrap_or_else(|| self.max.saturating_sub(1));
+            return Some((lo2, hi2));
+        }
+        let del = self.count.checked_neg()?;
+        let at = i64::from(self.at);
+        let end = at.saturating_add(del) - 1;
+        let (l, h) = (i64::from(lo), i64::from(hi));
+        if l >= at && h <= end {
+            return None;
+        }
+        let new_lo = if l < at {
+            l
+        } else if l <= end {
+            at
+        } else {
+            l - del
+        };
+        let new_hi = if h < at {
+            h
+        } else if h <= end {
+            at - 1
+        } else {
+            h - del
+        };
+        if new_lo > new_hi {
+            return None;
+        }
+        Some((u32::try_from(new_lo).ok()?, u32::try_from(new_hi).ok()?))
+    }
+
+    pub fn addr(&self, a: CellAddr) -> Option<CellAddr> {
+        if self.rows {
+            Some(CellAddr::new(self.index(a.row)?, a.col))
+        } else {
+            Some(CellAddr::new(a.row, self.index(a.col)?))
+        }
+    }
+
+    pub fn range(&self, r: CellRange) -> Option<CellRange> {
+        if self.rows {
+            let (lo, hi) = self.span(r.start.row, r.end.row)?;
+            Some(CellRange::new(
+                CellAddr::new(lo, r.start.col),
+                CellAddr::new(hi, r.end.col),
+            ))
+        } else {
+            let (lo, hi) = self.span(r.start.col, r.end.col)?;
+            Some(CellRange::new(
+                CellAddr::new(r.start.row, lo),
+                CellAddr::new(r.end.row, hi),
+            ))
+        }
+    }
+
+    /// Does the edit cut through `r` (insert strictly inside, or delete part of it)?
+    pub fn splits(&self, r: CellRange) -> bool {
+        let (lo, hi) = if self.rows {
+            (r.start.row, r.end.row)
+        } else {
+            (r.start.col, r.end.col)
+        };
+        let (lo, hi, at) = (i64::from(lo), i64::from(hi), i64::from(self.at));
+        if self.count >= 0 {
+            return at > lo && at <= hi;
+        }
+        let end = at.saturating_sub(self.count) - 1;
+        let overlaps = at <= hi && end >= lo;
+        let covers = at <= lo && end >= hi;
+        overlaps && !covers
+    }
+
+    /// Map keyed by line index (row heights, outline levels…), re-keyed; deleted keys drop.
+    pub fn keys<T: Clone>(&self, m: &BTreeMap<u32, T>) -> BTreeMap<u32, T> {
+        m.iter()
+            .filter_map(|(k, v)| Some((self.index(*k)?, v.clone())))
+            .collect()
+    }
+
+    pub fn set(&self, s: &BTreeSet<u32>) -> BTreeSet<u32> {
+        s.iter().filter_map(|k| self.index(*k)).collect()
+    }
+}
+
+impl AutoFilter {
+    /// The filter after a row/column insert/delete; `None` when its header row or all its
+    /// columns are deleted.
+    pub fn shifted(&self, sh: &LineShift) -> Option<AutoFilter> {
+        if sh.rows && sh.index(self.range.start.row).is_none() {
+            return None;
+        }
+        let range = sh.range(self.range)?;
+        let columns = if sh.rows {
+            self.columns.clone()
+        } else {
+            self.columns
+                .iter()
+                .filter_map(|fc| {
+                    let abs = self.range.start.col.checked_add(fc.col)?;
+                    let col = sh.index(abs)?.checked_sub(range.start.col)?;
+                    Some(FilterColumn {
+                        col,
+                        criteria: fc.criteria.clone(),
+                    })
+                })
+                .collect()
+        };
+        Some(AutoFilter { range, columns })
+    }
+}
+
+impl Outline {
+    /// Re-key levels after an insert/delete. Lines inserted inside a group join it (they
+    /// take the lower of the levels on either side).
+    pub fn shift(&mut self, sh: &LineShift) {
+        let map = if sh.rows {
+            &mut self.rows
+        } else {
+            &mut self.cols
+        };
+        let before = sh
+            .at
+            .checked_sub(1)
+            .and_then(|p| map.get(&p))
+            .copied()
+            .unwrap_or(0);
+        let after = map.get(&sh.at).copied().unwrap_or(0);
+        let mut out = sh.keys(map);
+        let level = before.min(after);
+        if sh.count > 0 && level > 0 {
+            let n = u32::try_from(sh.count).unwrap_or(u32::MAX);
+            for k in 0..n {
+                match sh.at.checked_add(k) {
+                    Some(line) if line < sh.max => {
+                        out.insert(line, level);
+                    }
+                    _ => break,
+                }
+            }
+        }
+        *map = out;
+    }
+}
+
+impl PageSetup {
+    /// Re-key manual page breaks on the edited axis.
+    pub fn shift_breaks(&mut self, sh: &LineShift) {
+        if sh.rows {
+            self.row_breaks = sh.set(&self.row_breaks);
+        } else {
+            self.col_breaks = sh.set(&self.col_breaks);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
 // Password hashing
 
 /// The legacy 16-bit sheet/workbook password hash (ECMA-376 Part 4, §14.7.1).
@@ -742,6 +938,34 @@ mod tests {
         };
         assert!(m.verify("pw"));
         assert!(!m.verify("px"));
+    }
+
+    #[test]
+    fn line_shift() {
+        let ins = LineShift {
+            rows: true,
+            at: 4,
+            count: 2,
+            max: 10,
+        };
+        assert_eq!(ins.index(3), Some(3));
+        assert_eq!(ins.index(4), Some(6));
+        assert_eq!(ins.index(8), None);
+        assert_eq!(ins.span(2, 5), Some((2, 7)));
+        assert!(ins.splits(CellRange::parse("A3:A6").unwrap()));
+        assert!(!ins.splits(CellRange::parse("A5:A6").unwrap()));
+        let del = LineShift {
+            rows: true,
+            at: 4,
+            count: -2,
+            max: 10,
+        };
+        assert_eq!(del.index(5), None);
+        assert_eq!(del.index(7), Some(5));
+        assert_eq!(del.span(4, 5), None);
+        assert_eq!(del.span(5, 8), Some((4, 6)));
+        assert!(del.splits(CellRange::parse("A5:A9").unwrap()));
+        assert!(!del.splits(CellRange::parse("A5:A6").unwrap()));
     }
 
     #[test]

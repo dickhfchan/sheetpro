@@ -2682,6 +2682,7 @@ name = "sp_render"
 version = "0.1.0"
 dependencies = [
  "sp_core",
+ "sp_formula",
  "sp_model",
 ]
 

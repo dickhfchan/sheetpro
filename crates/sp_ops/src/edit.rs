@@ -8,9 +8,9 @@ use sp_core::{CellAddr, CellRange, MAX_CELLS_PER_OP, MAX_COLS, MAX_ROWS, Value};
 use sp_formula::eval::compare;
 use sp_formula::shift::{Axis, StructEdit, adjust_for_struct_edit, shift_for_copy};
 use sp_formula::{parse, to_formula};
+use sp_model::features::LineShift;
 use sp_model::{Cell, Content, StyleId, Workbook};
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum OpError {
@@ -316,60 +316,133 @@ pub fn sort_rows(
     Ok(())
 }
 
+/// Re-parse `src` and apply `f`; `None` when unparseable or unchanged.
+fn rewritten(src: &str, f: &dyn Fn(&mut sp_formula::Expr)) -> Option<String> {
+    let orig = parse(src).ok()?;
+    let mut e = orig.clone();
+    f(&mut e);
+    (e != orig).then(|| to_formula(&e))
+}
+
+/// Rewrite every formula in the workbook with `f(expr, sheet the formula lives on)`: cells,
+/// data-validation rules, in-workbook hyperlink targets and defined names (sheet-scoped names resolve unqualified refs on
+/// their own sheet).
 fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &str)) {
-    for si in 0..wb.sheets.len() {
-        let Some(sheet) = wb.sheets.get_mut(si) else {
-            continue;
-        };
+    let names: Vec<String> = wb.sheets.iter().map(|s| s.name.clone()).collect();
+    for sheet in &mut wb.sheets {
         let name = sheet.name.clone();
+        let g = |e: &mut sp_formula::Expr| f(e, &name);
         for row in sheet.cells.values_mut() {
             for cell in row.values_mut() {
                 if let Content::Formula(src) = &cell.content
-                    && let Ok(mut e) = parse(src)
+                    && let Some(new) = rewritten(src, &g)
                 {
-                    f(&mut e, &name);
-                    let new = to_formula(&e);
-                    if new != *src {
-                        cell.content = Content::Formula(new);
-                    }
+                    cell.content = Content::Formula(new);
                 }
             }
         }
+        let texts = sheet
+            .validations
+            .iter_mut()
+            .flat_map(|dv| [&mut dv.formula1, &mut dv.formula2])
+            .chain(
+                sheet
+                    .hyperlinks
+                    .iter_mut()
+                    .filter(|h| !h.location.is_empty())
+                    .map(|h| &mut h.location),
+            );
+        for src in texts {
+            if let Some(new) = rewritten(src, &g) {
+                *src = new;
+            }
+        }
+        crate::table_shift::rewrite_formulas(sheet, &|src| rewritten(src, &g));
     }
     for n in &mut wb.names {
-        if let Ok(mut e) = parse(&n.formula) {
-            f(&mut e, "");
-            n.formula = to_formula(&e);
+        let home = n
+            .scope
+            .and_then(|i| names.get(i))
+            .map_or("", String::as_str);
+        if let Some(new) = rewritten(&n.formula, &|e| f(e, home)) {
+            n.formula = new;
         }
     }
 }
 
-fn shift_keys<T: Clone>(m: &BTreeMap<u32, T>, at: u32, count: i64, max: u32) -> BTreeMap<u32, T> {
-    let mut out = BTreeMap::new();
-    for (k, v) in m {
-        let k64 = i64::from(*k);
-        if count < 0 && k64 >= i64::from(at) && k64 < i64::from(at) - count {
-            continue;
-        }
-        let nk = if k64 >= i64::from(at) {
-            k64 + count
-        } else {
-            k64
-        };
-        if (0..i64::from(max)).contains(&nk) {
-            out.insert(nk as u32, v.clone());
-        }
-    }
-    out
-}
-
-fn shift_set(s: &BTreeSet<u32>, at: u32, count: i64, max: u32) -> BTreeSet<u32> {
-    let m: BTreeMap<u32, ()> = s.iter().map(|k| (*k, ())).collect();
-    shift_keys(&m, at, count, max).into_keys().collect()
+/// Move or drop every per-cell feature of `s` for a row/column insert/delete: comments,
+/// hyperlinks, merges, validations, AutoFilter, page breaks, outline levels, array areas
+/// and allow-edit ranges.
+fn shift_sheet_features(s: &mut sp_model::Sheet, sh: &LineShift) {
+    s.comments = std::mem::take(&mut s.comments)
+        .into_iter()
+        .filter_map(|mut c| {
+            c.addr = sh.addr(c.addr)?;
+            Some(c)
+        })
+        .collect();
+    s.hyperlinks = std::mem::take(&mut s.hyperlinks)
+        .into_iter()
+        .filter_map(|mut h| {
+            h.range = sh.range(h.range)?;
+            Some(h)
+        })
+        .collect();
+    s.merges = s
+        .merges
+        .iter()
+        .filter_map(|m| sh.range(*m).filter(|r| !r.is_single()))
+        .collect();
+    s.validations = std::mem::take(&mut s.validations)
+        .into_iter()
+        .filter_map(|mut dv| {
+            let old_anchor = dv.anchor();
+            dv.ranges = dv.ranges.iter().filter_map(|r| sh.range(*r)).collect();
+            if dv.ranges.is_empty() {
+                return None;
+            }
+            // Relative refs are written for the anchor; if the old anchor was deleted the
+            // first surviving cell becomes the anchor, so re-base them onto it.
+            if sh.addr(old_anchor).is_none() {
+                let del = sh.count.unsigned_abs();
+                let (dr, dc) = if sh.rows {
+                    (i64::from(sh.at) + del as i64 - i64::from(old_anchor.row), 0)
+                } else {
+                    (0, i64::from(sh.at) + del as i64 - i64::from(old_anchor.col))
+                };
+                for f in [&mut dv.formula1, &mut dv.formula2] {
+                    if let Some(new) = rewritten(f, &|e| shift_for_copy(e, dr, dc)) {
+                        *f = new;
+                    }
+                }
+            }
+            Some(dv)
+        })
+        .collect();
+    s.auto_filter = s.auto_filter.as_ref().and_then(|af| af.shifted(sh));
+    s.page_setup.shift_breaks(sh);
+    s.outline.shift(sh);
+    s.spills = std::mem::take(&mut s.spills)
+        .into_iter()
+        .filter_map(|mut a| {
+            sh.addr(a.range.start)?;
+            a.range = sh.range(a.range)?;
+            Some(a)
+        })
+        .collect();
+    s.allow_edit_ranges = std::mem::take(&mut s.allow_edit_ranges)
+        .into_iter()
+        .filter_map(|mut r| {
+            r.ranges = r.ranges.iter().filter_map(|x| sh.range(*x)).collect();
+            (!r.ranges.is_empty()).then_some(r)
+        })
+        .collect();
 }
 
 /// Insert (`count > 0`) or delete (`count < 0`) rows/columns on one sheet, fixing every
-/// formula and defined name in the workbook that refers to the moved cells.
+/// formula and defined name in the workbook that refers to the moved cells and moving the
+/// sheet's comments, links, validations, filter, page breaks, outline and array areas.
+/// Cutting through part of a legacy (fixed) array formula is refused.
 pub fn insert_delete(
     tx: &mut Tx<'_>,
     sheet: usize,
@@ -385,42 +458,69 @@ pub fn insert_delete(
     if count == 0 || at >= max || count.unsigned_abs() > u64::from(max) {
         return Err(OpError::Invalid("bad insert/delete position".into()));
     }
+    let sh = LineShift {
+        rows: axis == Axis::Rows,
+        at,
+        count,
+        max,
+    };
+    let name = {
+        let s = tx.wb.sheet(sheet).ok_or(OpError::NoSheet)?;
+        if s.spills.iter().any(|a| a.fixed && sh.splits(a.range)) {
+            return Err(OpError::Invalid(
+                "You can't change part of an array.".into(),
+            ));
+        }
+        s.name.clone()
+    };
     tx.touch_book();
-    let name = tx.wb.sheet(sheet).ok_or(OpError::NoSheet)?.name.clone();
+    // Spilled values of dynamic arrays cut by the edit are stale: clear them (recalc
+    // re-spills from the anchor).
+    if let Some(s) = tx.wb.sheet_mut(sheet) {
+        let stale: Vec<CellRange> = s
+            .spills
+            .iter()
+            .filter(|a| {
+                !a.fixed && !a.blocked && (sh.splits(a.range) || sh.addr(a.range.start).is_none())
+            })
+            .map(|a| a.range)
+            .collect();
+        for r in stale {
+            let spilled: Vec<CellAddr> = s
+                .cells_in(r)
+                .filter(|(a, c)| *a != r.start && c.is_spilled())
+                .map(|(a, _)| a)
+                .collect();
+            for a in spilled {
+                if let Some(c) = s.get_mut(a) {
+                    c.value = Value::Empty;
+                    if c.is_blank() {
+                        s.remove(a);
+                    }
+                }
+            }
+        }
+    }
+    let losses;
     {
         let s = tx.wb.sheet_mut(sheet).ok_or(OpError::NoSheet)?;
         match axis {
             Axis::Rows => {
-                s.cells = shift_keys(&s.cells, at, count, max);
-                s.row_heights = shift_keys(&s.row_heights, at, count, max);
-                s.hidden_rows = shift_set(&s.hidden_rows, at, count, max);
+                s.cells = sh.keys(&s.cells);
+                s.row_heights = sh.keys(&s.row_heights);
+                s.hidden_rows = sh.set(&s.hidden_rows);
             }
             Axis::Cols => {
                 for row in s.cells.values_mut() {
-                    *row = shift_keys(row, at, count, max);
+                    *row = sh.keys(row);
                 }
                 s.cells.retain(|_, r| !r.is_empty());
-                s.col_widths = shift_keys(&s.col_widths, at, count, max);
-                s.hidden_cols = shift_set(&s.hidden_cols, at, count, max);
+                s.col_widths = sh.keys(&s.col_widths);
+                s.hidden_cols = sh.set(&s.hidden_cols);
             }
         }
-        let ed = StructEdit {
-            sheet: &name,
-            axis,
-            at,
-            count,
-        };
-        s.merges = s
-            .merges
-            .iter()
-            .filter_map(|m| {
-                let mut e = parse(&m.to_a1()).ok()?;
-                adjust_for_struct_edit(&mut e, &name, &ed);
-                CellRange::parse(&to_formula(&e))
-                    .ok()
-                    .filter(|r| !r.is_single())
-            })
-            .collect();
+        shift_sheet_features(s, &sh);
+        losses = crate::table_shift::shift_cf_and_tables(s, &sh);
     }
     let ed_name = name.clone();
     rewrite_all_formulas(tx.wb, &move |e, formula_sheet| {
@@ -432,6 +532,7 @@ pub fn insert_delete(
         };
         adjust_for_struct_edit(e, formula_sheet, &ed);
     });
+    crate::table_shift::invalidate_refs(tx.wb, &losses);
     Ok(())
 }
 
@@ -672,5 +773,256 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    fn r(s: &str) -> CellRange {
+        CellRange::parse(s).unwrap()
+    }
+
+    /// A sheet carrying one of every per-cell feature, for insert/delete tests.
+    fn featured() -> Workbook {
+        use sp_model::{
+            AllowEditRange, AutoFilter, Comment, DataValidation, FilterColumn, FilterCriteria,
+            Hyperlink, SpillArea, ValidationKind,
+        };
+        let mut wb = Workbook::new();
+        let s = &mut wb.sheets[0];
+        s.comments.push(Comment {
+            addr: a("B5"),
+            kind: Default::default(),
+            author: "me".into(),
+            text: "note".into(),
+            replies: vec![],
+            visible: false,
+            resolved: false,
+        });
+        s.hyperlinks.push(Hyperlink {
+            range: r("C5:C6"),
+            target: "https://example.com".into(),
+            location: String::new(),
+            tooltip: String::new(),
+            display: String::new(),
+        });
+        s.validations.push(DataValidation {
+            ranges: vec![r("D3:D8")],
+            kind: ValidationKind::List,
+            formula1: "$H$1:$H$4".into(),
+            ..Default::default()
+        });
+        s.auto_filter = Some(AutoFilter {
+            range: r("A2:E10"),
+            columns: vec![FilterColumn {
+                col: 3,
+                criteria: FilterCriteria::Values {
+                    values: vec!["x".into()],
+                    blanks: false,
+                },
+            }],
+        });
+        s.page_setup.row_breaks.insert(6);
+        s.page_setup.col_breaks.insert(3);
+        for row in 3..=6 {
+            s.outline.rows.insert(row, 1);
+        }
+        s.outline.cols.insert(2, 1);
+        s.allow_edit_ranges.push(AllowEditRange {
+            title: "r".into(),
+            ranges: vec![r("E4:E6")],
+            password: None,
+        });
+        s.set(a("G12"), Cell::formula("{1;2}"));
+        s.spills.push(SpillArea {
+            range: r("G12:G13"),
+            fixed: true,
+            blocked: false,
+        });
+        wb.names.push(sp_model::DefinedName {
+            name: "_xlnm.Print_Area".into(),
+            formula: "Sheet1!$A$1:$E$10".into(),
+            scope: Some(0),
+        });
+        wb.names.push(sp_model::DefinedName {
+            name: "_xlnm.Print_Titles".into(),
+            formula: "Sheet1!$2:$2".into(),
+            scope: Some(0),
+        });
+        wb
+    }
+
+    #[test]
+    fn insert_rows_moves_features_and_undo_restores() {
+        let mut wb = featured();
+        let before = wb.clone();
+        let mut h = History::new(10);
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Rows, 3, 2).unwrap(); // above row 4
+        h.push(tx.commit("insert").unwrap());
+        let s = &wb.sheets[0];
+        assert_eq!(s.comments[0].addr, a("B7"));
+        assert_eq!(s.hyperlinks[0].range, r("C7:C8"));
+        assert_eq!(s.validations[0].ranges, vec![r("D3:D10")]);
+        assert_eq!(s.validations[0].formula1, "$H$1:$H$6");
+        let af = s.auto_filter.as_ref().unwrap();
+        assert_eq!(af.range, r("A2:E12"));
+        assert_eq!(af.columns[0].col, 3);
+        assert!(s.page_setup.row_breaks.contains(&8));
+        // Inserted above the group's first row: the group just moves.
+        assert_eq!(
+            s.outline.rows.keys().copied().collect::<Vec<_>>(),
+            vec![5, 6, 7, 8]
+        );
+        assert_eq!(s.allow_edit_ranges[0].ranges, vec![r("E6:E8")]);
+        assert_eq!(s.spills[0].range, r("G14:G15"));
+        assert!(s.get(a("G14")).is_some());
+        assert_eq!(wb.names[0].formula, "Sheet1!$A$1:$E$12");
+        assert_eq!(wb.names[1].formula, "Sheet1!$2:$2");
+        h.undo(&mut wb);
+        assert_eq!(wb, before);
+    }
+
+    #[test]
+    fn delete_rows_shrinks_and_drops_features() {
+        let mut wb = featured();
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Rows, 4, -2).unwrap(); // rows 5:6
+        let s = &wb.sheets[0];
+        assert!(s.comments.is_empty());
+        assert!(s.hyperlinks.is_empty());
+        assert_eq!(s.validations[0].ranges, vec![r("D3:D6")]);
+        assert_eq!(s.auto_filter.as_ref().unwrap().range, r("A2:E8"));
+        assert!(s.page_setup.row_breaks.contains(&4));
+        assert_eq!(
+            s.outline.rows.keys().copied().collect::<Vec<_>>(),
+            vec![3, 4]
+        );
+        assert_eq!(s.allow_edit_ranges[0].ranges, vec![r("E4")]);
+        assert_eq!(s.spills[0].range, r("G10:G11"));
+        // Deleting the filter header row removes the filter; a fully deleted validation vanishes.
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Rows, 1, -6).unwrap();
+        let s = &wb.sheets[0];
+        assert!(s.auto_filter.is_none());
+        assert!(s.validations.is_empty());
+        assert!(s.allow_edit_ranges.is_empty());
+    }
+
+    #[test]
+    fn insert_inside_outline_group_joins_it() {
+        let mut wb = featured();
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Rows, 5, 1).unwrap();
+        let s = &wb.sheets[0];
+        assert_eq!(
+            s.outline.rows.keys().copied().collect::<Vec<_>>(),
+            vec![3, 4, 5, 6, 7]
+        );
+    }
+
+    #[test]
+    fn insert_delete_cols_moves_features() {
+        let mut wb = featured();
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Cols, 1, 1).unwrap(); // before B
+        let s = &wb.sheets[0];
+        assert_eq!(s.comments[0].addr, a("C5"));
+        assert_eq!(s.validations[0].ranges, vec![r("E3:E8")]);
+        assert_eq!(s.validations[0].formula1, "$I$1:$I$4");
+        let af = s.auto_filter.as_ref().unwrap();
+        assert_eq!((af.range, af.columns[0].col), (r("A2:F10"), 4));
+        assert!(s.page_setup.col_breaks.contains(&4));
+        assert_eq!(s.outline.cols.get(&3), Some(&1));
+        assert_eq!(s.spills[0].range, r("H12:H13"));
+        assert_eq!(wb.names[0].formula, "Sheet1!$A$1:$F$10");
+        // Deleting the filtered column drops its criteria.
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Cols, 4, -1).unwrap();
+        let s = &wb.sheets[0];
+        let af = s.auto_filter.as_ref().unwrap();
+        assert_eq!(af.range, r("A2:E10"));
+        assert!(af.columns.is_empty());
+        assert!(s.validations.is_empty());
+        assert!(s.page_setup.col_breaks.is_empty());
+    }
+
+    #[test]
+    fn validation_on_other_sheet_follows_source() {
+        let mut wb = featured();
+        wb.sheets.push(sp_model::Sheet::new("Other"));
+        wb.sheets[1].validations.push(sp_model::DataValidation {
+            ranges: vec![r("A1")],
+            kind: sp_model::ValidationKind::List,
+            formula1: "Sheet1!$H$1:$H$4".into(),
+            ..Default::default()
+        });
+        wb.sheets[1].validations.push(sp_model::DataValidation {
+            ranges: vec![r("A2")],
+            kind: sp_model::ValidationKind::List,
+            formula1: "\"a,b,c\"".into(),
+            ..Default::default()
+        });
+        wb.sheets[1].hyperlinks.push(sp_model::Hyperlink {
+            range: r("C1"),
+            target: String::new(),
+            location: "Sheet1!B5".into(),
+            tooltip: String::new(),
+            display: String::new(),
+        });
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Rows, 0, 1).unwrap();
+        assert_eq!(wb.sheets[1].hyperlinks[0].location, "Sheet1!B6");
+        assert_eq!(wb.sheets[1].validations[0].formula1, "Sheet1!$H$2:$H$5");
+        assert_eq!(wb.sheets[1].validations[1].formula1, "\"a,b,c\"");
+    }
+
+    #[test]
+    fn validation_anchor_deleted_rebases_relative_refs() {
+        let mut wb = Workbook::new();
+        wb.sheets[0].validations.push(sp_model::DataValidation {
+            ranges: vec![r("B2:B6")],
+            kind: sp_model::ValidationKind::Custom,
+            formula1: "B2>A2".into(),
+            ..Default::default()
+        });
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Rows, 1, -2).unwrap(); // rows 2:3
+        let dv = &wb.sheets[0].validations[0];
+        assert_eq!(dv.ranges, vec![r("B2:B4")]);
+        // Old B4 (now B2) checked B4>A4 before; it still checks itself against column A.
+        assert_eq!(dv.formula1, "B2>A2");
+    }
+
+    #[test]
+    fn splitting_fixed_array_is_refused() {
+        let mut wb = featured();
+        let before = wb.clone();
+        let mut tx = Tx::new(&mut wb);
+        assert!(insert_delete(&mut tx, 0, Axis::Rows, 12, 1).is_err());
+        assert!(insert_delete(&mut tx, 0, Axis::Rows, 12, -1).is_err());
+        drop(tx);
+        assert_eq!(wb, before);
+        // Deleting the whole array's rows is fine.
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Rows, 11, -2).unwrap();
+        assert!(wb.sheets[0].spills.is_empty());
+    }
+
+    #[test]
+    fn dynamic_spill_cut_clears_stale_values() {
+        let mut wb = Workbook::new();
+        let s = &mut wb.sheets[0];
+        s.set(a("A1"), Cell::formula("SEQUENCE(3)"));
+        for row in 1..3 {
+            s.entry(CellAddr::new(row, 0)).value = Value::Number(f64::from(row + 1));
+        }
+        s.spills.push(sp_model::SpillArea {
+            range: r("A1:A3"),
+            fixed: false,
+            blocked: false,
+        });
+        let mut tx = Tx::new(&mut wb);
+        insert_delete(&mut tx, 0, Axis::Rows, 1, 1).unwrap();
+        let s = &wb.sheets[0];
+        assert_eq!(s.cell_count(), 1);
+        assert_eq!(s.spills[0].range, r("A1:A4"));
     }
 }

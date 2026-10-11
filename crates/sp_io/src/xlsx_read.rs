@@ -1,6 +1,7 @@
 //! .xlsx (SpreadsheetML, ECMA-376) reader.
 
-use crate::xml::{Node, attrs, local, parse_dom, resolve_ref, unescape_ooxml};
+use crate::xlsx_passthrough as pass;
+use crate::xml::{Node, local, parse_dom, resolve_ref, unescape_ooxml};
 use crate::{IoError, LoadReport};
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -13,6 +14,7 @@ use sp_model::{
 };
 use std::collections::HashMap;
 use std::io::{Read, Seek};
+use std::sync::Arc;
 
 /// Per-part decompressed size cap (zip-bomb guard).
 const MAX_PART_BYTES: u64 = 1 << 30;
@@ -239,12 +241,13 @@ fn read_shared_strings(xml: &str) -> Result<Vec<String>, IoError> {
 
 struct SharedFormula {
     anchor: CellAddr,
-    src: String,
+    /// The master formula, parsed once (`None`: unparseable).
+    expr: Option<sp_formula::Expr>,
 }
 
 /// Formula text for a follower of a shared formula: the master shifted by the offset.
 fn expand_shared(master: &SharedFormula, at: CellAddr) -> Option<String> {
-    let mut e = parse(&master.src).ok()?;
+    let mut e = master.expr.clone()?;
     shift_for_copy(
         &mut e,
         i64::from(at.row) - i64::from(master.anchor.row),
@@ -272,6 +275,24 @@ struct CellBuf {
     has_v: bool,
 }
 
+impl CellBuf {
+    /// Clear for the next cell, keeping string capacity.
+    fn reset(&mut self) {
+        self.addr = None;
+        self.t.clear();
+        self.s = 0;
+        self.v.clear();
+        self.f = None;
+        self.f_shared_si = None;
+        self.f_ref = None;
+        self.f_array = false;
+        self.cm = false;
+        self.vm = None;
+        self.is_text.clear();
+        self.has_v = false;
+    }
+}
+
 /// Per-sheet state shared by the cell parser.
 struct SheetCtx<'a> {
     /// Rich error kinds by value-metadata index (0-based).
@@ -283,7 +304,7 @@ struct SheetCtx<'a> {
 fn read_sheet(
     xml: &str,
     sheet: &mut Sheet,
-    sst: &[String],
+    sst: &[Arc<str>],
     xf_map: &[StyleId],
     report: &mut LoadReport,
     rich: &[Option<ErrorKind>],
@@ -327,7 +348,7 @@ fn read_sheet(
 fn read_sheet_cells(
     xml: &str,
     sheet: &mut Sheet,
-    sst: &[String],
+    sst: &[Arc<str>],
     xf_map: &[StyleId],
     report: &mut LoadReport,
     ctx: &mut SheetCtx<'_>,
@@ -349,9 +370,34 @@ fn read_sheet_cells(
             _ => (false, None),
         };
         if let Some(e) = start {
-            let a = attrs(&e);
-            let get = |k: &str| a.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
-            match local(e.name().as_ref()) {
+            let ln = e.local_name();
+            let name = ln.as_ref();
+            // Only elements we read attributes from pay for attribute decoding.
+            let wanted = matches!(
+                name,
+                "row"
+                    | "c"
+                    | "col"
+                    | "mergeCell"
+                    | "pane"
+                    | "sheetView"
+                    | "sheetFormatPr"
+                    | "tabColor"
+            );
+            let mut a: Vec<(&str, std::borrow::Cow<'_, str>)> = Vec::new();
+            if wanted {
+                for at in e.attributes().with_checks(false).flatten() {
+                    let v = if at.value.contains('&') {
+                        at.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                            .unwrap_or_default()
+                    } else {
+                        at.value
+                    };
+                    a.push((at.key.local_name().into_inner(), v));
+                }
+            }
+            let get = |k: &str| a.iter().find(|(n, _)| *n == k).map(|(_, v)| v.as_ref());
+            match name {
                 "row" => {
                     if let Some(r) = get("r")
                         .and_then(|r| r.parse::<u32>().ok())
@@ -378,7 +424,7 @@ fn read_sheet_cells(
                     }
                 }
                 "c" => {
-                    c = CellBuf::default();
+                    c.reset();
                     c.addr = match get("r") {
                         Some(r) => CellAddr::parse(r).ok(),
                         None => Some(CellAddr::new(next_row, next_col)),
@@ -386,7 +432,7 @@ fn read_sheet_cells(
                     if let Some(a) = c.addr {
                         next_col = a.col + 1;
                     }
-                    c.t = get("t").unwrap_or("n").to_string();
+                    c.t.push_str(get("t").unwrap_or("n"));
                     c.s = get("s").and_then(|v| v.parse().ok()).unwrap_or(0);
                     c.cm = get("cm").is_some();
                     c.vm = get("vm").and_then(|v| v.parse().ok());
@@ -399,13 +445,29 @@ fn read_sheet_cells(
                 "f" if in_c => {
                     field = Some("f");
                     c.f = Some(String::new());
-                    if get("t") == Some("shared") {
-                        c.f_shared_si = get("si").map(str::to_string);
-                        c.f_ref = get("ref").map(str::to_string);
+                    let mut t = None;
+                    for at in e.attributes().with_checks(false).flatten() {
+                        let v = at
+                            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                            .unwrap_or_default()
+                            .into_owned();
+                        match at.key.local_name().as_ref() {
+                            "t" => t = Some(v),
+                            "si" => c.f_shared_si = Some(v),
+                            "ref" => c.f_ref = Some(v),
+                            _ => {}
+                        }
                     }
-                    if get("t") == Some("array") {
-                        c.f_array = true;
-                        c.f_ref = get("ref").map(str::to_string);
+                    match t.as_deref() {
+                        Some("shared") => {}
+                        Some("array") => {
+                            c.f_array = true;
+                            c.f_shared_si = None;
+                        }
+                        _ => {
+                            c.f_shared_si = None;
+                            c.f_ref = None;
+                        }
                     }
                     if is_empty {
                         field = None;
@@ -486,7 +548,7 @@ fn read_sheet_cells(
                     push_field(&mut c, f, &resolve_ref(&r));
                 }
             }
-            Event::End(e) => match local(e.name().as_ref()) {
+            Event::End(e) => match e.local_name().as_ref() {
                 "c" => {
                     in_c = false;
                     finish_cell(sheet, &mut c, &mut shared, sst, xf_map, report, ctx);
@@ -521,7 +583,7 @@ fn finish_cell(
     sheet: &mut Sheet,
     c: &mut CellBuf,
     shared: &mut HashMap<String, SharedFormula>,
-    sst: &[String],
+    sst: &[Arc<str>],
     xf_map: &[StyleId],
     report: &mut LoadReport,
     ctx: &mut SheetCtx<'_>,
@@ -534,7 +596,7 @@ fn finish_cell(
                 .parse::<usize>()
                 .ok()
                 .and_then(|i| sst.get(i))
-                .map_or(Value::Empty, |s| Value::text(s.as_str()))
+                .map_or(Value::Empty, |s| Value::Text(s.clone()))
         }
         "str" => Value::text(unescape_ooxml(&c.v)),
         "inlineStr" => Value::text(unescape_ooxml(&c.is_text)),
@@ -557,7 +619,7 @@ fn finish_cell(
                 si,
                 SharedFormula {
                     anchor: addr,
-                    src: src.clone(),
+                    expr: parse(src.trim().trim_start_matches('=')).ok(),
                 },
             );
             Some(src)
@@ -622,6 +684,9 @@ fn finish_cell(
 /// yet is kept verbatim (minus prefixes) so saving does not lose it.
 fn normalize_formula(src: &str, legacy: bool) -> String {
     let src = src.trim().trim_start_matches('=');
+    if is_simple_canonical(src) {
+        return src.to_string();
+    }
     match parse(src) {
         Ok(e) if legacy => to_formula(&e.into_legacy()),
         Ok(e) => to_formula(&e),
@@ -630,6 +695,102 @@ fn normalize_formula(src: &str, legacy: bool) -> String {
             .replace("_xlfn.", "")
             .replace("_xlws.", ""),
     }
+}
+
+/// Formulas made only of single-cell references, non-negative integers, binary operators
+/// and parentheses (e.g. `A1*2+B$3`) are already in canonical form and cannot spill, so
+/// they skip the parse/print round trip of `normalize_formula` (the bulk of load time).
+fn is_simple_canonical(src: &str) -> bool {
+    let b = src.as_bytes();
+    if b.is_empty() || b.len() > 256 {
+        return false;
+    }
+    let mut i = 0;
+    let mut depth = 0usize;
+    // Expect an operand (vs. a binary operator) next.
+    let mut want_operand = true;
+    while let Some(&ch) = b.get(i) {
+        if want_operand {
+            match ch {
+                b'(' => {
+                    depth += 1;
+                    i += 1;
+                }
+                b'0'..=b'9' if ch != b'0' || !b.get(i + 1).is_some_and(u8::is_ascii_digit) => {
+                    let start = i;
+                    while b.get(i).is_some_and(u8::is_ascii_digit) {
+                        i += 1;
+                    }
+                    // Integers only; a following letter/`.`/`$` means something else (1E5…).
+                    if i - start > 15
+                        || b.get(i)
+                            .is_some_and(|c| c.is_ascii_alphabetic() || matches!(c, b'.' | b'$'))
+                    {
+                        return false;
+                    }
+                    want_operand = false;
+                }
+                b'$' | b'A'..=b'Z' => {
+                    let start = i;
+                    if b.get(i) == Some(&b'$') {
+                        i += 1;
+                    }
+                    let l0 = i;
+                    while b.get(i).is_some_and(u8::is_ascii_uppercase) {
+                        i += 1;
+                    }
+                    if i == l0 || i - l0 > 3 {
+                        return false;
+                    }
+                    if b.get(i) == Some(&b'$') {
+                        i += 1;
+                    }
+                    let d0 = i;
+                    while b.get(i).is_some_and(u8::is_ascii_digit) {
+                        i += 1;
+                    }
+                    if i == d0 || i - d0 > 7 || b.get(d0) == Some(&b'0') {
+                        return false;
+                    }
+                    // A letter/`(`/`.`/`!`/`:`/`_` after it: a name, call, sheet or range.
+                    if b.get(i).is_some_and(|c| {
+                        c.is_ascii_alphanumeric()
+                            || matches!(c, b'(' | b'.' | b'!' | b':' | b'_' | b'$')
+                    }) {
+                        return false;
+                    }
+                    let Some(tok) = src.get(start..i) else {
+                        return false;
+                    };
+                    if CellAddr::parse(&tok.replace('$', "")).is_err() {
+                        return false;
+                    }
+                    want_operand = false;
+                }
+                _ => return false,
+            }
+        } else {
+            match ch {
+                b')' if depth > 0 => {
+                    depth -= 1;
+                    i += 1;
+                }
+                b'+' | b'-' | b'*' | b'/' | b'^' | b'&' | b'=' => {
+                    i += 1;
+                    want_operand = true;
+                }
+                b'<' | b'>' => {
+                    i += 1;
+                    if matches!(b.get(i), Some(b'=')) || (ch == b'<' && b.get(i) == Some(&b'>')) {
+                        i += 1;
+                    }
+                    want_operand = true;
+                }
+                _ => return false,
+            }
+        }
+    }
+    !want_operand && depth == 0
 }
 
 pub fn resolve_target_pub(base_dir: &str, target: &str) -> String {
@@ -667,12 +828,10 @@ fn read_extras<R: Read + Seek>(
         Some(x) => crate::xlsx_extras::parse_rels(&x, dir).unwrap_or_default(),
         None => Default::default(),
     };
-    if let Err(e) =
-        crate::xlsx_charts::read_sheet_drawings(&mut |p| read_part(zip, p), &rels, xml, sheet)
-    {
+    if let Err(e) = crate::xlsx_charts::read_sheet_sparklines(xml, sheet) {
         report
             .warnings
-            .push(format!("sheet '{}': charts skipped ({e})", sheet.name));
+            .push(format!("sheet '{}': sparklines skipped ({e})", sheet.name));
     }
     if let Err(e) = crate::xlsx_extras::read_sheet_extras(xml, sheet, &rels) {
         report
@@ -780,21 +939,34 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     let wb_xml = read_part(&mut zip, "xl/workbook.xml")?
         .ok_or_else(|| IoError::Format("missing xl/workbook.xml".into()))?;
     let rels_xml = read_part(&mut zip, "xl/_rels/workbook.xml.rels")?.unwrap_or_default();
-    let rels: HashMap<String, String> = if rels_xml.is_empty() {
-        HashMap::new()
+    let raw_rels = if rels_xml.is_empty() {
+        Vec::new()
     } else {
-        parse_dom(&rels_xml)?
-            .children_named("Relationship")
-            .filter_map(|r| {
-                Some((
-                    r.attr("Id")?.to_string(),
-                    resolve_target("xl", r.attr("Target")?),
-                ))
-            })
-            .collect()
+        pass::parse_raw_rels(&rels_xml, "xl")?
     };
-    let sst = match read_part(&mut zip, "xl/sharedStrings.xml")? {
-        Some(x) => read_shared_strings(&x)?,
+    let rels: HashMap<String, (String, String)> = raw_rels
+        .iter()
+        .map(|r| (r.id.clone(), (r.target.clone(), r.rel_type.clone())))
+        .collect();
+    let ct = match read_part(&mut zip, "[Content_Types].xml")? {
+        Some(x) => pass::ContentTypes::parse(&x).unwrap_or_default(),
+        None => pass::ContentTypes::default(),
+    };
+    let mut capture = pass::Capture::new(ct);
+    let wb_pass = match capture.workbook(&mut zip, &wb_xml, &raw_rels) {
+        Ok(p) => p,
+        Err(e) => {
+            report
+                .warnings
+                .push(format!("workbook: unmodelled content dropped ({e})"));
+            Default::default()
+        }
+    };
+    let sst: Vec<Arc<str>> = match read_part(&mut zip, "xl/sharedStrings.xml")? {
+        Some(x) => read_shared_strings(&x)?
+            .into_iter()
+            .map(Arc::from)
+            .collect(),
         None => Vec::new(),
     };
     let rich = read_rich_errors(&mut zip)?;
@@ -806,6 +978,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     };
     let xf_map: Vec<StyleId> = xf_styles.into_iter().map(|s| wb.styles.intern(s)).collect();
 
+    let dxfs = crate::xlsx_cf::read_dxfs(&mut zip);
     let wbdom = parse_dom(&wb_xml)?;
     let sheets_node = wbdom
         .child("sheets")
@@ -818,25 +991,62 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
             Some("veryHidden") => Visibility::VeryHidden,
             _ => Visibility::Visible,
         };
-        let path = sn
+        let (path, rel_type) = sn
             .attr("id")
             .and_then(|id| rels.get(id))
             .cloned()
-            .unwrap_or_else(|| format!("xl/worksheets/sheet{}.xml", i + 1));
-        match read_part(&mut zip, &path)? {
-            Some(x) => {
-                read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report, &rich)?;
-                read_extras(&mut zip, &path, &x, &mut sheet, &mut report)?;
+            .unwrap_or_else(|| (format!("xl/worksheets/sheet{}.xml", i + 1), String::new()));
+        if pass::is_opaque_sheet_rel(&rel_type) {
+            match capture.opaque_sheet(&mut zip, &path, &rel_type) {
+                Ok(Some(p)) => sheet.passthrough = p,
+                Ok(None) => {
+                    capture.skip_sheet();
+                    report
+                        .warnings
+                        .push(format!("sheet '{name}': part {path} not found"));
+                }
+                Err(e) => {
+                    capture.skip_sheet();
+                    report
+                        .warnings
+                        .push(format!("sheet '{name}': dropped ({e})"));
+                }
             }
-            None => report.warnings.push(format!(
-                "sheet '{name}': part {path} not found (chart sheet?)"
-            )),
+        } else {
+            match read_part(&mut zip, &path)? {
+                Some(x) => {
+                    read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report, &rich)?;
+                    read_extras(&mut zip, &path, &x, &mut sheet, &mut report)?;
+                    crate::xlsx_cf::read_sheet(&mut zip, &path, &x, &mut sheet, &dxfs, &mut report);
+                    let (head, tail) =
+                        crate::xlsx_extras::split_at_sheet_data(&x).unwrap_or((x.as_str(), ""));
+                    match capture.worksheet(&mut zip, &path, head, tail) {
+                        Ok(p) => sheet.passthrough = p,
+                        Err(e) => {
+                            capture.skip_sheet();
+                            report
+                                .warnings
+                                .push(format!("sheet '{name}': unmodelled content dropped ({e})"));
+                        }
+                    }
+                }
+                None => {
+                    capture.skip_sheet();
+                    report
+                        .warnings
+                        .push(format!("sheet '{name}': part {path} not found"));
+                }
+            }
         }
+        sheet.passthrough.sheet_id = sn.attr("sheetId").and_then(|v| v.parse().ok());
         wb.sheets.push(sheet);
     }
     if wb.sheets.is_empty() {
         return Err(IoError::Format("workbook contains no sheets".into()));
     }
+    wb.passthrough = wb_pass;
+    capture.finish(&mut wb);
+    crate::xlsx_charts::adopt_captured_charts(&mut wb);
     if let Some(dn) = wbdom.child("definedNames") {
         for d in dn.children_named("definedName") {
             let Some(name) = d.attr("name") else { continue };
@@ -913,10 +1123,61 @@ mod tests {
     }
 
     #[test]
+    fn simple_formula_fast_path_matches_parser() {
+        for f in [
+            "A1*2+1",
+            "D1+C2",
+            "$A$1-B$2/(C3^2)",
+            "A1<>B1",
+            "A1<=10",
+            "(A1+B1)*((C1))",
+            "XFD1048576&A1",
+            "A1>=B1",
+            "10-3-2",
+            "2^3^2",
+            "A1=B1",
+        ] {
+            assert!(is_simple_canonical(f), "{f}");
+            for legacy in [true, false] {
+                let slow = match parse(f) {
+                    Ok(e) if legacy => to_formula(&e.into_legacy()),
+                    Ok(e) => to_formula(&e),
+                    Err(_) => panic!("{f}"),
+                };
+                assert_eq!(slow, f, "fast path would differ for {f}");
+            }
+        }
+        for f in [
+            "",
+            "-A1",
+            "+A1",
+            "A1+",
+            "SUM(A1)",
+            "A1:B2",
+            "a1",
+            "A1 + 1",
+            "1.5",
+            "1E5",
+            "007",
+            "XFE1",
+            "A0",
+            "Sheet1!A1",
+            "A1%",
+            "(A1",
+            "A1)",
+            "AB",
+            "A1#",
+            "TRUE",
+        ] {
+            assert!(!is_simple_canonical(f), "{f}");
+        }
+    }
+
+    #[test]
     fn shared_formula_expansion() {
         let m = SharedFormula {
             anchor: CellAddr::parse("F3").unwrap(),
-            src: "FV(A3,B3,C3,D3,E3)".into(),
+            expr: parse("FV(A3,B3,C3,D3,E3)").ok(),
         };
         assert_eq!(
             expand_shared(&m, CellAddr::parse("F5").unwrap()).unwrap(),

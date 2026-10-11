@@ -37,6 +37,8 @@ enum Tok {
         b: String,
     },
     Op(&'static str),
+    /// Structured table reference.
+    Struct(crate::structref::StructRef),
     LParen,
     RParen,
     LBrace,
@@ -198,6 +200,13 @@ fn lex(src: &str) -> Result<Vec<Token>, ParseError> {
                     if at(i) == Some('!') {
                         i += 1;
                         lex_after_sheet(&chars, &mut i, text)?
+                    } else if at(i) == Some('[') {
+                        let (body, n) =
+                            crate::structref::scan_brackets(&chars, i).map_err(ParseError)?;
+                        i = n;
+                        Tok::Struct(
+                            crate::structref::parse_body(Some(text), &body).map_err(ParseError)?,
+                        )
                     } else {
                         Tok::Ident {
                             sheet: None,
@@ -207,9 +216,9 @@ fn lex(src: &str) -> Result<Vec<Token>, ParseError> {
                 }
             }
             '[' => {
-                return Err(ParseError(
-                    "structured / external references are not supported yet".into(),
-                ));
+                let (body, n) = crate::structref::scan_brackets(&chars, i).map_err(ParseError)?;
+                i = n;
+                Tok::Struct(crate::structref::parse_body(None, &body).map_err(ParseError)?)
             }
             '(' => {
                 i += 1;
@@ -438,7 +447,9 @@ impl Parser {
             }),
             Tok::Comma if !in_args => Some(BinOp::Union),
             // A space followed by something that starts an operand = intersection.
-            Tok::Ident { .. } | Tok::Span { .. } | Tok::LParen if t.space_before => {
+            Tok::Ident { .. } | Tok::Span { .. } | Tok::Struct(_) | Tok::LParen
+                if t.space_before =>
+            {
                 Some(BinOp::Isect)
             }
             _ => None,
@@ -545,6 +556,7 @@ impl Parser {
             }
             Tok::LBrace => self.array(),
             Tok::Span { sheet, a, b } => Ok(span_ref(sheet, &a, &b)),
+            Tok::Struct(r) => Ok(Expr::Table(r)),
             Tok::Ident { sheet, text } => {
                 if matches!(self.peek().map(|t| &t.tok), Some(Tok::LParen)) && sheet.is_none() {
                     self.pos += 1;
@@ -770,6 +782,13 @@ mod tests {
             "LAMBDA(x,x+1)(5)",
             "LET(f,LAMBDA(a,b,a*b),F(2,3))",
             "SUM(A1#)",
+            "SUM(Table1[Sales])",
+            "[@Qty]*[@[Unit Price]]",
+            "Table1[[#Headers],[Region]]",
+            "COUNTA(Sales[#All])",
+            "SUM(T[[#Totals],[A]:[C]])",
+            "T[@A]+1",
+            "ROWS(T[])",
         ] {
             assert_eq!(rt(s), s, "roundtrip {s}");
         }
@@ -803,6 +822,7 @@ mod tests {
         assert!(parse("\"abc").is_err());
         assert!(parse("").is_err());
         assert!(parse(&"(".repeat(1000)).is_err());
-        assert!(parse("Table1[Col]").is_err());
+        assert!(parse("Table1[Col").is_err());
+        assert!(parse("[1]Sheet1!A1").is_err());
     }
 }

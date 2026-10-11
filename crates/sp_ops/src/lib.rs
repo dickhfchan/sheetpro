@@ -2,6 +2,7 @@
 
 pub mod edit;
 pub mod history;
+pub mod table_shift;
 
 pub use edit::{ClearWhat, ClipData, FillDir, OpError, PasteMode, SortKey};
 pub use history::{History, Patch, Tx, Txn};

@@ -93,6 +93,8 @@ struct Collector<'a> {
     wb: &'a Workbook,
     names: &'a NameMap,
     sheet: usize,
+    /// The formula's cell, for unqualified table references (`[@Col]`).
+    cell: Option<CellAddr>,
     visited: usize,
 }
 
@@ -134,6 +136,15 @@ impl Collector<'_> {
                     }
                 };
                 self.add(out, sheet, rg);
+            }
+            Expr::Table(t) => {
+                let cell = self.cell.unwrap_or_default();
+                let found = crate::structref::find_table(self.wb, t, self.sheet, cell);
+                match found.map(|(s, tb)| (s, crate::structref::resolve(tb, t, None))) {
+                    Some((s, Ok(rg))) => self.add(out, s, rg),
+                    Some((_, Err(_))) => {}
+                    None => out.always = true,
+                }
             }
             Expr::Name(n) => {
                 let k = n.to_lowercase();
@@ -219,6 +230,25 @@ impl Collector<'_> {
     }
 }
 
+/// One line per table: structured references resolve against these.
+fn table_sig(wb: &Workbook) -> Vec<String> {
+    let mut v = Vec::new();
+    for (i, s) in wb.sheets.iter().enumerate() {
+        for t in &s.tables {
+            let cols: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
+            v.push(format!(
+                "{i}|{}|{}|{}{}|{}",
+                t.name,
+                t.range.to_a1(),
+                u8::from(t.header_row),
+                u8::from(t.totals_row),
+                cols.join("\u{1}")
+            ));
+        }
+    }
+    v
+}
+
 fn name_map(wb: &Workbook) -> NameMap {
     let mut names = HashMap::new();
     for n in &wb.names {
@@ -229,7 +259,13 @@ fn name_map(wb: &Workbook) -> NameMap {
     names
 }
 
-fn collect_with(wb: &Workbook, names: &NameMap, sheet: usize, expr: &Expr) -> Precedents {
+fn collect_with(
+    wb: &Workbook,
+    names: &NameMap,
+    sheet: usize,
+    cell: Option<CellAddr>,
+    expr: &Expr,
+) -> Precedents {
     let mut out = Precedents {
         always: expr.is_volatile(),
         ..Precedents::default()
@@ -238,6 +274,7 @@ fn collect_with(wb: &Workbook, names: &NameMap, sheet: usize, expr: &Expr) -> Pr
         wb,
         names,
         sheet,
+        cell,
         visited: 0,
     };
     c.collect(expr, 0, &mut out);
@@ -251,7 +288,7 @@ fn collect_with(wb: &Workbook, names: &NameMap, sheet: usize, expr: &Expr) -> Pr
 
 /// Precedents of a formula on `sheet`, with defined names resolved against `wb`.
 pub fn precedents(wb: &Workbook, sheet: usize, expr: &Expr) -> Precedents {
-    collect_with(wb, &name_map(wb), sheet, expr)
+    collect_with(wb, &name_map(wb), sheet, None, expr)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -321,6 +358,8 @@ pub struct DepGraph {
     full: FxMap<usize, FxSet<Key>>,
     used: Vec<Option<CellRange>>,
     sheet_names: Vec<String>,
+    /// Table names, places and columns the graph was built against.
+    tables: Vec<String>,
     defined: Vec<(String, String, Option<usize>)>,
     names: NameMap,
     next_generation: u64,
@@ -336,6 +375,7 @@ impl DepGraph {
         DepGraph {
             used: wb.sheets.iter().map(sp_model::Sheet::used_range).collect(),
             sheet_names: wb.sheets.iter().map(|s| s.name.clone()).collect(),
+            tables: table_sig(wb),
             defined: wb
                 .names
                 .iter()
@@ -360,6 +400,7 @@ impl DepGraph {
                 .iter()
                 .zip(&wb.names)
                 .all(|(d, n)| d.0 == n.name && d.1 == n.formula && d.2 == n.scope)
+            && self.tables == table_sig(wb)
     }
 
     pub fn len(&self) -> usize {
@@ -384,7 +425,7 @@ impl DepGraph {
     pub fn insert(&mut self, wb: &Workbook, key: Key, expr: Option<&Expr>) {
         self.remove(key);
         let p = match expr {
-            Some(e) => collect_with(wb, &self.names, key.0, e),
+            Some(e) => collect_with(wb, &self.names, key.0, Some(key.1), e),
             None => Precedents::default(),
         };
         self.next_generation += 1;

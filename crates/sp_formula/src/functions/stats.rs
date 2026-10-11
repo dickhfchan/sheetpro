@@ -1,7 +1,5 @@
 //! Statistical functions.
 
-use super::criteria::Criterion;
-use super::math::criteria_mask;
 use super::{Agg, Registry, arg_array, collect_numbers, for_each_value, ret};
 use crate::ast::Expr;
 use crate::eval::{Ev, EvalValue};
@@ -113,82 +111,6 @@ fn countblank(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         ),
         Err(e) => EvalValue::err(e),
     }
-}
-
-fn countif(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
-    let (Some(re), Some(ce)) = (args.first(), args.get(1)) else {
-        return EvalValue::err(ErrorKind::Value);
-    };
-    let range = match ev.eval_array(re) {
-        Ok(a) => a,
-        Err(e) => return EvalValue::err(e),
-    };
-    let crit = Criterion::parse(&ev.eval_scalar(ce));
-    EvalValue::num(range.data.iter().filter(|v| crit.matches(v)).count() as f64)
-}
-
-fn countifs(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
-    if !args.len().is_multiple_of(2) {
-        return EvalValue::err(ErrorKind::Value);
-    }
-    match criteria_mask(ev, args, None) {
-        Ok(m) => EvalValue::num(m.iter().filter(|b| **b).count() as f64),
-        Err(e) => EvalValue::err(e),
-    }
-}
-
-/// Values of `target` (first arg) where the criteria pairs that follow all match.
-fn masked_numbers(ev: &mut Ev<'_>, target: &Expr, pairs: &[Expr]) -> Result<Vec<f64>, ErrorKind> {
-    let t = ev.eval_array(target)?;
-    let mask = criteria_mask(ev, pairs, Some((t.rows, t.cols)))?;
-    let mut out = Vec::new();
-    for (v, ok) in t.data.iter().zip(mask) {
-        if ok {
-            match v {
-                Value::Number(n) => out.push(*n),
-                Value::Error(e) => return Err(*e),
-                _ => {}
-            }
-        }
-    }
-    Ok(out)
-}
-
-fn averageif(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
-    let (Some(re), Some(ce)) = (args.first(), args.get(1)) else {
-        return EvalValue::err(ErrorKind::Value);
-    };
-    let range = match ev.eval_array(re) {
-        Ok(a) => a,
-        Err(e) => return EvalValue::err(e),
-    };
-    let crit = Criterion::parse(&ev.eval_scalar(ce));
-    let avg = match args.get(2) {
-        Some(e) => match ev.eval_array(e) {
-            Ok(a) => a,
-            Err(e) => return EvalValue::err(e),
-        },
-        None => range.clone(),
-    };
-    let mut v = Vec::new();
-    for (i, x) in range.data.iter().enumerate() {
-        if crit.matches(x)
-            && let Value::Number(n) = avg.get(i / range.cols.max(1), i % range.cols.max(1))
-        {
-            v.push(*n);
-        }
-    }
-    ret(mean(&v))
-}
-
-fn ifs_agg(ev: &mut Ev<'_>, args: &[Expr], f: fn(&[f64]) -> Result<f64, ErrorKind>) -> EvalValue {
-    let Some(t) = args.first() else {
-        return EvalValue::err(ErrorKind::Value);
-    };
-    if args.len() < 3 || args.len().is_multiple_of(2) {
-        return EvalValue::err(ErrorKind::Value);
-    }
-    ret(masked_numbers(ev, t, args.get(1..).unwrap_or(&[])).and_then(|v| f(&v)))
 }
 
 fn rank(ev: &mut Ev<'_>, args: &[Expr], avg: bool) -> EvalValue {
@@ -366,13 +288,9 @@ pub fn register(r: &mut Registry) {
     r.add("AVERAGEA", 1, 255, |ev, a| {
         agg(ev, a, Agg::All, |v| mean(&v))
     });
-    r.add("AVERAGEIF", 2, 3, averageif);
-    r.add("AVERAGEIFS", 3, 255, |ev, a| ifs_agg(ev, a, mean));
     r.add("COUNT", 1, 255, count);
     r.add("COUNTA", 1, 255, counta);
     r.add("COUNTBLANK", 1, 1, countblank);
-    r.add("COUNTIF", 2, 2, countif);
-    r.add("COUNTIFS", 2, 254, countifs);
     r.add("MAX", 1, 255, |ev, a| {
         agg(ev, a, Agg::Numbers, |v| {
             Ok(v.into_iter().reduce(f64::max).unwrap_or(0.0))
@@ -391,16 +309,6 @@ pub fn register(r: &mut Registry) {
     r.add("MINA", 1, 255, |ev, a| {
         agg(ev, a, Agg::All, |v| {
             Ok(v.into_iter().reduce(f64::min).unwrap_or(0.0))
-        })
-    });
-    r.add("MAXIFS", 3, 255, |ev, a| {
-        ifs_agg(ev, a, |v| {
-            Ok(v.iter().copied().reduce(f64::max).unwrap_or(0.0))
-        })
-    });
-    r.add("MINIFS", 3, 255, |ev, a| {
-        ifs_agg(ev, a, |v| {
-            Ok(v.iter().copied().reduce(f64::min).unwrap_or(0.0))
         })
     });
     r.add("MEDIAN", 1, 255, |ev, a| {

@@ -149,6 +149,16 @@ pub trait Host {
     fn row_hidden(&self, _sheet: usize, _row: u32) -> bool {
         false
     }
+    /// Whether a row is hidden by a filter (SUBTOTAL 1–11 skip only these rows).
+    fn row_filtered(&self, _sheet: usize, _row: u32) -> bool {
+        false
+    }
+    /// Whether the cell holds a SUBTOTAL/AGGREGATE formula (those skip such cells so
+    /// nested subtotals are not counted twice).
+    fn is_subtotal_cell(&self, sheet: usize, a: CellAddr) -> bool {
+        self.cell_formula(sheet, a)
+            .is_some_and(|f| crate::functions::math::is_subtotal_formula(&f))
+    }
     /// Seconds-resolution serial for NOW() (overridable for deterministic tests).
     fn now(&self) -> f64 {
         sp_core::date::now_serial()
@@ -156,6 +166,10 @@ pub trait Host {
     fn random(&self) -> f64;
     /// Spilled area of the dynamic-array formula anchored at `a` (`A1#`), if it spills.
     fn spill_range(&self, _sheet: usize, _a: CellAddr) -> Option<CellRange> {
+        None
+    }
+    /// The workbook, for resolving structured table references.
+    fn workbook(&self) -> Option<&sp_model::Workbook> {
         None
     }
 }
@@ -269,6 +283,7 @@ impl<'h> Ev<'h> {
                 None => EvalValue::err(ErrorKind::Value),
             },
             Expr::Name(n) => self.eval_name(n),
+            Expr::Table(t) => self.eval_table(t),
             Expr::Array(rows) => {
                 let nrows = rows.len();
                 let ncols = rows.first().map_or(0, Vec::len);
@@ -476,6 +491,19 @@ impl<'h> Ev<'h> {
         match &r.sheet {
             None => Some(self.sheet),
             Some(s) => self.host.sheet_index(s),
+        }
+    }
+
+    fn eval_table(&self, r: &crate::structref::StructRef) -> EvalValue {
+        let Some(wb) = self.host.workbook() else {
+            return EvalValue::err(ErrorKind::Ref);
+        };
+        let Some((sheet, t)) = crate::structref::find_table(wb, r, self.sheet, self.cell) else {
+            return EvalValue::err(ErrorKind::Ref);
+        };
+        match crate::structref::resolve(t, r, Some(self.cell)) {
+            Ok(range) => EvalValue::Ref(SheetRange { sheet, range }),
+            Err(e) => EvalValue::err(e),
         }
     }
 
