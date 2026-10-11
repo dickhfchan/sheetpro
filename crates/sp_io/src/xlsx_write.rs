@@ -711,6 +711,8 @@ impl IdAlloc<'_> {
 }
 
 pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
+    let prepared = crate::xlsx_charts::prepare_for_save(wb);
+    let wb: &Workbook = &prepared;
     let mut zip = zip::ZipWriter::new(w);
     let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let put = |zip: &mut zip::ZipWriter<W>, name: &str, data: &[u8]| -> Result<(), IoError> {
@@ -757,6 +759,9 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             .map(|s| s.to_string()),
     );
     reserved.extend(crate::xlsx_cf::table_part_names(wb));
+    let chart_plan = crate::xlsx_charts::ChartPlan::new(wb);
+    reserved.extend(chart_plan.part_names());
+    generated.extend(chart_plan.part_names());
     let emit = pass::Emit::plan(wb, &reserved, &generated);
 
     let mut ct = String::from(
@@ -872,6 +877,11 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             sheet, n, &mut rels,
         )));
         known.extend(cfw.sheet_tail(sheet, &mut rels, pt));
+        crate::xlsx_charts::merge_sparkline_ext(&mut known, sheet, pt);
+        let drawn = crate::xlsx_charts::write_sheet_drawings(wb, i, &chart_plan, &mut rels);
+        if let Some(el) = drawn.element {
+            known.push(("drawing".to_string(), el));
+        }
         let (items, used_ids) =
             pass::merge_elements(pass::WORKSHEET_ORDER, &known, pt, &|_| false, &valid);
         let all_ids = pass::referenced_ids(pt);
@@ -898,6 +908,12 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             x.push_str(el);
         }
         x.push_str("</worksheet>");
+        for (part, body, t) in &drawn.parts {
+            if !t.is_empty() {
+                override_ct(&mut ct, part, t);
+            }
+            put(&mut zip, part, body.as_bytes())?;
+        }
         put(
             &mut zip,
             &format!("xl/worksheets/sheet{n}.xml"),

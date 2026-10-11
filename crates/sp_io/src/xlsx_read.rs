@@ -828,6 +828,11 @@ fn read_extras<R: Read + Seek>(
         Some(x) => crate::xlsx_extras::parse_rels(&x, dir).unwrap_or_default(),
         None => Default::default(),
     };
+    if let Err(e) = crate::xlsx_charts::read_sheet_sparklines(xml, sheet) {
+        report
+            .warnings
+            .push(format!("sheet '{}': sparklines skipped ({e})", sheet.name));
+    }
     if let Err(e) = crate::xlsx_extras::read_sheet_extras(xml, sheet, &rels) {
         report
             .warnings
@@ -1041,6 +1046,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     }
     wb.passthrough = wb_pass;
     capture.finish(&mut wb);
+    crate::xlsx_charts::adopt_captured_charts(&mut wb);
     if let Some(dn) = wbdom.child("definedNames") {
         for d in dn.children_named("definedName") {
             let Some(name) = d.attr("name") else { continue };

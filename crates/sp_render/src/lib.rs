@@ -1,6 +1,7 @@
 //! L3 render model: what each visible cell shows and where. No UI libraries here; the shell
 //! draws a `GridView` with whatever toolkit it uses.
 
+pub mod chart;
 pub mod condfmt;
 pub mod tablestyle;
 

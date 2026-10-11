@@ -61,6 +61,13 @@ fn regenerated(name: &str, content_type: &str) -> bool {
         "vmlDrawing",
         "printerSettings",
         "spreadsheetml.table+xml",
+        // Drawings holding only modelled charts are regenerated from `Sheet::drawings`
+        // (style/colour presets dropped); other drawings still pass through.
+        "drawing+xml",
+        "drawingml.chart+xml",
+        "chartex+xml",
+        "chartstyle+xml",
+        "chartcolorstyle+xml",
     ];
     name.ends_with(".rels")
         || name == "[Content_Types].xml"

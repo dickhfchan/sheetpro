@@ -1,0 +1,90 @@
+{"op": "exec", "id": "cell.set", "params": {"cell": "A1", "input": "Month"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B1", "input": "North"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C1", "input": "South"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D1", "input": "East"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E1", "input": "Trend"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A2", "input": "Jan"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B2", "input": "42"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C2", "input": "30"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D2", "input": "18"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A3", "input": "Feb"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B3", "input": "48"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C3", "input": "34"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D3", "input": "22"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A4", "input": "Mar"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B4", "input": "45"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C4", "input": "41"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D4", "input": "27"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A5", "input": "Apr"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B5", "input": "56"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C5", "input": "38"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D5", "input": "31"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A6", "input": "May"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B6", "input": "61"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C6", "input": "47"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D6", "input": "29"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A7", "input": "Jun"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B7", "input": "58"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C7", "input": "52"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D7", "input": "36"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W9", "input": "Scores"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W10", "input": "70"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W11", "input": "76"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W12", "input": "64"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W13", "input": "74"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W14", "input": "81"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W15", "input": "75"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W16", "input": "89"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W17", "input": "59"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W18", "input": "71"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W19", "input": "62"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W20", "input": "61"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W21", "input": "68"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W22", "input": "73"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W23", "input": "75"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W24", "input": "76"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W25", "input": "97"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W26", "input": "80"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W27", "input": "51"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W28", "input": "72"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W29", "input": "63"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W30", "input": "64"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W31", "input": "86"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W32", "input": "67"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W33", "input": "47"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W34", "input": "74"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W35", "input": "67"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W36", "input": "56"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W37", "input": "59"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W38", "input": "62"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "W39", "input": "70"}}
+{"op": "exec", "id": "insert.sparkline.line", "params": {"data": "B2:D7", "location": "E2:E7", "markers": true, "high": true}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F1", "input": "Cols"}}
+{"op": "exec", "id": "insert.sparkline.column", "params": {"data": "B2:D7", "location": "F2:F7"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G1", "input": "W/L"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H2", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "I2", "input": "-2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "J2", "input": "1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H3", "input": "-3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "I3", "input": "-1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "J3", "input": "0"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H4", "input": "4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "I4", "input": "0"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "J4", "input": "-1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H5", "input": "-5"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "I5", "input": "1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "J5", "input": "-2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H6", "input": "6"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "I6", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "J6", "input": "-3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H7", "input": "-7"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "I7", "input": "3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "J7", "input": "-4"}}
+{"op": "exec", "id": "insert.sparkline.winloss", "params": {"data": "H2:J7", "location": "G2:G7"}}
+{"op": "exec", "id": "insert.chart.column", "params": {"range": "A1:D7", "title": "Regional Sales", "anchor": "B9:H21", "legend": "bottom"}}
+{"op": "exec", "id": "insert.chart.line", "params": {"range": "A1:D7", "title": "Monthly Trend", "anchor": "I9:O21", "markers": true, "legend": "right", "y_title": "Units"}}
+{"op": "exec", "id": "insert.chart.pie", "params": {"range": "A1:B7", "title": "North Share", "anchor": "P9:U21", "doughnut": true, "data_labels": true, "legend": "right"}}
+{"op": "exec", "id": "insert.chart.combo", "params": {"range": "A1:C7", "title": "North vs South", "anchor": "B22:H35"}}
+{"op": "exec", "id": "insert.chart.area", "params": {"range": "A1:D7", "title": "Stacked Area", "anchor": "I22:O35", "grouping": "stacked"}}
+{"op": "exec", "id": "insert.chart.histogram", "params": {"range": "W10:W39", "title": "Score Distribution", "anchor": "P22:U35", "x_title": "Score"}}
+{"op": "exec", "id": "insert.chart.bar", "params": {"range": "A1:C4", "title": "Q1 by Region", "anchor": "K1:P8", "legend": "right"}}

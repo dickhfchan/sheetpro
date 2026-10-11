@@ -358,6 +358,7 @@ fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &st
             }
         }
         crate::table_shift::rewrite_formulas(sheet, &|src| rewritten(src, &g));
+        crate::chart_shift::rewrite_formulas(sheet, &|src| rewritten(src, &g));
     }
     for n in &mut wb.names {
         let home = n
@@ -520,6 +521,7 @@ pub fn insert_delete(
             }
         }
         shift_sheet_features(s, &sh);
+        crate::chart_shift::shift_drawings(s, &sh);
         losses = crate::table_shift::shift_cf_and_tables(s, &sh);
     }
     let ed_name = name.clone();
