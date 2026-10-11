@@ -1,7 +1,9 @@
 //! L6 shell: a thin egui front end over `sp_engine::Session`. Every action goes through
 //! `Session::execute`; this crate owns only transient view state (edit buffer, hover…).
 
+pub mod dialogs;
 pub mod grid;
+mod menus;
 pub mod theme;
 
 #[cfg(feature = "screenshot")]
@@ -33,10 +35,12 @@ pub struct App {
     pub session: Session,
     /// Text in the formula bar / in-cell editor.
     pub edit_buf: String,
-    editing_cell: Option<(usize, CellAddr)>,
+    pub(crate) editing_cell: Option<(usize, CellAddr)>,
     focus_editor: bool,
     drag_anchor: Option<CellAddr>,
-    last_error: Option<String>,
+    pub(crate) last_error: Option<String>,
+    /// Open dialog and its fields (serializable, so scripts and tests can drive it).
+    pub ui: dialogs::UiState,
 }
 
 impl App {
@@ -48,6 +52,7 @@ impl App {
             focus_editor: false,
             drag_anchor: None,
             last_error: None,
+            ui: dialogs::UiState::default(),
         };
         a.sync_buffer();
         a
@@ -64,7 +69,7 @@ impl App {
         }
     }
 
-    fn sync_buffer(&mut self) {
+    pub(crate) fn sync_buffer(&mut self) {
         let s = &self.session;
         self.edit_buf =
             s.wb.sheet(s.sheet_index())
@@ -73,7 +78,7 @@ impl App {
                 .unwrap_or_default();
     }
 
-    fn begin_edit(&mut self, initial: Option<String>) {
+    pub(crate) fn begin_edit(&mut self, initial: Option<String>) {
         let at = (self.session.sheet_index(), self.session.sel.active);
         self.editing_cell = Some(at);
         if let Some(t) = initial {
@@ -85,7 +90,7 @@ impl App {
         self.session.view.editing = true;
     }
 
-    fn commit_edit(&mut self, then: Option<&str>) {
+    pub(crate) fn commit_edit(&mut self, then: Option<&str>) {
         if let Some((sheet, at)) = self.editing_cell.take() {
             let cell = format!(
                 "{}!{}",
@@ -157,6 +162,8 @@ impl App {
             .show(ui, |ui| self.sheet_tabs(ui));
         egui::CentralPanel::no_frame().show(ui, |ui| self.grid(ui));
         self.keyboard(ui);
+        let ctx = ui.ctx().clone();
+        self.show_dialog(&ctx);
     }
 
     fn ribbon(&mut self, ui: &mut egui::Ui) {
@@ -219,33 +226,7 @@ impl App {
                                     .spacing([2.0, 1.0])
                                     .show(ui, |ui| {
                                         for (i, item) in items.iter().enumerate() {
-                                            let live = registry().get(&item.id);
-                                            let enabled = live
-                                                .is_some_and(|c| (c.spec.enabled)(&self.session));
-                                            let color = if enabled {
-                                                T.ribbon_text
-                                            } else {
-                                                T.ribbon_text_disabled
-                                            };
-                                            let b = egui::Button::new(
-                                                egui::RichText::new(&item.label)
-                                                    .size(11.0)
-                                                    .color(color),
-                                            )
-                                            .small()
-                                            .frame(false);
-                                            let tip = if item.key.is_empty() {
-                                                item.notes.clone()
-                                            } else {
-                                                format!("{} ({})", item.notes, item.key)
-                                            };
-                                            if ui
-                                                .add_enabled(enabled, b)
-                                                .on_hover_text(tip)
-                                                .clicked()
-                                            {
-                                                self.exec(&item.id, json!({}));
-                                            }
+                                            self.ribbon_item(ui, item);
                                             if i % 3 == 2 {
                                                 ui.end_row();
                                             }
@@ -393,9 +374,16 @@ impl App {
                 let b = egui::Button::new(text)
                     .fill(if is_active { T.tab_active_bg } else { T.tab_bg })
                     .stroke(Stroke::new(1.0, tc.map_or(T.header_border, color)));
-                if ui.add(b).clicked() {
+                let r = ui.add(b);
+                if r.clicked() || r.secondary_clicked() {
                     self.exec("sheet.activate", json!({ "sheet": i }));
                 }
+                if r.double_clicked() {
+                    self.ui.dialog = Some(dialogs::Dialog::Prompt(
+                        dialogs::misc::Prompt::rename_sheet(&self.session, Some(i)),
+                    ));
+                }
+                r.context_menu(|ui| self.tab_menu(ui, i, &name));
             }
             if ui
                 .add(egui::Button::new("+").small())
@@ -714,6 +702,18 @@ impl App {
         if resp.double_clicked() {
             self.begin_edit(None);
         }
+        // Right-click outside the selection selects the cell under the pointer first.
+        if resp.secondary_clicked()
+            && let Some(a) = resp.interact_pointer_pos().and_then(hit)
+            && !self.session.sel.range().contains(a)
+        {
+            if self.editing_cell.is_some() {
+                self.commit_edit(None);
+            }
+            self.session.select(a);
+            self.sync_buffer();
+        }
+        resp.context_menu(|ui| self.grid_menu(ui));
         let scroll = ui.input(|i| i.smooth_scroll_delta);
         if resp.hovered() && (scroll.y.abs() > 0.5 || scroll.x.abs() > 0.5) {
             let v = &mut self.session.view;
@@ -748,8 +748,8 @@ impl App {
 
     /// Map key presses to catalog shortcuts → commands. Typing starts editing.
     fn keyboard(&mut self, ui: &mut egui::Ui) {
-        if ui.memory(|m| m.focused().is_some()) {
-            return; // A text field owns the keyboard.
+        if ui.memory(|m| m.focused().is_some()) || self.ui.dialog.is_some() {
+            return; // A text field or a dialog owns the keyboard.
         }
         let events = ui.input(|i| i.events.clone());
         for ev in events {
@@ -783,8 +783,7 @@ impl App {
             _ => {}
         }
         if let Some(cmd) = registry().by_shortcut(sc) {
-            let id = cmd.id;
-            self.exec(id, json!({}));
+            self.activate_command(cmd.id);
         }
     }
 }

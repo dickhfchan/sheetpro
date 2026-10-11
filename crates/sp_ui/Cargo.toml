@@ -10,6 +10,7 @@ sp_core.workspace = true
 sp_model.workspace = true
 sp_render.workspace = true
 sp_engine.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 egui.workspace = true
 egui_kittest = { workspace = true, optional = true }

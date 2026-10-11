@@ -27,6 +27,16 @@ pub struct Theme {
     pub tab_bg: Color32,
     pub tab_active_bg: Color32,
     pub error_text: Color32,
+    pub dialog_bg: Color32,
+    pub dialog_border: Color32,
+    pub dialog_backdrop: Color32,
+    pub dialog_title: Color32,
+    pub dialog_label: Color32,
+    pub list_bg: Color32,
+    pub list_border: Color32,
+    pub list_selected: Color32,
+    pub preview_bg: Color32,
+    pub swatch_border: Color32,
 }
 
 pub const LIGHT: Theme = Theme {
@@ -53,7 +63,72 @@ pub const LIGHT: Theme = Theme {
     tab_bg: Color32::from_rgb(233, 233, 233),
     tab_active_bg: Color32::WHITE,
     error_text: Color32::from_rgb(192, 0, 0),
+    dialog_bg: Color32::from_rgb(250, 250, 250),
+    dialog_border: Color32::from_rgb(160, 160, 160),
+    dialog_backdrop: Color32::from_rgba_premultiplied(0, 0, 0, 60),
+    dialog_title: Color32::from_rgb(32, 32, 32),
+    dialog_label: Color32::from_rgb(80, 80, 80),
+    list_bg: Color32::WHITE,
+    list_border: Color32::from_rgb(196, 199, 197),
+    list_selected: Color32::from_rgb(211, 227, 217),
+    preview_bg: Color32::WHITE,
+    swatch_border: Color32::from_rgb(140, 140, 140),
 };
+
+/// Colour choices offered by the fill / font / tab colour pickers: a row of standard hues,
+/// then tints and shades. These are cell data values the user picks, not chrome colours.
+pub const SWATCHES: [Color32; 40] = [
+    Color32::from_rgb(0, 0, 0),
+    Color32::from_rgb(68, 68, 68),
+    Color32::from_rgb(127, 127, 127),
+    Color32::from_rgb(191, 191, 191),
+    Color32::from_rgb(255, 255, 255),
+    Color32::from_rgb(68, 84, 106),
+    Color32::from_rgb(68, 114, 196),
+    Color32::from_rgb(237, 125, 49),
+    Color32::from_rgb(192, 0, 0),
+    Color32::from_rgb(255, 0, 0),
+    Color32::from_rgb(255, 192, 0),
+    Color32::from_rgb(255, 255, 0),
+    Color32::from_rgb(146, 208, 80),
+    Color32::from_rgb(0, 176, 80),
+    Color32::from_rgb(0, 176, 240),
+    Color32::from_rgb(0, 112, 192),
+    Color32::from_rgb(0, 32, 96),
+    Color32::from_rgb(112, 48, 160),
+    Color32::from_rgb(33, 115, 70),
+    Color32::from_rgb(165, 165, 165),
+    Color32::from_rgb(242, 242, 242),
+    Color32::from_rgb(214, 220, 228),
+    Color32::from_rgb(218, 227, 243),
+    Color32::from_rgb(251, 229, 214),
+    Color32::from_rgb(255, 230, 230),
+    Color32::from_rgb(255, 242, 204),
+    Color32::from_rgb(255, 255, 204),
+    Color32::from_rgb(226, 239, 218),
+    Color32::from_rgb(222, 235, 247),
+    Color32::from_rgb(237, 226, 246),
+    Color32::from_rgb(217, 217, 217),
+    Color32::from_rgb(173, 185, 202),
+    Color32::from_rgb(180, 199, 231),
+    Color32::from_rgb(248, 203, 173),
+    Color32::from_rgb(255, 153, 153),
+    Color32::from_rgb(255, 230, 153),
+    Color32::from_rgb(198, 224, 180),
+    Color32::from_rgb(189, 215, 238),
+    Color32::from_rgb(197, 165, 222),
+    Color32::from_rgb(169, 208, 142),
+];
+
+/// `RRGGBB` hex for a colour, as command params expect.
+pub fn hex(c: Color32) -> String {
+    format!("{:02X}{:02X}{:02X}", c.r(), c.g(), c.b())
+}
+
+/// Parse `RRGGBB` (as stored in UI state) back to a colour.
+pub fn from_hex(s: &str) -> Option<Color32> {
+    sp_model::Color::from_hex(s).map(color)
+}
 
 pub fn color(c: sp_model::Color) -> Color32 {
     Color32::from_rgb(c.0, c.1, c.2)

@@ -2692,6 +2692,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "image",
+ "serde",
  "serde_json",
  "sp_core",
  "sp_engine",
