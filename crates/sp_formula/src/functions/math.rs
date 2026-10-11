@@ -120,15 +120,6 @@ fn sumproduct(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     EvalValue::num(total)
 }
 
-/// Pairs of (criteria range, criterion) → mask (see `criteria::criteria_mask`).
-pub fn criteria_mask(
-    ev: &mut Ev<'_>,
-    pairs: &[Expr],
-    shape: Option<(usize, usize)>,
-) -> Result<Vec<bool>, ErrorKind> {
-    super::criteria::criteria_mask(ev, pairs, shape)
-}
-
 /// Does formula source `f` call SUBTOTAL or AGGREGATE? Such cells are skipped by both.
 pub fn is_subtotal_formula(f: &str) -> bool {
     let u = f.to_ascii_uppercase();
