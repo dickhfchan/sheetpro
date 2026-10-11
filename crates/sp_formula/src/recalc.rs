@@ -352,6 +352,23 @@ impl Host for WbHost<'_> {
             .is_some_and(|s| s.hidden_rows.contains(&row))
     }
 
+    fn is_subtotal_cell(&self, sheet: usize, a: CellAddr) -> bool {
+        self.wb
+            .sheet(sheet)
+            .and_then(|s| s.get(a))
+            .and_then(|c| c.formula_src())
+            .is_some_and(crate::functions::math::is_subtotal_formula)
+    }
+
+    fn row_filtered(&self, sheet: usize, row: u32) -> bool {
+        self.wb.sheet(sheet).is_some_and(|s| {
+            s.hidden_rows.contains(&row)
+                && s.auto_filter
+                    .as_ref()
+                    .is_some_and(|f| row > f.range.start.row && row <= f.range.end.row)
+        })
+    }
+
     fn now(&self) -> f64 {
         self.now.unwrap_or_else(sp_core::date::now_serial)
     }
@@ -1510,5 +1527,52 @@ mod tests {
         recalc(&mut wb, &mut AstCache::default(), OPTS);
         assert!(matches!(v(&wb, "A1"), Value::Error(_)));
         assert!(matches!(v(&wb, "A2"), Value::Error(_)));
+    }
+
+    #[test]
+    fn subtotal_skips_nested_and_hidden_rows() {
+        let mut wb = wb_with(&[
+            ("A1", "Head"),
+            ("A2", "1"),
+            ("A3", "2"),
+            ("A4", "=SUBTOTAL(9,A2:A3)"),
+            ("A5", "10"),
+            ("A6", "20"),
+            ("A7", "=SUBTOTAL(9,A5:A6)"),
+            ("A8", "=SUBTOTAL(9,A2:A7)"),
+            ("B1", "=SUBTOTAL(109,A2:A7)"),
+            ("B2", "=SUBTOTAL(3,A1:A7)"),
+            ("B3", "=SUBTOTAL(103,A1:A7)"),
+            ("B4", "=SUBTOTAL(1,A2:A7)"),
+            ("B5", "=SUBTOTAL(9,A2:A3,A5)"),
+            ("B6", "=AGGREGATE(9,0,A2:A8)"),
+            ("B7", "=SUBTOTAL(4,C1:C3)"),
+            ("B8", "=SUBTOTAL(1,C1:C3)"),
+        ]);
+        assert_eq!(v(&wb, "A8"), Value::Number(33.0));
+        assert_eq!(v(&wb, "B2"), Value::Number(5.0));
+        assert_eq!(v(&wb, "B4"), Value::Number(8.25));
+        assert_eq!(v(&wb, "B5"), Value::Number(13.0));
+        assert_eq!(v(&wb, "B6"), Value::Number(33.0));
+        assert_eq!(v(&wb, "B7"), Value::Number(0.0));
+        assert_eq!(v(&wb, "B8"), Value::Error(ErrorKind::Div0));
+        // Manually hidden row 3 and 6: 1xx codes skip them, 1–11 do not.
+        wb.sheets[0].hidden_rows.extend([2, 5]);
+        let opts = RecalcOptions {
+            now: Some(45306.5),
+            seed: 7,
+        };
+        recalc(&mut wb, &mut AstCache::default(), opts);
+        assert_eq!(v(&wb, "A8"), Value::Number(33.0));
+        assert_eq!(v(&wb, "B1"), Value::Number(11.0));
+        assert_eq!(v(&wb, "B3"), Value::Number(3.0));
+        // Inside an AutoFilter range hidden rows are filtered: every code skips them.
+        wb.sheets[0].auto_filter = Some(sp_model::AutoFilter {
+            range: CellRange::parse("A1:A7").unwrap(),
+            columns: vec![],
+        });
+        recalc(&mut wb, &mut AstCache::default(), opts);
+        assert_eq!(v(&wb, "A8"), Value::Number(11.0));
+        assert_eq!(v(&wb, "B2"), Value::Number(3.0));
     }
 }

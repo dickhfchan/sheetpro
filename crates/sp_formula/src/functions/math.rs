@@ -129,6 +129,49 @@ pub fn criteria_mask(
     super::criteria::criteria_mask(ev, pairs, shape)
 }
 
+/// Does formula source `f` call SUBTOTAL or AGGREGATE? Such cells are skipped by both.
+pub fn is_subtotal_formula(f: &str) -> bool {
+    let u = f.to_ascii_uppercase();
+    u.contains("SUBTOTAL(") || u.contains("AGGREGATE(")
+}
+
+/// Values a SUBTOTAL reference argument contributes: rows hidden by a filter (any hidden
+/// row for 101–111) and cells holding SUBTOTAL/AGGREGATE formulas are skipped. Only
+/// numbers and errors matter except for COUNTA, which counts every non-empty value.
+fn subtotal_ref_values(
+    ev: &Ev<'_>,
+    refs: &[crate::eval::SheetRange],
+    skip_hidden: bool,
+    counta: bool,
+) -> Vec<Expr> {
+    let mut out = Vec::new();
+    for r in refs {
+        let rg = ev.clamp_to_used(*r);
+        let mut cells: Vec<(sp_core::CellAddr, Value)> = Vec::new();
+        ev.host.for_each_stored(r.sheet, rg, &mut |a, v| {
+            cells.push((a, v.clone()));
+        });
+        for (a, v) in cells {
+            let hidden = if skip_hidden {
+                ev.host.row_hidden(r.sheet, a.row)
+            } else {
+                ev.host.row_filtered(r.sheet, a.row)
+            };
+            if hidden || ev.host.is_subtotal_cell(r.sheet, a) {
+                continue;
+            }
+            match v {
+                Value::Number(n) => out.push(Expr::Number(n)),
+                Value::Error(e) => out.push(Expr::Error(e)),
+                Value::Text(t) if counta => out.push(Expr::Text(t.to_string())),
+                Value::Bool(b) if counta => out.push(Expr::Bool(b)),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 fn subtotal(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     let code = match args.first().map(|a| ev.num(a)) {
         Some(Ok(c)) => c.trunc() as i64,
@@ -152,10 +195,32 @@ fn subtotal(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     if !(1..=11).contains(&code) && !(101..=111).contains(&code) {
         return EvalValue::err(ErrorKind::Value);
     }
-    match ev.registry.get(f) {
-        Some(spec) => (spec.imp)(ev, args.get(1..).unwrap_or(&[])),
-        None => EvalValue::err(ErrorKind::Name),
+    let Some(spec) = ev.registry.get(f) else {
+        return EvalValue::err(ErrorKind::Name);
+    };
+    // Reference arguments become constant arrays of the values that count.
+    let mut call: Vec<Expr> = Vec::new();
+    for a in args.get(1..).unwrap_or(&[]) {
+        let refs = match ev.eval(a) {
+            EvalValue::Ref(r) => vec![r],
+            EvalValue::Refs(rs) => rs,
+            _ => {
+                call.push(a.clone());
+                continue;
+            }
+        };
+        let vals = subtotal_ref_values(ev, &refs, code > 100, code % 100 == 3);
+        if !vals.is_empty() {
+            call.push(Expr::Array(vec![vals]));
+        }
     }
+    if call.is_empty() {
+        return match code % 100 {
+            1 | 7 | 8 | 10 | 11 => EvalValue::err(ErrorKind::Div0),
+            _ => EvalValue::Scalar(Value::Number(0.0)),
+        };
+    }
+    (spec.imp)(ev, &call)
 }
 
 fn mround(x: f64, m: f64) -> Result<f64, ErrorKind> {
