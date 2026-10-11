@@ -1186,4 +1186,25 @@ mod tests {
             .is_err()
         );
     }
+
+    #[test]
+    fn row_insert_moves_chart_and_undo_restores() {
+        let mut s = sales();
+        s.execute("insert.chart.column", &json!({"range": "A1:D5"}))
+            .unwrap();
+        s.execute("insert.sparkline.line", &json!({"data": "B2:D5"}))
+            .unwrap();
+        s.execute("home.cells.insert_rows", &json!({"range": "A1"}))
+            .unwrap();
+        let c = &charts(&s)[0];
+        assert_eq!(c.anchor.from.row, 1);
+        assert_eq!(c.series[0].values, "Sheet1!$B$3:$B$6");
+        let d = chart_data(&s.wb, 0, c);
+        assert_eq!(d.categories[0], "North");
+        let g = &s.wb.sheets[0].drawings.sparklines[0];
+        assert_eq!(g.items[0].location, CellAddr::new(2, 4));
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(charts(&s)[0].anchor.from.row, 0);
+        assert_eq!(charts(&s)[0].series[0].values, "Sheet1!$B$2:$B$5");
+    }
 }

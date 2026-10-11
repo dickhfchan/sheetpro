@@ -113,6 +113,34 @@ a load/save cycle byte-identical.
   `r:id`s, XML well-formedness and worksheet/workbook element order; the `package_validity`
   test runs it on every corpus file, also after duplicate/rename/reorder/delete edits.
 
+## Charts and sparklines (sp_io::xlsx_charts)
+
+`Sheet::drawings` holds floating charts (two-cell anchor + series refs as formula text) and
+sparkline groups. Geometry (nice ticks, stacking, histogram bins, layout to primitives) lives in
+`sp_render::chart`; `sp_engine::commands::chart_cmds::chart_data` resolves refs each frame;
+`sp_ui::chart` paints. Row/column insert/delete moves anchors and sparkline cells and rewrites
+series/sparkline refs (`sp_ops::chart_shift`).
+
+Pass-through rule (each chart written exactly once):
+- **Load**: the worksheet `drawing` element is captured like any other; after capture,
+  `adopt_captured_charts` checks the drawing part. If *every* object in it is a chart frame
+  whose chart is a modelled kind (bar/column, line, area, pie, doughnut, scatter, chartex
+  histogram) and whose chart part has only cosmetic relationships (style, colours, theme
+  override), the charts move into `Sheet::drawings` and the captured element, relationship
+  and parts are removed. Otherwise (pictures, shapes, groups, 3D/stock/radar/bubble/…
+  charts) the drawing stays passed through untouched and none of its charts are modelled.
+- **Save**: sheets with modelled charts and no captured drawing get a generated
+  `drawingN.xml` + `chartN.xml`/`chartExN.xml`, named by `ChartPlan` around every captured
+  part name and reserved before pass-through parts are placed. Charts added to a sheet whose
+  drawing is passed through are appended to that captured drawing part (as extra anchors and
+  pass-through chart parts) so the sheet keeps one `drawing`; after a reload they are part of
+  that unmodelled drawing.
+- **Sparklines** are read from the worksheet `extLst`; on save their `<ext>` is merged into
+  the writer's `extLst` (after the conditional-formatting ext and captured exts), replacing
+  any captured sparkline ext so the URI appears once.
+- Chart style/colour preset parts of adopted charts are dropped (the `package_validity` test
+  counts drawing/chart parts as regenerated).
+
 ## Seam: engine → UI
 
 `sp_ui` reads `Session` + `sp_render::GridView` (visible rows/cols, x/y offsets, display text
