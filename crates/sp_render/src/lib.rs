@@ -1,6 +1,8 @@
 //! L3 render model: what each visible cell shows and where. No UI libraries here; the shell
 //! draws a `GridView` with whatever toolkit it uses.
 
+pub mod chart;
+
 use sp_core::numfmt::{FmtColor, format_value};
 use sp_core::{CellAddr, CellRange, MAX_COLS, MAX_ROWS, Value};
 use sp_model::{Border, BorderStyle, Color, HAlign, Sheet, Style, VAlign, Workbook};

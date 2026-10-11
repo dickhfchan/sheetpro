@@ -1,5 +1,6 @@
 //! L1 data model: workbook, sheets, cells, styles, defined names. Pure data.
 
+pub mod chart;
 pub mod features;
 pub mod style;
 
@@ -166,6 +167,9 @@ pub struct Sheet {
     /// Array-formula areas, sorted by anchor (row-major).
     #[serde(default)]
     pub spills: Vec<SpillArea>,
+    /// Floating charts and sparkline groups (see `chart.rs`).
+    #[serde(default)]
+    pub drawings: chart::Drawings,
 }
 
 pub const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -196,6 +200,7 @@ impl Sheet {
             validations: Vec::new(),
             page_setup: PageSetup::default(),
             spills: Vec::new(),
+            drawings: chart::Drawings::default(),
         }
     }
 
