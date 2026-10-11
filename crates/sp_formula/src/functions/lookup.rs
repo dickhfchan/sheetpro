@@ -567,7 +567,38 @@ fn lookup(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     }
 }
 
+/// HYPERLINK(link, [friendly_name]): the cell shows the friendly name (or the link).
+/// Following the link is a UI concern; the value is what the formula returns.
+fn hyperlink(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
+    let Some(l) = args.first() else {
+        return EvalValue::err(ErrorKind::Value);
+    };
+    match args.get(1) {
+        Some(Expr::Missing) | None => {
+            let v = ev.eval_scalar(l);
+            match v {
+                Value::Error(e) => EvalValue::err(e),
+                Value::Empty => EvalValue::num(0.0),
+                other => EvalValue::Scalar(other),
+            }
+        }
+        Some(f) => {
+            if let Value::Error(e) = ev.eval_scalar(l) {
+                return EvalValue::err(e);
+            }
+            match ev.eval_scalar(f) {
+                Value::Empty => EvalValue::num(0.0),
+                other => EvalValue::Scalar(other),
+            }
+        }
+    }
+}
+
 pub fn register(r: &mut Registry) {
+    r.add("HYPERLINK", 1, 2, hyperlink);
+    // No pivot tables or real-time data servers: the target's results for missing data.
+    r.add("GETPIVOTDATA", 2, 254, |_, _| EvalValue::err(ErrorKind::Ref));
+    r.add("RTD", 3, 255, |_, _| EvalValue::err(ErrorKind::NA));
     r.add("VLOOKUP", 3, 4, |ev, a| vhlookup(ev, a, true));
     r.add("HLOOKUP", 3, 4, |ev, a| vhlookup(ev, a, false));
     r.add("MATCH", 2, 3, match_fn);
@@ -601,6 +632,18 @@ pub fn register(r: &mut Registry) {
         Some(EvalValue::Refs(rs)) => EvalValue::num(rs.len() as f64),
         _ => EvalValue::err(ErrorKind::Value),
     });
+}
+
+#[cfg(test)]
+mod hyperlink_tests {
+    use crate::functions::registry;
+
+    #[test]
+    fn registered() {
+        for n in ["HYPERLINK", "GETPIVOTDATA", "RTD"] {
+            assert!(registry().get(n).is_some(), "{n}");
+        }
+    }
 }
 
 #[cfg(test)]

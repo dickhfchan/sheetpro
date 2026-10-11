@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 146,
+  "calc_files_pass": 175,
   "cells_compared": 73244,
-  "cells_matched": 65761,
+  "cells_matched": 68176,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -69,63 +69,40 @@
       "kind": "calc",
       "load_error": null,
       "compared": 4,
-      "matched": 0,
+      "matched": 4,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!A12 =DAVERAGE(A4:E10,\"Yield\",A1:B2) → expected 12, got #NAME?",
-        "Sheet1!A13 =DAVERAGE(A4:E10,3,A4:E10) → expected 13, got #NAME?",
-        "Sheet1!A16 =DAVERAGE(A4:E10,\"Yield\",F1:F2) → expected 8.6, got #NAME?",
-        "Sheet1!A17 =DAVERAGE(A4:E10,D4,H1:H2) → expected 10, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/DATABASE/DCOUNT_DCOUNTA_DGET_DPRODUCT.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 212,
-      "matched": 36,
+      "matched": 212,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "DCOUNT_DCOUNTA!B28 =DCOUNT($A$1:$H$11,$F$1,A14:A15) → expected 4, got #NAME?",
-        "DCOUNT_DCOUNTA!C28 =DCOUNTA($A$1:$H$11,$F$1,$A$14:$A$15) → expected 4, got #NAME?",
-        "DCOUNT_DCOUNTA!B29 =DCOUNT($A$1:$H$11,E1,B14:C15) → expected 2, got #NAME?",
-        "DCOUNT_DCOUNTA!C29 =DCOUNTA($A1:$H11,$E1,$B14:$C15) → expected 2, got #NAME?",
-        "DCOUNT_DCOUNTA!B30 =DCOUNT($A$1:$H$11,F1,D14:E16) → expected 2, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/DATABASE/DMIN_DMAX_DAVERAGE_DSUM.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 175,
-      "matched": 12,
+      "matched": 175,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "DMIN_DMAX_DAVERAGE_DSUM!B28 =DMIN($A$1:$G$11,$F$1,A14:A15) → expected 12000, got #NAME?",
-        "DMIN_DMAX_DAVERAGE_DSUM!C28 =DMAX($A$1:$G$11,$F$1,A14:A15) → expected 30000, got #NAME?",
-        "DMIN_DMAX_DAVERAGE_DSUM!D28 =DAVERAGE($A$1:$G$11,$F$1,A14:A15) → expected 21500, got #NAME?",
-        "DMIN_DMAX_DAVERAGE_DSUM!E28 =DSUM($A$1:$G$11,$F$1,A14:A15) → expected 86000, got #NAME?",
-        "DMIN_DMAX_DAVERAGE_DSUM!B29 =DMIN($A$1:$G$11,$E$1,B14:C15) → expected 120, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/DATABASE/DVAR_DVARP_DSTDEV_DSTDEVP.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 175,
-      "matched": 12,
+      "matched": 175,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "DVAR_DVARP_DSTDEV_DSTDEVP!B28 =DVAR($A$1:$G$11,$F$1,A14:A15) → expected 57000000, got #NAME?",
-        "DVAR_DVARP_DSTDEV_DSTDEVP!C28 =DVARP($A$1:$G$11,$F$1,A14:A15) → expected 42750000, got #NAME?",
-        "DVAR_DVARP_DSTDEV_DSTDEVP!D28 =DSTDEV($A$1:$G$11,$F$1,A14:A15) → expected 7549.834435, got #NAME?",
-        "DVAR_DVARP_DSTDEV_DSTDEVP!E28 =DSTDEVP($A$1:$G$11,$F$1,A14:A15) → expected 6538.348415, got #NAME?",
-        "DVAR_DVARP_DSTDEV_DSTDEVP!B29 =DVAR($A$1:$G$11,$E$1,B14:C15) → expected 3200, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/DATE_AND_TIME/DATE.xlsx",
@@ -368,47 +345,31 @@
       "kind": "calc",
       "load_error": null,
       "compared": 39,
-      "matched": 0,
+      "matched": 39,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!B1 =ACCRINT(39508,39691,39569,0.1,1000,2,0) → expected 16.66666667, got #NAME?",
-        "Sheet1!B2 =ACCRINT(DATE(2008,3,5),39691,39569,0.1,1000,2,0,FALSE) → expected 15.55555556, got #NAME?",
-        "Sheet1!B3 =ACCRINT(DATE(2008,4,5),39691,39569,0.1,1000,2,0,TRUE) → expected 7.222222222, got #NAME?",
-        "Sheet1!B4 =ACCRINT(DATE(2007,3,1),DATE(2008,8,31),DATE(2008,5,1),0.1,1000,2,0) → expected 116.9444444, got #NAME?",
-        "Sheet1!B5 =ACCRINT(DATE(2007,3,1),DATE(2008,8,31),DATE(2008,5,1),0.1,1000,2,0,FALSE) → expected 66.94444444, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/ACCRINTM.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 17,
-      "matched": 0,
+      "matched": 17,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!B2 =ACCRINTM(39539,39614,0.1,1000,3) → expected 20.54794521, got #NAME?",
-        "Sheet1!B4 =ACCRINTM(DATE(2024,1,15),DATE(2024,3,15),0.1,1000,0) → expected 16.66666667, got #NAME?",
-        "Sheet1!B5 =ACCRINTM(DATE(2024,1,15),DATE(2024,3,15),0.1,1000,1) → expected 16.39344262, got #NAME?",
-        "Sheet1!B6 =ACCRINTM(DATE(2024,1,15),DATE(2024,3,15),0.1,1000,2) → expected 16.66666667, got #NAME?",
-        "Sheet1!B7 =ACCRINTM(DATE(2024,1,15),DATE(2024,3,15),0.1,1000,3) → expected 16.43835616, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/ACCRINT_ACCRINTM.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 51,
-      "matched": 27,
+      "matched": 50,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!I2 =ACCRINT(A2,B2,C2,D2,E2,F2) → expected 16.66666667, got #NAME?",
-        "Sheet1!I3 =ACCRINT(A3,B3,C3,D3,E3,F3) → expected 33.33333333, got #NAME?",
-        "Sheet1!I4 =ACCRINT(A4,B4,C4,D4,E4,F4) → expected 16.66666667, got #NAME?",
-        "Sheet1!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got #NAME?",
-        "Sheet1!I6 =ACCRINT(A6,B6,C6,D6,E6,F6) → expected 16.66666667, got #NAME?"
+        "Sheet1!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got 16.66666667"
       ]
     },
     {
@@ -416,15 +377,12 @@
       "kind": "calc",
       "load_error": null,
       "compared": 259,
-      "matched": 135,
+      "matched": 257,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!I2 =ACCRINT(A2,B2,C2,D2,E2,F2) → expected 16.66666667, got #NAME?",
-        "Sheet1!I3 =ACCRINT(A3,B3,C3,D3,E3,F3) → expected 33.33333333, got #NAME?",
-        "Sheet1!I4 =ACCRINT(A4,B4,C4,D4,E4,F4) → expected 16.66666667, got #NAME?",
-        "Sheet1!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got #NAME?",
-        "Sheet1!I6 =ACCRINT(A6,B6,C6,D6,E6,F6) → expected 16.66666667, got #NAME?"
+        "Sheet1!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got 16.66666667",
+        "Sheet2!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got 16.66666667"
       ]
     },
     {
@@ -432,32 +390,20 @@
       "kind": "calc",
       "load_error": null,
       "compared": 225,
-      "matched": 57,
+      "matched": 225,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!E2 =COUPDAYS(A2,B2,C2,D2) → expected 360, got #NAME?",
-        "Sheet1!F2 =COUPDAYBS(A2,B2,C2,D2) → expected 0, got #NAME?",
-        "Sheet1!G2 =COUPDAYSNC(A2,B2,C2,D2) → expected 360, got #NAME?",
-        "Sheet1!H2 =COUPNCD(A2,B2,C2,D2) → expected 44197, got #NAME?",
-        "Sheet1!I2 =COUPNUM(A2,B2,C2,D2) → expected 1, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/CUMPRINC_CUMIPMT.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 70,
-      "matched": 10,
+      "matched": 70,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!G2 =CUMIPMT(A2,B2,C2,D2,E2,F2) → expected -520.1181191, got #NAME?",
-        "Sheet1!H2 =CUMPRINC(A2,B2,C2,D2,E2,F2) → expected -2038.518055, got #NAME?",
-        "Sheet1!G3 =CUMIPMT(A3,B3,C3,D3,E3,F3) → expected -29.39571262, got #NAME?",
-        "Sheet1!H3 =CUMPRINC(A3,B3,C3,D3,E3,F3) → expected -21.64716123, got #NAME?",
-        "Sheet1!G4 =CUMIPMT(A4,B4,C4,D4,E4,F4) → expected -50422.18668, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/DB_DDB.xlsx",
@@ -480,28 +426,20 @@
       "kind": "calc",
       "load_error": null,
       "compared": 19,
-      "matched": 5,
+      "matched": 19,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!F2 =DISC(A2,B2,C2,D2,E2) → expected 0.0520714286, got #NAME?",
-        "Sheet1!F3 =DISC(A3,B3,C3,D3,E3) → expected 0.052193662, got #NAME?",
-        "Sheet1!F4 =DISC(A4,B4,C4,D4,E4) → expected 0.0513380282, got #NAME?",
-        "Sheet1!F5 =DISC(A5,B5,C5,D5,E5) → expected 0.0520510563, got #NAME?",
-        "Sheet1!F6 =DISC(A6,B6,C6,D6,E6) → expected 0.0520714286, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/FV.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 47,
-      "matched": 46,
+      "matched": 47,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet2!A1 =FV(-1,-2,1) → expected #DIV/0!, got #NUM!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/FVSCHEDULE.xlsx",
@@ -518,46 +456,32 @@
       "kind": "calc",
       "load_error": null,
       "compared": 10,
-      "matched": 5,
+      "matched": 10,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!F2 =INTRATE(A2,B2,C2,D2,E2) → expected 0.08, got #NAME?",
-        "Sheet1!F3 =INTRATE(A3,B3,C3,D3,E3) → expected 0.0820224719, got #NAME?",
-        "Sheet1!F4 =INTRATE(A4,B4,C4,D4,E4) → expected 0.0808988764, got #NAME?",
-        "Sheet1!F5 =INTRATE(A5,B5,C5,D5,E5) → expected 0.0820224719, got #NAME?",
-        "Sheet1!F6 =INTRATE(A6,B6,C6,D6,E6) → expected 0.08, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/IPMT_PPMT.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 128,
-      "matched": 124,
+      "matched": 128,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!G17 =IPMT(A17,B17,C17,D17,E17,F17) → expected -26.86636467, got #NUM!",
-        "Sheet1!H17 =IPMT(A17,B17,C17,D17) → expected -30.51485756, got #NUM!",
-        "Sheet1!I17 =PPMT(A17,B17,C17,D17,E17,F17) → expected -2900.351433, got #NUM!",
-        "Sheet1!J17 =PPMT(A17,B17,C17,D17) → expected -3186.403571, got #NUM!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/IRR.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 132,
-      "matched": 114,
+      "matched": 130,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "General!N2 =IRR(A2:F2,I2) → expected 0.0793082612, got #NUM!",
-        "General!N3 =IRR(A3:F3,I3) → expected #VALUE!, got #NUM!",
-        "General!L5 =IRR(A5:F5) → expected -0.4489283496, got #NUM!",
-        "General!M5 =NPV(L5,A5:F5) → expected 7.99418E-13, got #NUM!",
-        "General!N5 =IRR(A5:F5,I5) → expected #VALUE!, got #NUM!"
+        "Three Parameters!D2 =IRR(A2:C2) → expected 0.0000001091, got -0.0000000133",
+        "FullRow!Q1 =IRR(D:D) → expected 0.0000001091, got -0.0000000133"
       ]
     },
     {
@@ -575,32 +499,20 @@
       "kind": "calc",
       "load_error": null,
       "compared": 225,
-      "matched": 219,
+      "matched": 225,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Two Parameters!E7 =-MIRR(A7:B7,C7,D7) → expected 1, got #DIV/0!",
-        "Three parameters!F18 =MIRR(A18:C18,D18,E18) → expected -1, got #DIV/0!",
-        "Three parameters!F19 =MIRR(A19:C19,D19,E19) → expected -1, got #DIV/0!",
-        "Sheet2!N15 =MIRR(A15:F15,J15,K15) → expected -1, got #DIV/0!",
-        "Sheet2!O15 =MIRR(A15:F15,L15,M15) → expected -1, got #DIV/0!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/NOMINAL_EFFECT.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 90,
-      "matched": 82,
+      "matched": 90,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!C20 =NOMINAL(A20,B20) → expected #VALUE!, got 10",
-        "Sheet1!D20 =EFFECT(A20,B20) → expected #VALUE!, got 10",
-        "Sheet1!E20 =NOMINAL(D20,B20) → expected #VALUE!, got 10",
-        "Sheet1!F20 =EFFECT(C20,B20) → expected #VALUE!, got 10",
-        "Sheet1!C21 =NOMINAL(A21,B21) → expected #VALUE!, got #NUM!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/NPER.xlsx",
@@ -637,31 +549,25 @@
       "kind": "calc",
       "load_error": null,
       "compared": 309,
-      "matched": 303,
+      "matched": 309,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!F8 =PMT(A8,B8,C8,D8,E8) → expected #NUM!, got -131.8181818",
-        "Sheet1!G8 =PMT(A8,B8,C8) → expected #NUM!, got 290.9090909",
-        "Sheet1!J8 =PV(A8,B8,F8,D8,E8) → expected #NUM!, got 100",
-        "Sheet1!K8 =PV(A8,B8,G8) → expected #NUM!, got 100",
-        "Sheet1!M8 =PV(A8,B8,G8) → expected #NUM!, got 100"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/PRICE_YIELD.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 352,
-      "matched": 229,
+      "matched": 342,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "PRICE_YIELD!H2 =PRICE(A2,B2,C2,D2,E2,F2,G2) → expected 108.2268972, got #NAME?",
-        "PRICE_YIELD!I2 =YIELD(A2,B2,C2,H2,E2,F2,G2) → expected 0.07, got #NAME?",
-        "PRICE_YIELD!H3 =PRICE(A3,B3,C3,D3,E3,F3,G3) → expected 43.93504165, got #NAME?",
-        "PRICE_YIELD!I3 =YIELD(A3,B3,C3,H3,E3,F3,G3) → expected 0.065, got #NAME?",
-        "PRICE_YIELD!H4 =PRICE(A4,B4,C4,D4,E4,F4,G4) → expected 126.043494, got #NAME?"
+        "ODDFPRICE_ODDFYIELD!J9 =ODDFPRICE(A9,B9,C9,D9,E9,F9,G9,H9,I9) → expected 115.8457481, got 115.8243677",
+        "ODDFPRICE_ODDFYIELD!J10 =ODDFPRICE(A10,B10,C10,D10,E10,F10,G10,H10,I10) → expected 125.7492032, got 125.7490131",
+        "ODDFPRICE_ODDFYIELD!J50 =ODDFPRICE(A50,B50,C50,D50,E50,F50,G50,H50,I50) → expected 115.8550339, got 115.8335908",
+        "ODDFPRICE_ODDFYIELD!J51 =ODDFPRICE(A51,B51,C51,D51,E51,F51,G51,H51,I51) → expected 125.7274306, got 125.72724",
+        "ODDLPRICE_ODDLYIELD!I3 =ODDLPRICE(A3,B3,C3,D3,E3,F3,G3,H3) → expected 122.3670584, got 122.3848324"
       ]
     },
     {
@@ -709,15 +615,12 @@
       "kind": "calc",
       "load_error": null,
       "compared": 273,
-      "matched": 156,
+      "matched": 271,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!D2 =TBILLEQ(A2,B2,C2) → expected 0.6784386617, got #NAME?",
-        "Sheet1!L2 =(360-365*C2/D2)/C2 → expected 182, got #NAME?",
-        "Sheet1!N2 =TBILLPRICE(A2,B2,C2) → expected 74.72222222, got #NAME?",
-        "Sheet1!R2 =TBILLYIELD(A2,B2,Q2) → expected -0.989010989, got #NAME?",
-        "Sheet1!D3 =TBILLEQ(A3,B3,C3) → expected 1.403846154, got #NAME?"
+        "Sheet1!D6 =TBILLEQ(A6,B6,C6) → expected 0.8522961312, got 0.8499684013",
+        "Sheet1!L6 =(360-365*C6/D6)/C6 → expected 291.7450935, got 290.5722713"
       ]
     },
     {
@@ -725,15 +628,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 42,
-      "matched": 1,
+      "matched": 26,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!Q2 =XNPV(O2,A2:F2,H2:M2) → expected 4.310013416, got #NAME?",
-        "Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got #NAME?",
-        "Sheet1!S2 =XNPV(0.1,A2:E2,H2:M2) → expected #NUM!, got #NAME?",
-        "Sheet1!Q3 =XNPV(O3,A3:F3,H3:M3) → expected -235.9258943, got #NAME?",
-        "Sheet1!R3 =XIRR(A3:F3,H3:M3) → expected #NUM!, got #NAME?"
+        "Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got 1.185916208",
+        "Sheet1!R5 =XIRR(A5:F5,H5:M5) → expected -0.4867956959, got -0.4867956905",
+        "Sheet1!Q7 =XNPV(O7,A7:F7,H7:M7) → expected #NUM!, got #VALUE!",
+        "Sheet1!R7 =XIRR(A7:F7,H7:M7) → expected #NUM!, got #VALUE!",
+        "Sheet1!Q8 =XNPV(O8,A8:F8,H8:M8) → expected #NUM!, got #VALUE!"
       ]
     },
     {
@@ -741,15 +644,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 24,
-      "matched": 1,
+      "matched": 18,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!Q2 =XNPV(O2,A2:F2,H2:M2) → expected 4.310013416, got #NAME?",
-        "Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got #NAME?",
-        "Sheet1!S2 =XNPV(0.1,A2:E2,H2:M2) → expected #NUM!, got #NAME?",
-        "Sheet1!Q3 =XNPV(O3,A3:F3,H3:M3) → expected -235.9258943, got #NAME?",
-        "Sheet1!R3 =XIRR(A3:F3,H3:M3) → expected #NUM!, got #NAME?"
+        "Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got 1.185916208",
+        "Sheet1!R5 =XIRR(A5:F5,H5:M5) → expected -0.4867956959, got -0.4867956905",
+        "Sheet1!Q7 =XNPV(O7,A7:F7,H7:M7) → expected #NUM!, got #VALUE!",
+        "Sheet1!R7 =XIRR(A7:F7,H7:M7) → expected #NUM!, got #VALUE!",
+        "Sheet1!Q8 =XNPV(O8,A8:F8,H8:M8) → expected #NUM!, got #VALUE!"
       ]
     },
     {
@@ -757,15 +660,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 400,
-      "matched": 0,
+      "matched": 393,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "accrint_cases!I2 =ACCRINT(A2,B2,C2,D2,E2,F2,G2,H2) → expected 12.5, got #NAME?",
-        "accrint_cases!I3 =ACCRINT(A3,B3,C3,D3,E3,F3,G3,H3) → expected 12.5, got #NAME?",
-        "accrint_cases!I4 =ACCRINT(A4,B4,C4,D4,E4,F4,G4,H4) → expected 12.56830601, got #NAME?",
-        "accrint_cases!I5 =ACCRINT(A5,B5,C5,D5,E5,F5,G5,H5) → expected 12.56830601, got #NAME?",
-        "accrint_cases!I6 =ACCRINT(A6,B6,C6,D6,E6,F6,G6,H6) → expected 12.77777778, got #NAME?"
+        "accrint_cases!I105 =ACCRINT(A105,B105,C105,D105,E105,F105,G105,H105) → expected 93.23770492, got 93.40659341",
+        "accrint_cases!I115 =ACCRINT(A115,B115,C115,D115,E115,F115,G115,H115) → expected 9.364754098, got 9.385245902",
+        "accrint_cases!I185 =ACCRINT(A185,B185,C185,D185,E185,F185,G185,H185) → expected 52.54120879, got 52.77777778",
+        "accrint_cases!I312 =ACCRINT(A312,B312,C312,D312,E312,F312,G312,H312) → expected 5.020833333, got 5",
+        "accrint_cases!I313 =ACCRINT(A313,B313,C313,D313,E313,F313,G313,H313) → expected -2.479166667, got -2.5"
       ]
     },
     {
@@ -1092,12 +995,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 11,
-      "matched": 8,
+      "matched": 10,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "INDEX!E14 =INDEX(TEXTSPLIT(\"1,2,3,4,5,6\",\",\"),3) → expected 3, got #REF!",
-        "INDEX!G14 =@INDEX(TEXTSPLIT(\"1,2,3;4,5,6\",\",\",\";\"),1,2) → expected 2, got #REF!",
         "INDEX!E20 =INDEX({1,2,3},1,0,2) → expected #REF!, got 1"
       ]
     },
@@ -1294,13 +1195,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 76,
-      "matched": 74,
+      "matched": 76,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "COMBIN_COMBINA!D17 =COMBINA(A17,B17) → expected 1, got #NUM!",
-        "COMBIN_COMBINA!D18 =COMBINA(A18,B18) → expected 1, got #NUM!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/DEGREES_RADIANS.xlsx",
@@ -1369,15 +1267,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 351,
-      "matched": 285,
+      "matched": 343,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!D13 =LCM(A13,B13,C13) → expected #VALUE!, got 1",
-        "Sheet1!E13 =GCD(A13,B13,C13) → expected #VALUE!, got 0",
-        "Sheet1!I13 =@LCM(G13:H13) → expected 0, got 1",
-        "Sheet1!D17 =LCM(A17,B17,C17) → expected #VALUE!, got 10",
-        "Sheet1!E17 =GCD(A17,B17,C17) → expected #VALUE!, got 10"
+        "Sheet1!D32 =LCM(A32,B32,C32) → expected #VALUE!, got 317107",
+        "Sheet1!E32 =GCD(A32,B32,C32) → expected #VALUE!, got 1",
+        "Sheet1!I32 =@LCM(G32:H32) → expected #VALUE!, got 317107",
+        "Sheet1!J32 =@GCD(G32:H32) → expected #VALUE!, got 1",
+        "Sheet1!D34 =LCM(,B34,C34) → expected #N/A, got 5"
       ]
     },
     {
@@ -1385,15 +1283,14 @@
       "kind": "calc",
       "load_error": null,
       "compared": 132,
-      "matched": 102,
+      "matched": 128,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "LCM_GCD!D13 =LCM(A13,B13,C13) → expected #VALUE!, got 1",
-        "LCM_GCD!E13 =GCD(A13,B13,C13) → expected #VALUE!, got 0",
-        "LCM_GCD!D17 =LCM(A17,B17,C17) → expected #VALUE!, got 10",
-        "LCM_GCD!E17 =GCD(A17,B17,C17) → expected #VALUE!, got 10",
-        "LCM_GCD!D24 =LCM(A24,B24,C24) → expected 8, got 2"
+        "LCM_GCD!D32 =LCM(A32,B32,C32) → expected #VALUE!, got 317107",
+        "LCM_GCD!E32 =GCD(A32,B32,C32) → expected #VALUE!, got 1",
+        "LCM_GCD!D34 =LCM(,B34,C34) → expected #N/A, got 5",
+        "LCM_GCD!E34 =GCD(,B34,C34) → expected #N/A, got 5"
       ]
     },
     {
@@ -1431,16 +1328,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 89,
-      "matched": 78,
+      "matched": 89,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!E34 =MMULT(A34:B35,C34:D35) → expected #VALUE!, got 5",
-        "Sheet1!E36 =MMULT(A36:B37,C36:D37) → expected #VALUE!, got 5",
-        "Sheet1!E38 =MMULT(A38:B39,C38:D39) → expected #VALUE!, got 0",
-        "Sheet1!E58 =MMULT(A58:B59,C58:D59) → expected #VALUE!, got 0",
-        "Sheet1!E60 =MMULT(A60:B61,C60:D61) → expected #VALUE!, got 0"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MOD_QUOTIENT.xlsx",
@@ -1476,15 +1367,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 13,
-      "matched": 9,
+      "matched": 13,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!F20 =MULTINOMIAL(F19,2) → expected #VALUE!, got 1",
-        "Sheet1!H20 =@MULTINOMIAL({TRUE,1,2}) → expected #VALUE!, got 3",
-        "Sheet1!H22 =MULTINOMIAL(TRUE,1,2) → expected #VALUE!, got 12",
-        "Sheet1!B27 =@MULTINOMIAL(A27:A28) → expected #VALUE!, got 1"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MUNIT_MDETERM_MINVERSE.xlsx",
@@ -1537,12 +1423,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 137,
-      "matched": 136,
+      "matched": 137,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!D23 =ROUNDUP(A23,B23) → expected 10000000000, got 0"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SEQUENCE.xlsx",
@@ -1561,16 +1445,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 12,
-      "matched": 4,
+      "matched": 12,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!A1 =@SERIESSUM(2,0,1,{1,2,3}) → expected 17, got #NAME?",
-        "Sheet1!C1 =@SERIESSUM(0,0,2,{1,2,3}) → expected #NUM!, got #NAME?",
-        "Sheet1!A2 =@SERIESSUM(0.5,1,2,{2,2,2}) → expected 1.3125, got #NAME?",
-        "Sheet1!E7 =@SERIESSUM(A7,B7,C7,D9:D14) → expected 2.716666667, got #NAME?",
-        "Sheet1!F7 =@SERIESSUM(TRUE,B7,C7,D9:D14) → expected #VALUE!, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SQRT_SQRTPI.xlsx",
@@ -1587,44 +1465,30 @@
       "kind": "calc",
       "load_error": null,
       "compared": 285,
-      "matched": 279,
+      "matched": 285,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!G4 =AVERAGEIF($B$2:$B$20,C4,$A$2:$A$20) → expected #N/A, got 29",
-        "Sheet1!G5 =AVERAGEIF($B$2:$B$20,C5,$A$2:$A$20) → expected #N/A, got 113",
-        "Sheet1!G13 =AVERAGEIF($B$2:$B$20,C13,$A$2:$A$20) → expected #DIV/0!, got 11.25",
-        "Open!G4 =AVERAGEIF(B:B,C4,A:A) → expected #N/A, got 29",
-        "Open!G5 =AVERAGEIF(B:B,C5,A:A) → expected #N/A, got 113"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMIF_AVERAGE_IF.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 50,
-      "matched": 46,
+      "matched": 50,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!E6 =AVERAGEIF($B$2:$B$10,D6) → expected #N/A, got #DIV/0!",
-        "Sheet1!G7 =COUNTIF($B$2:$B$10,D7) → expected 0, got 1",
-        "Sheet1!G8 =COUNTIF($B$2:$B$10,D8) → expected 0, got 1",
-        "Sheet1!G9 =COUNTIF($B$2:$B$10,D9) → expected 0, got 1"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMIF_array.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 9,
-      "matched": 7,
+      "matched": 9,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!G18 =SUMIF(A6:A15,E13:E15,C6:C15) → expected 190, got 0",
-        "Sheet1!G26 =SUM(SUMIF(A6:A15,E13:E15,C6:C15)) → expected 550, got 0"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SUMPRODUCT.xlsx",
@@ -1777,32 +1641,20 @@
       "kind": "calc",
       "load_error": null,
       "compared": 531,
-      "matched": 400,
+      "matched": 531,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Rows!E2 =COUNTIF($A$2:$A$8,CONCAT(\"<>\",B2)) → expected 6, got 5",
-        "Rows!M2 =COUNTIF($G$2:$G$15,CONCAT(\"<>\",H2)) → expected 13, got 12",
-        "Rows!R2 =COUNTIF($G:$G,CONCAT(\"<>\",H2)) → expected 1048575, got 14",
-        "Rows!W2 =COUNTIF($T:$T,U2) → expected 1048574, got 14",
-        "Rows!AI2 =COUNTIF(AG$2:AG$15,AH2) → expected 1, got 7"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/STATISTICAL/COUNTIFS.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 312,
-      "matched": 249,
+      "matched": 312,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Rows1!L10 =COUNTIFS($I$2:$I$20,J10,$I$2:$I$20,K10) → expected 0, got 8",
-        "Rows1!M10 =COUNTIFS($I:$I,J10,$I:$I,K10) → expected 0, got 12",
-        "Rows1!L11 =COUNTIFS($I$2:$I$20,J11,$I$2:$I$20,K11) → expected 0, got 8",
-        "Rows1!M11 =COUNTIFS($I:$I,J11,$I:$I,K11) → expected 0, got 12",
-        "Rows1!L12 =COUNTIFS($I$2:$I$20,J12,$I$2:$I$20,K12) → expected 0, got 8"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/STATISTICAL/COVARIANCE.xlsx",
@@ -2237,16 +2089,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 36,
-      "matched": 0,
+      "matched": 36,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!C2 =DOLLARFR(A2,B2) → expected 12, got #NAME?",
-        "Sheet1!D2 =DOLLARDE(A2,B2) → expected 12, got #NAME?",
-        "Sheet1!C3 =DOLLARFR(A3,B3) → expected 12.014808, got #NAME?",
-        "Sheet1!D3 =DOLLARDE(A3,B3) → expected 13.02833333, got #NAME?",
-        "Sheet1!C4 =DOLLARFR(A4,B4) → expected 0.18, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/TEXT/EXACT.xlsx",
@@ -2314,16 +2160,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 6,
-      "matched": 0,
+      "matched": 6,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "REGEXEXTRACT!A2 =REGEXEXTRACT(A1,\"[A-Z][a-z]+\") → expected Lonely, got #NAME?",
-        "REGEXEXTRACT!A4 =REGEXEXTRACT(A1,\"[A-Z][a-z]+\",1) → expected Lonely, got #NAME?",
-        "REGEXREPLACE!B3 =REGEXREPLACE(A3,\"([A-Z][a-z]+)([A-Z][a-z]+)\",\"$2, $1 $2\") → expected Bond, James Bond, got #NAME?",
-        "REGEXTEST!A2 =REGEXTEST(A1,\"[A-Z]\") → expected TRUE, got #NAME?",
-        "REGEXTEST!A3 =REGEXTEST(A1,\"[A-Z]her\") → expected TRUE, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/TEXT/REPT.xlsx",
@@ -2409,16 +2249,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 18,
-      "matched": 0,
+      "matched": 18,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!B1 =TEXTSPLIT(A1,\",\") → expected Orange, got #NAME?",
-        "Sheet1!B2 =TEXTSPLIT(A2,\"\") → expected #VALUE!, got #NAME?",
-        "Sheet1!B3 =TEXTSPLIT(A3,\" \") → expected 1, got #NAME?",
-        "Sheet1!B4 =TEXTSPLIT(A4,\",\",\";\") → expected 1, got #NAME?",
-        "Sheet1!B7 =TEXTSPLIT(A7,\",\",,TRUE) → expected 1, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/TEXT/T_VALUE_VALUETOTEXT.xlsx",
@@ -2451,14 +2285,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 8,
-      "matched": 5,
+      "matched": 8,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!A1 =TEXTSPLIT(\"Hi, that's, AWSEOME,come, With, mE\",\",\") → expected Hi, got #NAME?",
-        "Sheet1!A2 =LOWER(A1#) → expected hi, got #NAME?",
-        "Sheet1!A3 =UPPER(A1#) → expected HI, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/arithmetic.xlsx",
@@ -2723,12 +2553,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 20,
-      "matched": 19,
+      "matched": 20,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!A14 =FV(-1,-1,1) → expected #DIV/0!, got #NUM!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/docs/MONTH.xlsx",
@@ -2842,15 +2670,11 @@
       "kind": "io",
       "load_error": null,
       "compared": 9,
-      "matched": 3,
+      "matched": 8,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!D13 =HYPERLINK(\"https://www.example.com\",\"Example via HYPERLINK\") → expected Example via HYPERLINK, got #NAME?",
-        "Sheet1!D14 =HYPERLINK(\"#Target!A1\",\"Go to Target!A1\") → expected Go to Target!A1, got #NAME?",
-        "Sheet1!D15 =HYPERLINK(\"mailto:test@example.com?subject=Test\",\"Mail via HYPERLINK\") → expected Mail via HYPERLINK, got #NAME?",
-        "Sheet1!D16 =HYPERLINK(\"C:\\Temp\\test.xlsx\",\"Open local file\") → expected Open local file, got #NAME?",
-        "Sheet1!D17 =HYPERLINK(\"https://\"&E21,E21) → expected 0, got #NAME?"
+        "Sheet1!B21 =[1]Sheet1!A1 → expected #REF!, got #NAME?"
       ]
     },
     {
@@ -2956,15 +2780,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 40,
-      "matched": 36,
+      "matched": 40,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Overview!C28 =LARGE(SUMIF('Expenses log'!$E$2:$E$147,UNIQUE(FILTER('Expenses log'!$E$2:$E$147,'Expenses log'!$E$2:$E$147<>\"\")),'Expenses log'!$F$2:$F$147),B28) → expected 387, got #NUM!",
-        "Overview!D28 =INDEX(UNIQUE(FILTER('Expenses log'!$E$2:$E$147,'Expenses log'!$E$2:$E$147<>\"\")),MATCH(C28,SUMIF('Expenses log'!$E$2:$E$147,UNIQUE(FILTER('Expenses log'!$E$2:$E$147,'Expenses log'!$E$2:$E$147<>\"\")),'Expenses log'!$F$2:$F$147),0)) → expected 45843, got #NUM!",
-        "Overview!C29 =LARGE(SUMIF('Expenses log'!$E$2:$E$147,UNIQUE(FILTER('Expenses log'!$E$2:$E$147,'Expenses log'!$E$2:$E$147<>\"\")),'Expenses log'!$F$2:$F$147),B29) → expected 269, got #NUM!",
-        "Overview!D29 =INDEX(UNIQUE(FILTER('Expenses log'!$E$2:$E$147,'Expenses log'!$E$2:$E$147<>\"\")),MATCH(C29,SUMIF('Expenses log'!$E$2:$E$147,UNIQUE(FILTER('Expenses log'!$E$2:$E$147,'Expenses log'!$E$2:$E$147<>\"\")),'Expenses log'!$F$2:$F$147),0)) → expected 45841, got #NUM!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/templates/weekly_timesheet.xlsx",
@@ -2987,16 +2806,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 781,
-      "matched": 415,
+      "matched": 781,
       "skipped_volatile": 1,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Words!B2 =IF(A2=\"\",\"\",REGEXTEST(A2,\"^[A-Z]{5}$\")) → expected TRUE, got #NAME?",
-        "Words!C2 =COUNTIF(B2:B1000,TRUE) → expected 365, got 0",
-        "Words!B3 =IF(A3=\"\",\"\",REGEXTEST(A3,\"^[A-Z]{5}$\")) → expected TRUE, got #NAME?",
-        "Words!B4 =IF(A4=\"\",\"\",REGEXTEST(A4,\"^[A-Z]{5}$\")) → expected TRUE, got #NAME?",
-        "Words!B5 =IF(A5=\"\",\"\",REGEXTEST(A5,\"^[A-Z]{5}$\")) → expected TRUE, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/templates/yearly_calendar.xlsx",

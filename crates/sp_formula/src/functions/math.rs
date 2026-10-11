@@ -1,9 +1,8 @@
 //! Math & Trig functions.
 
-use super::criteria::Criterion;
 use super::{Agg, Registry, arg_array, collect_numbers, m1, m2, ret};
 use crate::ast::Expr;
-use crate::eval::{Array2, Ev, EvalValue, num_value, to_number};
+use crate::eval::{Array2, Ev, EvalValue, num_value};
 use sp_core::{ErrorKind, Value};
 
 fn nz(x: f64) -> Result<f64, ErrorKind> {
@@ -28,7 +27,13 @@ pub fn round_to(x: f64, digits: f64) -> f64 {
 fn round_dir(x: f64, digits: f64, up: bool) -> f64 {
     let d = digits.trunc().clamp(-308.0, 308.0) as i32;
     let m = 10f64.powi(d);
-    let s = ((x * m).abs() * 1e9).round() / 1e9;
+    let raw = (x * m).abs();
+    // Absorb binary noise only when the scaled value is large enough to carry it.
+    let s = if raw >= 1e-6 {
+        (raw * 1e9).round() / 1e9
+    } else {
+        raw
+    };
     let r = if up { s.ceil() } else { s.floor() };
     r * x.signum() / m
 }
@@ -115,102 +120,13 @@ fn sumproduct(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     EvalValue::num(total)
 }
 
-/// Pairs of (criteria range, criterion) → mask over the shape of the first range.
+/// Pairs of (criteria range, criterion) → mask (see `criteria::criteria_mask`).
 pub fn criteria_mask(
     ev: &mut Ev<'_>,
     pairs: &[Expr],
     shape: Option<(usize, usize)>,
 ) -> Result<Vec<bool>, ErrorKind> {
-    let mut mask: Option<Vec<bool>> = None;
-    let mut dims = shape;
-    for pair in pairs.chunks(2) {
-        let (Some(re), Some(ce)) = (pair.first(), pair.get(1)) else {
-            return Err(ErrorKind::Value);
-        };
-        let range = ev.eval_array(re)?;
-        let crit = Criterion::parse(&ev.eval_scalar(ce));
-        if let Some((r, c)) = dims
-            && (range.rows != r || range.cols != c)
-        {
-            return Err(ErrorKind::Value);
-        }
-        dims = Some((range.rows, range.cols));
-        let m: Vec<bool> = range.data.iter().map(|v| crit.matches(v)).collect();
-        mask = Some(match mask {
-            None => m,
-            Some(prev) => prev.iter().zip(m).map(|(a, b)| *a && b).collect(),
-        });
-    }
-    mask.ok_or(ErrorKind::Value)
-}
-
-fn sumif(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
-    let (Some(re), Some(ce)) = (args.first(), args.get(1)) else {
-        return EvalValue::err(ErrorKind::Value);
-    };
-    let range = match ev.eval_array(re) {
-        Ok(a) => a,
-        Err(e) => return EvalValue::err(e),
-    };
-    let crit = Criterion::parse(&ev.eval_scalar(ce));
-    let sum_range = match args.get(2) {
-        Some(e) => match ev.eval(e) {
-            // The sum range is resized to the criteria range's shape from its top-left.
-            EvalValue::Ref(mut r) => {
-                r.range.end.row = r.range.start.row + range.rows.saturating_sub(1) as u32;
-                r.range.end.col = r.range.start.col + range.cols.saturating_sub(1) as u32;
-                match ev.ref_to_array(r) {
-                    Ok(a) => a,
-                    Err(e) => return EvalValue::err(e),
-                }
-            }
-            other => match ev.to_array(other) {
-                Ok(a) => a,
-                Err(e) => return EvalValue::err(e),
-            },
-        },
-        None => range.clone(),
-    };
-    let mut total = 0.0;
-    for (i, v) in range.data.iter().enumerate() {
-        if crit.matches(v) {
-            match sum_range.get(i / range.cols.max(1), i % range.cols.max(1)) {
-                Value::Number(n) => total += n,
-                Value::Error(e) => return EvalValue::err(*e),
-                _ => {}
-            }
-        }
-    }
-    EvalValue::num(total)
-}
-
-fn sumifs(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
-    if args.len() < 3 || args.len().is_multiple_of(2) {
-        return EvalValue::err(ErrorKind::Value);
-    }
-    let target = match arg_array(ev, args, 0) {
-        Ok(a) => a,
-        Err(e) => return EvalValue::err(e),
-    };
-    let mask = match criteria_mask(
-        ev,
-        args.get(1..).unwrap_or(&[]),
-        Some((target.rows, target.cols)),
-    ) {
-        Ok(m) => m,
-        Err(e) => return EvalValue::err(e),
-    };
-    let mut total = 0.0;
-    for (v, ok) in target.data.iter().zip(mask) {
-        if ok {
-            match v {
-                Value::Number(n) => total += n,
-                Value::Error(e) => return EvalValue::err(*e),
-                _ => {}
-            }
-        }
-    }
-    EvalValue::num(total)
+    super::criteria::criteria_mask(ev, pairs, shape)
 }
 
 fn subtotal(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
@@ -322,8 +238,40 @@ fn randbetween(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     })
 }
 
+/// Numbers for GCD/LCM/MULTINOMIAL: logicals are `#VALUE!`; numeric text counts (in
+/// ranges only when `text_in_refs`); blanks skip, but only blank direct arguments is `#VALUE!`.
+fn strict_numbers(ev: &mut Ev<'_>, args: &[Expr], text_in_refs: bool) -> Result<Vec<f64>, ErrorKind> {
+    let mut out = Vec::new();
+    let mut direct_blank = false;
+    for a in args {
+        let v = ev.eval(a);
+        let single = match &v {
+            crate::eval::EvalValue::Ref(r) => r.range.is_single(),
+            crate::eval::EvalValue::Scalar(_) => true,
+            _ => false,
+        };
+        let arr = ev.to_array(v)?;
+        for x in &arr.data {
+            match x {
+                Value::Number(n) => out.push(*n),
+                Value::Error(e) => return Err(*e),
+                Value::Bool(_) => return Err(ErrorKind::Value),
+                Value::Empty => direct_blank |= single,
+                Value::Text(t) if single || text_in_refs => {
+                    out.push(crate::eval::text_to_number(t).ok_or(ErrorKind::Value)?)
+                }
+                Value::Text(_) => return Err(ErrorKind::Value),
+            }
+        }
+    }
+    if out.is_empty() && direct_blank {
+        return Err(ErrorKind::Value);
+    }
+    Ok(out)
+}
+
 fn gcd_lcm(ev: &mut Ev<'_>, args: &[Expr], lcm: bool) -> EvalValue {
-    let nums = match collect_numbers(ev, args, Agg::Numbers) {
+    let nums = match strict_numbers(ev, args, true) {
         Ok(v) => v,
         Err(e) => return EvalValue::err(e),
     };
@@ -332,6 +280,9 @@ fn gcd_lcm(ev: &mut Ev<'_>, args: &[Expr], lcm: bool) -> EvalValue {
         .any(|n| *n < 0.0 || *n >= 9.007_199_254_740_992e15)
     {
         return EvalValue::err(ErrorKind::Num);
+    }
+    if nums.is_empty() {
+        return EvalValue::num(0.0);
     }
     let mut acc = if lcm { 1.0 } else { 0.0 };
     for n in nums.iter().map(|n| n.trunc()) {
@@ -516,13 +467,9 @@ fn mmult(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         for j in 0..b.cols {
             let mut s = 0.0;
             for k in 0..a.cols {
-                match (to_number(a.get(i, k)), to_number(b.get(k, j))) {
-                    (Ok(x), Ok(y))
-                        if !matches!(a.get(i, k), Value::Text(_))
-                            && !matches!(b.get(k, j), Value::Text(_)) =>
-                    {
-                        s += x * y
-                    }
+                match (a.get(i, k), b.get(k, j)) {
+                    (Value::Number(x), Value::Number(y)) => s += x * y,
+                    (Value::Error(e), _) | (_, Value::Error(e)) => return EvalValue::err(*e),
                     _ => return EvalValue::err(ErrorKind::Value),
                 }
             }
@@ -550,7 +497,7 @@ fn sum_x_y(ev: &mut Ev<'_>, args: &[Expr], f: fn(f64, f64) -> f64) -> EvalValue 
 }
 
 fn multinomial(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
-    let nums = match collect_numbers(ev, args, Agg::Numbers) {
+    let nums = match strict_numbers(ev, args, false) {
         Ok(v) => v,
         Err(e) => return EvalValue::err(e),
     };
@@ -826,7 +773,7 @@ pub fn register(r: &mut Registry) {
         m2(ev, a, None, |n, k| {
             if n < 0.0 || k < 0.0 {
                 Err(ErrorKind::Num)
-            } else if n == 0.0 && k == 0.0 {
+            } else if n.trunc() == 0.0 && k.trunc() == 0.0 {
                 Ok(1.0)
             } else {
                 combin(n.trunc() + k.trunc() - 1.0, k)
@@ -857,8 +804,6 @@ pub fn register(r: &mut Registry) {
     r.add("PRODUCT", 1, 255, product);
     r.add("SUMSQ", 1, 255, sumsq);
     r.add("SUMPRODUCT", 1, 255, sumproduct);
-    r.add("SUMIF", 2, 3, sumif);
-    r.add("SUMIFS", 3, 255, sumifs);
     r.add("SUBTOTAL", 2, 255, subtotal);
     r.add("RAND", 0, 0, rand);
     r.add("RANDBETWEEN", 2, 2, randbetween);

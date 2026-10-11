@@ -4,7 +4,9 @@
 //! parity (`fn.<NAME>`) as soon as it is registered here.
 
 pub mod arrays;
+pub mod bonds;
 pub mod criteria;
+pub mod database;
 pub mod datetime;
 pub mod distributions;
 pub mod engineering;
@@ -14,10 +16,13 @@ pub mod lambda;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod math_ext;
 pub mod special;
 pub mod stats;
 pub mod stats_ext;
+pub mod regex;
 pub mod text;
+pub mod text_ext;
 
 use crate::ast::Expr;
 use crate::eval::{Array2, Ev, EvalValue, num_value, to_number};
@@ -94,6 +99,12 @@ pub fn registry() -> &'static Registry {
         distributions::register(&mut r);
         stats_ext::register(&mut r);
         engineering::register(&mut r);
+        criteria::register(&mut r);
+        database::register(&mut r);
+        bonds::register(&mut r);
+        text_ext::register(&mut r);
+        regex::register(&mut r);
+        math_ext::register(&mut r);
         arrays::register(&mut r);
         lambda::register(&mut r);
         r
