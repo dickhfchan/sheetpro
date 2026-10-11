@@ -187,12 +187,24 @@ impl Collector<'_> {
                     self.add(out, s, r);
                 }
             }
-            Expr::Unary(_, a) | Expr::Spill(a) | Expr::Paren(a) => self.collect(a, depth, out),
+            Expr::Unary(_, a) | Expr::Spill(a) | Expr::Paren(a) | Expr::Implicit(a) => {
+                self.collect(a, depth, out)
+            }
+            Expr::Invoke(callee, args) => {
+                self.collect(callee, depth, out);
+                for a in args {
+                    self.collect(a, depth, out);
+                }
+            }
             Expr::Binary(_, a, b) => {
                 self.collect(a, depth, out);
                 self.collect(b, depth, out);
             }
-            Expr::Call(_, args) => {
+            Expr::Call(name, args) => {
+                // A defined name holding a LAMBDA, called by name.
+                if !self.names.is_empty() && crate::functions::registry().get(name).is_none() {
+                    self.collect(&Expr::Name(name.clone()), depth, out);
+                }
                 for a in args {
                     self.collect(a, depth, out);
                 }
@@ -472,6 +484,18 @@ impl DepGraph {
     pub fn dirty_from(&mut self, wb: &Workbook, changed: &[Key]) -> Option<FxSet<Key>> {
         let mut dirty: FxSet<Key> = FxSet::default();
         let mut queue: Vec<Key> = Vec::new();
+        // Spill areas: when an anchor is recomputed, its spilled cells change too.
+        let areas: FxMap<Key, CellRange> = wb
+            .sheets
+            .iter()
+            .enumerate()
+            .flat_map(|(si, s)| {
+                s.spills
+                    .iter()
+                    .filter(|x| !x.blocked)
+                    .map(move |x| ((si, x.range.start), x.range))
+            })
+            .collect();
         for &k in changed {
             if self.nodes.contains_key(&k) {
                 dirty.insert(k);
@@ -510,6 +534,13 @@ impl DepGraph {
             let mut col_probes: FxMap<(usize, u32), Vec<u32>> = FxMap::default();
             let mut sheet_probes: FxMap<usize, Vec<CellAddr>> = FxMap::default();
             while let Some(p) = queue.pop() {
+                if let Some(r) = areas.get(&p) {
+                    work += r.cell_count();
+                    if work > MAX_PROBE_WORK {
+                        return None;
+                    }
+                    queue.extend(r.iter().filter(|a| *a != p.1).map(|a| (p.0, a)));
+                }
                 if let Some(d) = self.cells.get(&p) {
                     for e in d.as_slice() {
                         work += 1;

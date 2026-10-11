@@ -154,6 +154,64 @@ pub trait Host {
         sp_core::date::now_serial()
     }
     fn random(&self) -> f64;
+    /// Spilled area of the dynamic-array formula anchored at `a` (`A1#`), if it spills.
+    fn spill_range(&self, _sheet: usize, _a: CellAddr) -> Option<CellRange> {
+        None
+    }
+}
+
+/// A `LAMBDA` value: parameter names, body, and the outer `LET`/parameter bindings its body
+/// refers to.
+#[derive(Debug, Clone)]
+pub struct Lambda {
+    pub params: Vec<String>,
+    pub body: Arc<Expr>,
+    pub captured: Vec<(String, EvalValue)>,
+}
+
+/// Something that can be applied to argument values: a lambda or a built-in function
+/// passed by name (`BYROW(A1:C3,SUM)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Callable {
+    Lambda(usize),
+    Builtin(&'static str),
+}
+
+/// Lambdas created during one formula evaluation (bounds memory on runaway recursion).
+const MAX_LAMBDAS: usize = 100_000;
+
+/// Function values travel through `EvalValue` as a 0×0 array whose hidden payload is
+/// `[#CALC!, id]`: anything that is not lambda-aware sees an empty array or `#CALC!`.
+fn lambda_marker(id: usize) -> EvalValue {
+    EvalValue::Array(Array2 {
+        rows: 0,
+        cols: 0,
+        data: vec![Value::Error(ErrorKind::Calc), Value::Number(id as f64)],
+    })
+}
+
+/// The value bound to a `LAMBDA` parameter whose argument was omitted.
+pub fn omitted() -> EvalValue {
+    EvalValue::Array(Array2 {
+        rows: 0,
+        cols: 0,
+        data: Vec::new(),
+    })
+}
+
+pub fn is_omitted(v: &EvalValue) -> bool {
+    matches!(v, EvalValue::Array(a) if a.rows == 0 && a.cols == 0 && a.data.is_empty())
+}
+
+/// Lambda id carried by a function value.
+pub fn lambda_id(v: &EvalValue) -> Option<usize> {
+    match v {
+        EvalValue::Array(a) if a.rows == 0 && a.cols == 0 => match a.data.as_slice() {
+            [Value::Error(ErrorKind::Calc), Value::Number(n)] => Some(*n as usize),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 pub struct Ev<'h> {
@@ -163,6 +221,7 @@ pub struct Ev<'h> {
     pub registry: &'static Registry,
     depth: usize,
     locals: Vec<(String, EvalValue)>,
+    lambdas: Vec<Lambda>,
 }
 
 impl<'h> Ev<'h> {
@@ -174,6 +233,7 @@ impl<'h> Ev<'h> {
             registry: functions::registry(),
             depth: 0,
             locals: Vec::new(),
+            lambdas: Vec::new(),
         }
     }
 
@@ -196,7 +256,18 @@ impl<'h> Ev<'h> {
             Expr::Missing => EvalValue::Scalar(Value::Empty),
             Expr::Paren(a) => self.eval(a),
             Expr::Ref(r) => self.eval_ref(r),
-            Expr::Spill(a) => self.eval(a),
+            Expr::Spill(a) => self.eval_spill(a),
+            Expr::Implicit(a) => {
+                let v = self.eval(a);
+                self.implicit(v)
+            }
+            Expr::Invoke(callee, args) => match self.callable(callee) {
+                Some(f) => {
+                    let vals = self.eval_args(args);
+                    self.apply(f, vals)
+                }
+                None => EvalValue::err(ErrorKind::Value),
+            },
             Expr::Name(n) => self.eval_name(n),
             Expr::Array(rows) => {
                 let nrows = rows.len();
@@ -220,6 +291,160 @@ impl<'h> Ev<'h> {
                 }
             },
             Expr::Call(name, args) => self.call(name, args),
+        }
+    }
+
+    /// `@v`: a multi-cell reference becomes the cell in the formula's row or column (or
+    /// `#VALUE!`), an array its top-left element.
+    pub fn implicit(&self, v: EvalValue) -> EvalValue {
+        let one = |r: SheetRange| -> EvalValue {
+            match self.intersect_addr(r) {
+                Some(a) => EvalValue::Ref(SheetRange {
+                    sheet: r.sheet,
+                    range: CellRange::single(a),
+                }),
+                None => EvalValue::err(ErrorKind::Value),
+            }
+        };
+        match v {
+            EvalValue::Ref(r) => one(r),
+            EvalValue::Refs(rs) => match rs.as_slice() {
+                [r] => one(*r),
+                _ => EvalValue::err(ErrorKind::Value),
+            },
+            // Function values and omitted parameters pass through.
+            EvalValue::Array(a) if a.rows == 0 || a.cols == 0 => EvalValue::Array(a),
+            EvalValue::Array(a) => EvalValue::Scalar(self.to_scalar(EvalValue::Array(a))),
+            s @ EvalValue::Scalar(_) => s,
+        }
+    }
+
+    /// `A1#`: the area spilled by the dynamic-array formula at the referenced cell.
+    fn eval_spill(&mut self, e: &Expr) -> EvalValue {
+        match self.eval(e) {
+            EvalValue::Ref(r) if r.range.is_single() => {
+                match self.host.spill_range(r.sheet, r.range.start) {
+                    Some(range) => EvalValue::Ref(SheetRange {
+                        sheet: r.sheet,
+                        range,
+                    }),
+                    None => EvalValue::err(ErrorKind::Ref),
+                }
+            }
+            EvalValue::Scalar(Value::Error(e)) => EvalValue::err(e),
+            _ => EvalValue::err(ErrorKind::Ref),
+        }
+    }
+
+    // ── lambdas ───────────────────────────────────────────────────────────────────────────
+
+    /// Create a lambda value; outer local bindings named in the body are captured.
+    pub fn make_lambda(&mut self, params: Vec<String>, body: &Expr) -> EvalValue {
+        if self.lambdas.len() >= MAX_LAMBDAS {
+            return EvalValue::err(ErrorKind::Calc);
+        }
+        let mut captured: Vec<(String, EvalValue)> = Vec::new();
+        if !self.locals.is_empty() {
+            body.walk(&mut |n| {
+                if let Expr::Name(name) | Expr::Call(name, _) = n
+                    && !params.iter().any(|p| p.eq_ignore_ascii_case(name))
+                    && !captured.iter().any(|(k, _)| k.eq_ignore_ascii_case(name))
+                    && let Some((k, v)) = self
+                        .locals
+                        .iter()
+                        .rev()
+                        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                {
+                    captured.push((k.clone(), v.clone()));
+                }
+            });
+        }
+        self.lambdas.push(Lambda {
+            params,
+            body: Arc::new(body.clone()),
+            captured,
+        });
+        lambda_marker(self.lambdas.len() - 1)
+    }
+
+    /// Resolve an expression used as a function: a lambda value, a name bound to one, or
+    /// the name of a built-in function.
+    pub fn callable(&mut self, e: &Expr) -> Option<Callable> {
+        if let Expr::Name(n) = e {
+            let local = self
+                .locals
+                .iter()
+                .rev()
+                .find(|(k, _)| k.eq_ignore_ascii_case(n))
+                .map(|(_, v)| lambda_id(v));
+            if let Some(id) = local {
+                return id.map(Callable::Lambda);
+            }
+            if self.host.defined_name(n, self.sheet).is_none() {
+                let upper = n.to_ascii_uppercase();
+                return self.registry.get(&upper).map(|s| Callable::Builtin(s.name));
+            }
+        }
+        let v = self.eval(e);
+        lambda_id(&v).map(Callable::Lambda)
+    }
+
+    /// Evaluate call arguments; omitted ones become the "omitted" marker.
+    pub fn eval_args(&mut self, args: &[Expr]) -> Vec<EvalValue> {
+        args.iter()
+            .map(|a| match a {
+                Expr::Missing => omitted(),
+                e => self.eval(e),
+            })
+            .collect()
+    }
+
+    /// Number of parameters a callable takes (`None` for variadic built-ins).
+    pub fn arity(&self, f: Callable) -> Option<usize> {
+        match f {
+            Callable::Lambda(id) => self.lambdas.get(id).map(|l| l.params.len()),
+            Callable::Builtin(_) => None,
+        }
+    }
+
+    /// Apply a callable to argument values.
+    pub fn apply(&mut self, f: Callable, args: Vec<EvalValue>) -> EvalValue {
+        if self.depth >= MAX_EVAL_DEPTH {
+            return EvalValue::err(ErrorKind::Calc);
+        }
+        match f {
+            Callable::Lambda(id) => {
+                let Some(l) = self.lambdas.get(id).cloned() else {
+                    return EvalValue::err(ErrorKind::Value);
+                };
+                if args.len() > l.params.len() {
+                    return EvalValue::err(ErrorKind::Value);
+                }
+                let n = l.captured.len() + l.params.len();
+                for (k, v) in l.captured {
+                    self.push_local(&k, v);
+                }
+                let mut args = args.into_iter();
+                for p in &l.params {
+                    let v = args.next().unwrap_or_else(omitted);
+                    self.push_local(p, v);
+                }
+                self.depth += 1;
+                let r = self.eval(&l.body);
+                self.depth -= 1;
+                self.pop_locals(n);
+                r
+            }
+            Callable::Builtin(name) => {
+                let n = args.len();
+                let exprs: Vec<Expr> = (0..n).map(|i| Expr::Name(format!("\u{1}{i}"))).collect();
+                for (i, v) in args.into_iter().enumerate() {
+                    self.push_local(&format!("\u{1}{i}"), v);
+                }
+                let r = self.call(name, &exprs);
+                self.pop_locals(n);
+                r
+            }
         }
     }
 
@@ -334,7 +559,33 @@ impl<'h> Ev<'h> {
     }
 
     fn call(&mut self, name: &str, args: &[Expr]) -> EvalValue {
+        // A LET/LAMBDA binding or defined name holding a lambda, called by name.
+        let local = self
+            .locals
+            .iter()
+            .rev()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| lambda_id(v));
+        if let Some(id) = local {
+            return match id {
+                Some(id) => {
+                    let vals = self.eval_args(args);
+                    self.apply(Callable::Lambda(id), vals)
+                }
+                None => EvalValue::err(ErrorKind::Value),
+            };
+        }
         let Some(spec) = self.registry.get(name) else {
+            if let Some(expr) = self.host.defined_name(name, self.sheet) {
+                let v = self.eval(&expr);
+                return match lambda_id(&v) {
+                    Some(id) => {
+                        let vals = self.eval_args(args);
+                        self.apply(Callable::Lambda(id), vals)
+                    }
+                    None => EvalValue::err(ErrorKind::Value),
+                };
+            }
             return EvalValue::err(ErrorKind::Name);
         };
         if args.len() < spec.min_args || args.len() > spec.max_args {
@@ -350,6 +601,11 @@ impl<'h> Ev<'h> {
     pub fn to_scalar(&self, v: EvalValue) -> Value {
         match v {
             EvalValue::Scalar(v) => v,
+            // Empty arrays: lambda values read as #CALC!, omitted parameters as blank.
+            EvalValue::Array(a) if a.rows == 0 || a.cols == 0 => match a.data.first() {
+                Some(Value::Error(e)) => Value::Error(*e),
+                _ => Value::Empty,
+            },
             EvalValue::Array(a) => a.get(0, 0).clone(),
             EvalValue::Ref(r) => self.intersect_value(r),
             EvalValue::Refs(rs) => match rs.as_slice() {
@@ -360,21 +616,25 @@ impl<'h> Ev<'h> {
     }
 
     fn intersect_value(&self, r: SheetRange) -> Value {
+        match self.intersect_addr(r) {
+            Some(a) => self.host.cell_value(r.sheet, a),
+            None => Value::Error(ErrorKind::Value),
+        }
+    }
+
+    /// Implicit intersection of a reference with the formula cell's row or column.
+    pub fn intersect_addr(&self, r: SheetRange) -> Option<CellAddr> {
         let rg = r.range;
         if rg.is_single() {
-            return self.host.cell_value(r.sheet, rg.start);
+            return Some(rg.start);
         }
         if rg.cols() == 1 && rg.start.row <= self.cell.row && self.cell.row <= rg.end.row {
-            return self
-                .host
-                .cell_value(r.sheet, CellAddr::new(self.cell.row, rg.start.col));
+            return Some(CellAddr::new(self.cell.row, rg.start.col));
         }
         if rg.rows() == 1 && rg.start.col <= self.cell.col && self.cell.col <= rg.end.col {
-            return self
-                .host
-                .cell_value(r.sheet, CellAddr::new(rg.start.row, self.cell.col));
+            return Some(CellAddr::new(rg.start.row, self.cell.col));
         }
-        Value::Error(ErrorKind::Value)
+        None
     }
 
     pub fn eval_scalar(&mut self, e: &Expr) -> Value {

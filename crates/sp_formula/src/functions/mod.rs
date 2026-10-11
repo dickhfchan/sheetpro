@@ -3,12 +3,14 @@
 //! Each category module exposes `register(&mut Registry)`. A function counts as live for
 //! parity (`fn.<NAME>`) as soon as it is registered here.
 
+pub mod arrays;
 pub mod criteria;
 pub mod datetime;
 pub mod distributions;
 pub mod engineering;
 pub mod financial;
 pub mod info;
+pub mod lambda;
 pub mod logical;
 pub mod lookup;
 pub mod math;
@@ -92,6 +94,8 @@ pub fn registry() -> &'static Registry {
         distributions::register(&mut r);
         stats_ext::register(&mut r);
         engineering::register(&mut r);
+        arrays::register(&mut r);
+        lambda::register(&mut r);
         r
     })
 }

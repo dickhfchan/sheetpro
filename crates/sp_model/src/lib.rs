@@ -72,6 +72,11 @@ impl Cell {
         }
     }
 
+    /// A value spilled here by an array formula (no content of its own).
+    pub fn is_spilled(&self) -> bool {
+        matches!(self.content, Content::Value(Value::Empty)) && !self.value.is_empty()
+    }
+
     /// A cell carrying no content and the default style can be dropped from storage.
     pub fn is_blank(&self) -> bool {
         matches!(self.content, Content::Value(Value::Empty)) && self.style == StyleId::DEFAULT
@@ -107,6 +112,19 @@ pub enum Visibility {
     Visible,
     Hidden,
     VeryHidden,
+}
+
+/// Area covered by an array formula anchored at `range.start`. Maintained by recalculation:
+/// dynamic-array results spill into the empty cells below/right of the anchor, which then
+/// hold the spilled value in `Cell::value` with empty content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpillArea {
+    pub range: CellRange,
+    /// Legacy fixed-size array formula (Ctrl+Shift+Enter): the area never resizes or blocks.
+    pub fixed: bool,
+    /// Dynamic spill blocked by non-empty cells (the anchor shows `#SPILL!`); `range` is the
+    /// area the result would need.
+    pub blocked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -145,6 +163,9 @@ pub struct Sheet {
     pub validations: Vec<DataValidation>,
     #[serde(default)]
     pub page_setup: PageSetup,
+    /// Array-formula areas, sorted by anchor (row-major).
+    #[serde(default)]
+    pub spills: Vec<SpillArea>,
 }
 
 pub const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -174,6 +195,7 @@ impl Sheet {
             allow_edit_ranges: Vec::new(),
             validations: Vec::new(),
             page_setup: PageSetup::default(),
+            spills: Vec::new(),
         }
     }
 
@@ -284,6 +306,18 @@ impl Sheet {
             .get(&row)
             .copied()
             .unwrap_or(self.default_row_height)
+    }
+
+    /// Array area anchored at `anchor`, if any.
+    pub fn spill_at_anchor(&self, anchor: CellAddr) -> Option<&SpillArea> {
+        self.spills.iter().find(|s| s.range.start == anchor)
+    }
+
+    /// Unblocked array area covering `a` (the anchor itself included).
+    pub fn spill_covering(&self, a: CellAddr) -> Option<&SpillArea> {
+        self.spills
+            .iter()
+            .find(|s| !s.blocked && s.range.contains(a))
     }
 
     pub fn merge_at(&self, a: CellAddr) -> Option<CellRange> {

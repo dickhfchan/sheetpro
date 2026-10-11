@@ -10,13 +10,20 @@
 //! reading every other formula's cached value. It falls back to a full recalc whenever the
 //! graph is missing or stale, the workbook has circular references, or propagation blows up,
 //! so its results always equal a full recalc's (volatile random draws aside).
+//!
+//! Dynamic arrays: a formula whose result has more than one value *spills* into the cells
+//! below/right of it. Spilled values live in those cells' `value` (their content stays
+//! empty) and each area is recorded in `Sheet::spills`. A spill blocked by non-empty cells
+//! makes the anchor `#SPILL!`. Reading a cell inside a recorded area waits for its anchor;
+//! a spill that grows into cells nobody expected triggers another (incremental) round for
+//! the dependents of the newly covered cells, until the areas are stable.
 
 use crate::ast::Expr;
 use crate::deps::{DepGraph, FxMap, FxSet};
-use crate::eval::{Ev, EvalValue, Host};
+use crate::eval::{Array2, Ev, EvalValue, Host, lambda_id};
 use crate::parser::{ParseError, parse};
-use sp_core::{CellAddr, CellRange, ErrorKind, Value};
-use sp_model::{Content, Workbook};
+use sp_core::{CellAddr, CellRange, ErrorKind, MAX_COLS, MAX_ROWS, Value};
+use sp_model::{Content, SpillArea, Workbook};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -83,9 +90,20 @@ pub struct RecalcOptions {
     pub seed: u64,
 }
 
+/// A computed formula's array output.
+#[derive(Debug, Clone, PartialEq)]
+enum SpillOut {
+    /// Values for every cell of `range` (row-major, anchor included).
+    Spilled(CellRange, Vec<Value>),
+    Blocked(CellRange),
+}
+
 struct WbHost<'a> {
     wb: &'a Workbook,
     computed: RefCell<FxMap<Key, Value>>,
+    /// Array outputs of formulas computed in this pass, plus an index of spilled areas.
+    spills: RefCell<FxMap<Key, SpillOut>>,
+    spill_index: RefCell<Vec<(usize, CellRange)>>,
     pending: RefCell<Vec<Key>>,
     /// Incremental mode: formulas outside this set read their cached value.
     dirty: Option<&'a FxSet<Key>>,
@@ -114,6 +132,8 @@ impl<'a> WbHost<'a> {
         WbHost {
             wb,
             computed: RefCell::new(FxMap::default()),
+            spills: RefCell::new(FxMap::default()),
+            spill_index: RefCell::new(Vec::new()),
             pending: RefCell::new(Vec::new()),
             dirty,
             names,
@@ -139,6 +159,78 @@ impl<'a> WbHost<'a> {
         }
         Value::Empty
     }
+
+    /// Value of a cell without content of its own: a spilled value, or blank.
+    fn spilled_value(&self, sheet: usize, a: CellAddr, stored: &Value) -> Value {
+        if self.use_cached {
+            return stored.clone();
+        }
+        // Spilled by a formula computed in this pass.
+        let hit = self
+            .spill_index
+            .borrow()
+            .iter()
+            .find(|(s, r)| *s == sheet && r.contains(a))
+            .map(|(_, r)| r.start);
+        if let Some(anchor) = hit
+            && let Some(SpillOut::Spilled(r, vals)) = self.spills.borrow().get(&(sheet, anchor))
+        {
+            let i =
+                (a.row - r.start.row) as usize * r.cols() as usize + (a.col - r.start.col) as usize;
+            return vals.get(i).cloned().unwrap_or(Value::Empty);
+        }
+        // Inside the area spilled last time: wait for that anchor.
+        let Some(area) = self.wb.sheet(sheet).and_then(|s| s.spill_covering(a)) else {
+            return Value::Empty;
+        };
+        let key = (sheet, area.range.start);
+        if key.1 == a || self.computed.borrow().contains_key(&key) {
+            return Value::Empty;
+        }
+        if self.dirty.is_some_and(|d| !d.contains(&key)) {
+            return stored.clone();
+        }
+        let mut p = self.pending.borrow_mut();
+        if p.len() < MAX_PENDING {
+            p.push(key);
+        }
+        Value::Empty
+    }
+
+    /// Spill cells of this pass inside `range` that are not stored yet.
+    fn unstored_spills(&self, sheet: usize, range: CellRange) -> Vec<(CellAddr, Value)> {
+        let mut out = Vec::new();
+        let idx = self.spill_index.borrow();
+        if idx.is_empty() {
+            return out;
+        }
+        let Some(s) = self.wb.sheet(sheet) else {
+            return out;
+        };
+        let spills = self.spills.borrow();
+        for (si, r) in idx.iter() {
+            if *si != sheet {
+                continue;
+            }
+            let Some(i) = r.intersect(&range) else {
+                continue;
+            };
+            let Some(SpillOut::Spilled(_, vals)) = spills.get(&(sheet, r.start)) else {
+                continue;
+            };
+            for a in i.iter() {
+                if a == r.start || s.get(a).is_some() {
+                    continue;
+                }
+                let k = (a.row - r.start.row) as usize * r.cols() as usize
+                    + (a.col - r.start.col) as usize;
+                if let Some(v) = vals.get(k) {
+                    out.push((a, v.clone()));
+                }
+            }
+        }
+        out
+    }
 }
 
 impl Host for WbHost<'_> {
@@ -148,6 +240,7 @@ impl Host for WbHost<'_> {
         };
         match &c.content {
             Content::Formula(_) => self.formula_value((sheet, a), &c.value),
+            Content::Value(Value::Empty) => self.spilled_value(sheet, a, &c.value),
             Content::Value(v) => v.clone(),
         }
     }
@@ -156,15 +249,69 @@ impl Host for WbHost<'_> {
         let Some(s) = self.wb.sheet(sheet) else {
             return;
         };
-        for (addr, c) in s.cells_in(range) {
+        let extra = self.unstored_spills(sheet, range);
+        let value_of = |addr: CellAddr, c: &sp_model::Cell| -> Option<Value> {
             match &c.content {
-                Content::Formula(_) => {
-                    let v = self.formula_value((sheet, addr), &c.value);
-                    f(addr, &v);
-                }
-                Content::Value(v) => f(addr, v),
+                Content::Formula(_) => Some(self.formula_value((sheet, addr), &c.value)),
+                Content::Value(Value::Empty) => Some(self.spilled_value(sheet, addr, &c.value)),
+                Content::Value(_) => None,
             }
+        };
+        if extra.is_empty() {
+            for (addr, c) in s.cells_in(range) {
+                match value_of(addr, c) {
+                    Some(v) => f(addr, &v),
+                    None => {
+                        if let Content::Value(v) = &c.content {
+                            f(addr, v);
+                        }
+                    }
+                }
+            }
+            return;
         }
+        let mut all: Vec<(CellAddr, Value)> = extra;
+        for (addr, c) in s.cells_in(range) {
+            let v = match value_of(addr, c) {
+                Some(v) => v,
+                None => match &c.content {
+                    Content::Value(v) => v.clone(),
+                    Content::Formula(_) => Value::Empty,
+                },
+            };
+            all.push((addr, v));
+        }
+        all.sort_unstable_by_key(|(a, _)| (a.row, a.col));
+        for (a, v) in &all {
+            f(*a, v);
+        }
+    }
+
+    fn spill_range(&self, sheet: usize, a: CellAddr) -> Option<CellRange> {
+        let s = self.wb.sheet(sheet)?;
+        let c = s.get(a)?;
+        c.formula_src()?;
+        let model = || match s.spill_at_anchor(a) {
+            Some(area) if area.blocked => None,
+            Some(area) => Some(area.range),
+            None => Some(CellRange::single(a)),
+        };
+        if self.use_cached {
+            return model();
+        }
+        let key = (sheet, a);
+        let _ = self.formula_value(key, &c.value);
+        if self.computed.borrow().contains_key(&key) {
+            return match self.spills.borrow().get(&key) {
+                Some(SpillOut::Spilled(r, _)) => Some(*r),
+                Some(SpillOut::Blocked(_)) => None,
+                None => Some(CellRange::single(a)),
+            };
+        }
+        if self.dirty.is_some_and(|d| !d.contains(&key)) {
+            return model();
+        }
+        None
     }
 
     fn cell_formula(&self, sheet: usize, a: CellAddr) -> Option<String> {
@@ -229,7 +376,7 @@ fn finalize(ev: &Ev<'_>, v: EvalValue) -> Value {
             Some(r) if rs.len() == 1 => ev.host.cell_value(r.sheet, r.range.start),
             _ => Value::Error(ErrorKind::Value),
         },
-        EvalValue::Array(a) => a.get(0, 0).clone(),
+        a @ EvalValue::Array(_) => ev.to_scalar(a),
         EvalValue::Scalar(v) => v,
     };
     match v {
@@ -237,6 +384,98 @@ fn finalize(ev: &Ev<'_>, v: EvalValue) -> Value {
         Value::Number(n) if !n.is_finite() => Value::Error(ErrorKind::Num),
         other => other,
     }
+}
+
+/// Largest array a formula may spill.
+const MAX_SPILL_CELLS: u64 = 1_000_000;
+/// Rounds of re-evaluation after spills grow before giving up on further propagation.
+const MAX_SPILL_ROUNDS: usize = 16;
+
+fn normalize(v: Value) -> Value {
+    match v {
+        Value::Empty => Value::Number(0.0),
+        Value::Number(n) if !n.is_finite() => Value::Error(ErrorKind::Num),
+        other => other,
+    }
+}
+
+/// Final value of the formula at `key`, and its array output: a legacy array formula fills
+/// its fixed area; a dynamic one spills a multi-valued result (or is blocked).
+fn finalize_formula(
+    ev: &Ev<'_>,
+    wb: &Workbook,
+    key: Key,
+    v: EvalValue,
+) -> (Value, Option<SpillOut>) {
+    let sheet = wb.sheet(key.0);
+    let fixed = sheet
+        .and_then(|s| s.spill_at_anchor(key.1))
+        .filter(|a| a.fixed)
+        .map(|a| a.range);
+    if lambda_id(&v).is_some() {
+        return (Value::Error(ErrorKind::Calc), None);
+    }
+    let multi = match &v {
+        EvalValue::Array(a) => a.rows * a.cols != 1,
+        EvalValue::Ref(r) => !r.range.is_single(),
+        EvalValue::Refs(rs) => rs.len() == 1 && rs.iter().any(|r| !r.range.is_single()),
+        EvalValue::Scalar(_) => false,
+    };
+    if let Some(f) = fixed {
+        let arr = match ev.to_array(v) {
+            Ok(a) => a,
+            Err(e) => Array2::scalar(Value::Error(e)),
+        };
+        let vals: Vec<Value> = (0..f.rows() as usize)
+            .flat_map(|r| (0..f.cols() as usize).map(move |c| (r, c)))
+            .map(|(r, c)| normalize(arr.get_broadcast(r, c)))
+            .collect();
+        let first = vals.first().cloned().unwrap_or(Value::Number(0.0));
+        return (first, Some(SpillOut::Spilled(f, vals)));
+    }
+    if !multi {
+        return (finalize(ev, v), None);
+    }
+    let arr = match ev.to_array(v) {
+        Ok(a) => a,
+        Err(e) => return (Value::Error(e), None),
+    };
+    if arr.rows == 0 || arr.cols == 0 {
+        return (Value::Error(ErrorKind::Calc), None);
+    }
+    let a = key.1;
+    let end_row = u64::from(a.row) + arr.rows as u64 - 1;
+    let end_col = u64::from(a.col) + arr.cols as u64 - 1;
+    let range = CellRange::new(
+        a,
+        CellAddr::new(
+            end_row.min(u64::from(MAX_ROWS - 1)) as u32,
+            end_col.min(u64::from(MAX_COLS - 1)) as u32,
+        ),
+    );
+    let off_sheet = end_row >= u64::from(MAX_ROWS) || end_col >= u64::from(MAX_COLS);
+    let blocked = off_sheet
+        || (arr.rows as u64) * (arr.cols as u64) > MAX_SPILL_CELLS
+        || sheet.is_some_and(|s| {
+            s.cells_in(range)
+                .any(|(p, c)| p != a && !matches!(c.content, Content::Value(Value::Empty)))
+                || s.merges.iter().any(|m| m.intersect(&range).is_some())
+        });
+    if blocked {
+        return (
+            Value::Error(ErrorKind::Spill),
+            Some(SpillOut::Blocked(range)),
+        );
+    }
+    let vals: Vec<Value> = arr.data.into_iter().map(normalize).collect();
+    let first = vals.first().cloned().unwrap_or(Value::Number(0.0));
+    (first, Some(SpillOut::Spilled(range, vals)))
+}
+
+/// Values and array outputs of one evaluation pass.
+struct Computed {
+    values: FxMap<Key, Value>,
+    spills: FxMap<Key, SpillOut>,
 }
 
 /// Evaluate `order` (formula key + source) demand-driven; returns each formula's value.
@@ -247,7 +486,7 @@ fn compute(
     dirty: Option<&FxSet<Key>>,
     opts: RecalcOptions,
     stats: &mut RecalcStats,
-) -> FxMap<Key, Value> {
+) -> Computed {
     let sources: FxMap<Key, &str> = order.iter().map(|(k, s)| (*k, s.as_str())).collect();
     let host = WbHost::new(wb, false, dirty, opts);
     // Formulas evaluated at least once and waiting for pending precedents. They are exactly
@@ -277,7 +516,7 @@ fn compute(
                     let r = ev.eval(&expr);
                     // Finalizing may read a returned reference's cell: do it before checking
                     // for pending precedents so those reads are tracked too.
-                    let v = finalize(&ev, r);
+                    let (v, spill) = finalize_formula(&ev, wb, top, r);
                     stats.evaluations += 1;
                     let pending: Vec<Key> = std::mem::take(&mut *host.pending.borrow_mut());
                     if !pending.is_empty() {
@@ -296,20 +535,183 @@ fn compute(
                         }
                         continue;
                     }
+                    if let Some(sp) = spill {
+                        if let SpillOut::Spilled(r, _) = &sp {
+                            host.spill_index.borrow_mut().push((top.0, *r));
+                        }
+                        host.spills.borrow_mut().insert(top, sp);
+                    }
                     v
                 }
             };
             host.computed.borrow_mut().insert(top, value);
         }
     }
-    host.computed.into_inner()
+    Computed {
+        values: host.computed.into_inner(),
+        spills: host.spills.into_inner(),
+    }
 }
 
-fn write_back(wb: &mut Workbook, results: FxMap<Key, Value>) {
-    for ((si, a), v) in results {
-        if let Some(c) = wb.sheet_mut(si).and_then(|s| s.get_mut(a)) {
-            c.value = v;
+/// Clear the spilled values of `area` (cells without content of their own), except `keep`.
+fn clear_area(s: &mut sp_model::Sheet, area: CellRange, keep: Option<CellRange>) {
+    let cells: Vec<CellAddr> = s
+        .cells_in(area)
+        .filter(|(a, c)| {
+            *a != area.start
+                && matches!(c.content, Content::Value(Value::Empty))
+                && !keep.is_some_and(|k| k.contains(*a))
+        })
+        .map(|(a, _)| a)
+        .collect();
+    for a in cells {
+        if let Some(c) = s.get_mut(a) {
+            c.value = Value::Empty;
+            if c.is_blank() {
+                s.remove(a);
+            }
         }
+    }
+}
+
+fn set_area(s: &mut sp_model::Sheet, area: SpillArea) {
+    s.spills.retain(|x| x.range.start != area.range.start);
+    let at = s.spills.partition_point(|x| {
+        (x.range.start.row, x.range.start.col) < (area.range.start.row, area.range.start.col)
+    });
+    s.spills.insert(at, area);
+}
+
+/// Write computed values and spills into the workbook. Returns cells newly covered by a
+/// spill (readers evaluated earlier may have seen them blank).
+fn write_back(wb: &mut Workbook, results: Computed) -> Vec<Key> {
+    let mut grown = Vec::new();
+    for (&(si, a), v) in &results.values {
+        let Some(s) = wb.sheet_mut(si) else { continue };
+        let Some(c) = s.get_mut(a) else { continue };
+        c.value = v.clone();
+        if c.formula_src().is_none() {
+            continue;
+        }
+        let old = s.spill_at_anchor(a).copied();
+        let old_live = old.filter(|o| !o.blocked).map(|o| o.range);
+        match results.spills.get(&(si, a)) {
+            None => {
+                if let Some(o) = old {
+                    if let Some(r) = old_live {
+                        clear_area(s, r, None);
+                    }
+                    s.spills.retain(|x| x.range.start != o.range.start);
+                }
+            }
+            Some(SpillOut::Blocked(r)) => {
+                if let Some(o) = old_live {
+                    clear_area(s, o, None);
+                }
+                set_area(
+                    s,
+                    SpillArea {
+                        range: *r,
+                        fixed: false,
+                        blocked: true,
+                    },
+                );
+            }
+            Some(SpillOut::Spilled(r, vals)) => {
+                if let Some(o) = old_live {
+                    clear_area(s, o, Some(*r));
+                }
+                let cols = r.cols() as usize;
+                for (i, v) in vals.iter().enumerate() {
+                    let p = CellAddr::new(
+                        r.start.row + (i / cols) as u32,
+                        r.start.col + (i % cols) as u32,
+                    );
+                    if p == a {
+                        continue;
+                    }
+                    if !old_live.is_some_and(|o| o.contains(p)) {
+                        grown.push((si, p));
+                    }
+                    let cell = s.entry(p);
+                    if matches!(cell.content, Content::Value(Value::Empty)) {
+                        cell.value = v.clone();
+                    }
+                }
+                set_area(
+                    s,
+                    SpillArea {
+                        range: *r,
+                        fixed: old.is_some_and(|o| o.fixed),
+                        blocked: false,
+                    },
+                );
+            }
+        }
+    }
+    grown
+}
+
+/// Drop array areas whose anchor no longer holds a formula (clearing their values); the
+/// cleared cells are returned so their dependents can be recomputed.
+fn drop_dead_areas(wb: &mut Workbook, only: Option<&[Key]>) -> Vec<Key> {
+    let mut cleared = Vec::new();
+    for (si, s) in wb.sheets.iter_mut().enumerate() {
+        if s.spills.is_empty() {
+            continue;
+        }
+        let dead: Vec<SpillArea> = s
+            .spills
+            .iter()
+            .filter(|x| {
+                only.is_none_or(|o| o.contains(&(si, x.range.start)))
+                    && s.get(x.range.start).and_then(|c| c.formula_src()).is_none()
+            })
+            .copied()
+            .collect();
+        for d in dead {
+            if !d.blocked {
+                cleared.extend(
+                    s.cells_in(d.range)
+                        .filter(|(a, c)| *a != d.range.start && c.is_spilled())
+                        .map(|(a, _)| (si, a)),
+                );
+                clear_area(s, d.range, None);
+            }
+            s.spills.retain(|x| x.range.start != d.range.start);
+        }
+    }
+    cleared
+}
+
+/// Re-evaluate dependents of cells newly covered by spills until the areas settle.
+fn settle_spills(
+    wb: &mut Workbook,
+    cache: &mut AstCache,
+    graph: &mut DepGraph,
+    mut grown: Vec<Key>,
+    opts: RecalcOptions,
+    stats: &mut RecalcStats,
+) {
+    let mut rounds = 0;
+    while !grown.is_empty() && rounds < MAX_SPILL_ROUNDS {
+        rounds += 1;
+        let Some(dirty) = graph.dirty_from(wb, &grown) else {
+            return;
+        };
+        let mut order: Vec<(Key, String)> = dirty
+            .iter()
+            .filter_map(|k| {
+                let src = wb.sheet(k.0)?.get(k.1)?.formula_src()?;
+                Some((*k, src.to_string()))
+            })
+            .collect();
+        if order.is_empty() {
+            return;
+        }
+        order.sort_unstable_by_key(|(k, _)| *k);
+        let results = compute(wb, cache, &order, Some(&dirty), opts, stats);
+        grown = write_back(wb, results);
     }
 }
 
@@ -326,14 +728,18 @@ pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> R
         }
     }
     stats.formulas = formulas.len();
+    drop_dead_areas(wb, None);
     let results = compute(wb, cache, &formulas, None, opts, &mut stats);
-    write_back(wb, results);
+    let grown = write_back(wb, results);
     let mut graph = DepGraph::new(wb);
     for (key, src) in &formulas {
         let expr = cache.get(*key, src).ok();
         graph.insert(wb, *key, expr.as_deref());
     }
     graph.has_cycles = stats.cycles > 0;
+    if !grown.is_empty() && !graph.has_cycles {
+        settle_spills(wb, cache, &mut graph, grown, opts, &mut stats);
+    }
     cache.deps = Some(graph);
     stats
 }
@@ -368,7 +774,24 @@ pub fn recalc_dirty(
             None => graph.remove(key),
         }
     }
-    let Some(dirty) = graph.dirty_from(wb, changed) else {
+    // Array areas: an edit inside one re-evaluates its anchor (to block or unblock it); a
+    // removed anchor's spilled values disappear.
+    let mut changed: Vec<Key> = changed.to_vec();
+    let cleared = drop_dead_areas(wb, Some(&changed));
+    let mut anchors: Vec<Key> = Vec::new();
+    for &(si, a) in &changed {
+        if let Some(s) = wb.sheet(si) {
+            anchors.extend(
+                s.spills
+                    .iter()
+                    .filter(|x| x.range.start != a && x.range.contains(a))
+                    .map(|x| (si, x.range.start)),
+            );
+        }
+    }
+    changed.extend(cleared);
+    changed.extend(anchors);
+    let Some(dirty) = graph.dirty_from(wb, &changed) else {
         return recalc(wb, cache, opts);
     };
     let mut order: Vec<(Key, String)> = dirty
@@ -390,7 +813,11 @@ pub fn recalc_dirty(
         // A new circular reference: resolve it exactly as a full recalc would.
         return recalc(wb, cache, opts);
     }
-    write_back(wb, results);
+    let grown = write_back(wb, results);
+    settle_spills(wb, cache, &mut graph, grown, opts, &mut stats);
+    if stats.cycles > 0 {
+        return recalc(wb, cache, opts);
+    }
     cache.deps = Some(graph);
     stats
 }
@@ -610,7 +1037,7 @@ mod tests {
             ("B2", "=SUM(A:A)"),
             ("B3", "=COUNTBLANK(A:A)"),
             ("B4", "=SUM(2:2)"),
-            ("B5", "=(A1):(A3)"),
+            ("B5", "=INDEX((A1):(A3),1)"),
             ("B6", "=SUM((A1):(A9))"),
             ("C1", "=B1+B2"),
             ("D1", "=Total*2"),
@@ -769,5 +1196,319 @@ mod tests {
     fn empty_ref_is_zero() {
         let wb = wb_with(&[("A1", "=Z99")]);
         assert_eq!(v(&wb, "A1"), Value::Number(0.0));
+    }
+
+    fn n(x: f64) -> Value {
+        Value::Number(x)
+    }
+
+    #[test]
+    fn spill_fills_cells_and_spill_ref() {
+        let wb = wb_with(&[
+            ("A1", "=SEQUENCE(3)"),
+            ("B1", "=SUM(A1#)"),
+            ("C1", "=A3*10"),
+            ("D1", "=ROWS(A1#)"),
+            ("E1", "=SUM(A1:A3)"),
+        ]);
+        assert_eq!(v(&wb, "A2"), n(2.0));
+        assert_eq!(v(&wb, "A3"), n(3.0));
+        assert_eq!(v(&wb, "B1"), n(6.0));
+        assert_eq!(v(&wb, "C1"), n(30.0));
+        assert_eq!(v(&wb, "D1"), n(3.0));
+        assert_eq!(v(&wb, "E1"), n(6.0));
+        let s = &wb.sheets[0];
+        assert!(s.get(CellAddr::parse("A2").unwrap()).unwrap().is_spilled());
+        assert_eq!(s.spills.len(), 1);
+        assert_eq!(s.spills[0].range.to_a1(), "A1:A3");
+        // `A1#` on a cell that is not an anchor is #REF!.
+        let wb = wb_with(&[("A1", "5"), ("B1", "=SUM(A1#)")]);
+        assert_eq!(v(&wb, "B1"), Value::Error(ErrorKind::Ref));
+    }
+
+    #[test]
+    fn blocked_spill_and_unblock() {
+        let (mut wb, mut cache) = base(&[("A1", "=SEQUENCE(3)"), ("A3", "x"), ("B1", "=A2")]);
+        assert_eq!(v(&wb, "A1"), Value::Error(ErrorKind::Spill));
+        assert_eq!(v(&wb, "A2"), Value::Empty);
+        assert_eq!(v(&wb, "B1"), n(0.0));
+        assert!(wb.sheets[0].spills[0].blocked);
+        // Clearing the blocker lets it spill (incremental).
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A3", "")]);
+        assert_eq!(v(&wb, "A1"), n(1.0));
+        assert_eq!(v(&wb, "B1"), n(2.0));
+        // Typing into the spill area blocks it again.
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A2", "7")]);
+        assert_eq!(v(&wb, "A1"), Value::Error(ErrorKind::Spill));
+        assert_eq!(v(&wb, "A3"), Value::Empty);
+        assert_eq!(v(&wb, "B1"), n(7.0));
+        // Off the sheet edge.
+        let wb = wb_with(&[("A1048575", "=SEQUENCE(3)")]);
+        assert_eq!(v(&wb, "A1048575"), Value::Error(ErrorKind::Spill));
+    }
+
+    #[test]
+    fn spill_resizes_incrementally() {
+        let (mut wb, mut cache) = base(&[
+            ("A1", "2"),
+            ("B1", "=SEQUENCE(A1)"),
+            ("C1", "=B4+1"),
+            ("D1", "=SUM(B1#)"),
+            ("E1", "=COUNT(B:B)"),
+        ]);
+        assert_eq!(v(&wb, "D1"), n(3.0));
+        assert_eq!(v(&wb, "C1"), n(1.0));
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "5")]);
+        assert_eq!(v(&wb, "B5"), n(5.0));
+        assert_eq!(v(&wb, "C1"), n(5.0));
+        assert_eq!(v(&wb, "D1"), n(15.0));
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "1")]);
+        assert_eq!(v(&wb, "B2"), Value::Empty);
+        assert_eq!(v(&wb, "C1"), n(1.0));
+        assert_eq!(v(&wb, "E1"), n(1.0));
+        // Spill feeding a spill.
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "4"), (0, "F1", "=B1#*2")]);
+        assert_eq!(v(&wb, "F4"), n(8.0));
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "2")]);
+        assert_eq!(v(&wb, "F3"), Value::Empty);
+        // Removing the anchor clears its spill.
+        edit_and_compare(&mut wb, &mut cache, &[(0, "B1", "")]);
+        assert_eq!(v(&wb, "B2"), Value::Empty);
+        assert!(wb.sheets[0].spills.iter().all(|s| s.range.start.col != 1));
+    }
+
+    #[test]
+    fn random_spill_edits_match_full() {
+        let (mut wb, mut cache) = base(&[("A1", "3")]);
+        let inputs = [
+            ("B1", "=SEQUENCE(A1)"),
+            ("C2", "=B1#+1"),
+            ("B3", "x"),
+            ("B3", ""),
+            ("A1", "6"),
+            ("D1", "=FILTER(B1:B9,B1:B9>2,\"none\")"),
+            ("E1", "=SUM(D1#)"),
+            ("A1", "1"),
+            ("C3", "=TRANSPOSE(B1:B4)"),
+            ("A1", "5"),
+            ("C2", ""),
+        ];
+        for (a, i) in inputs {
+            edit_and_compare(&mut wb, &mut cache, &[(0, a, i)]);
+        }
+    }
+
+    #[test]
+    fn implicit_intersection() {
+        let wb = wb_with(&[
+            ("A1", "1"),
+            ("A2", "2"),
+            ("A3", "3"),
+            ("B2", "=@A1:A3"),
+            ("C2", "=@A1:A3*10"),
+            ("D5", "=@A1:A3"),
+            ("E2", "=SUM(@A:A)"),
+            ("F2", "=@SEQUENCE(3)"),
+        ]);
+        assert_eq!(v(&wb, "B2"), n(2.0));
+        assert_eq!(v(&wb, "C2"), n(20.0));
+        assert_eq!(v(&wb, "D5"), Value::Error(ErrorKind::Value));
+        assert_eq!(v(&wb, "E2"), n(2.0));
+        assert_eq!(v(&wb, "F2"), n(1.0));
+        assert_eq!(v(&wb, "F3"), Value::Empty);
+        // Legacy rewriting adds `@` only where a value could be multi-cell.
+        let legacy = |s: &str| crate::to_formula(&parse(s).unwrap().into_legacy());
+        assert_eq!(legacy("A1:A3"), "@A1:A3");
+        assert_eq!(legacy("A1:A3*2+B1"), "@A1:A3*2+B1");
+        assert_eq!(legacy("SUM(A1:A3)"), "SUM(A1:A3)");
+        assert_eq!(legacy("ABS(A1:A3)"), "@ABS(A1:A3)");
+        assert_eq!(legacy("IF(A1,1,2)"), "IF(A1,1,2)");
+        let e = parse("@A1:A3*2").unwrap();
+        assert_eq!(crate::to_formula(&e.from_legacy().unwrap()), "A1:A3*2");
+        assert!(parse("SEQUENCE(3)").unwrap().from_legacy().is_none());
+    }
+
+    #[test]
+    fn fixed_array_area_broadcasts() {
+        let mut wb = Workbook::new();
+        let s = &mut wb.sheets[0];
+        for r in 0..6 {
+            s.set(CellAddr::new(r, 0), MCell::constant(n(f64::from(r) + 1.0)));
+        }
+        s.set(CellAddr::new(0, 1), MCell::formula("A1:A6"));
+        s.set(CellAddr::new(0, 2), MCell::formula("123"));
+        s.set(CellAddr::new(0, 3), MCell::formula("SUM(C1#)"));
+        for (a, b) in [("B1:B3", true), ("C1:C4", true)] {
+            s.spills.push(sp_model::SpillArea {
+                range: CellRange::parse(a).unwrap(),
+                fixed: b,
+                blocked: false,
+            });
+        }
+        recalc(&mut wb, &mut AstCache::default(), OPTS);
+        assert_eq!(v(&wb, "B3"), n(3.0));
+        assert_eq!(v(&wb, "B4"), Value::Empty);
+        assert_eq!(v(&wb, "C4"), n(123.0));
+        assert_eq!(v(&wb, "D1"), n(492.0));
+    }
+
+    #[test]
+    fn array_functions() {
+        let wb = wb_with(&[
+            ("A1", "3"),
+            ("A2", "1"),
+            ("A3", "2"),
+            ("A4", "1"),
+            ("B1", "c"),
+            ("B2", "a"),
+            ("B3", "b"),
+            ("B4", "A"),
+            ("C1", "=TEXTJOIN(\",\",,SORT(A1:A4))"),
+            ("C2", "=TEXTJOIN(\",\",,SORT(A1:A4,1,-1))"),
+            ("C3", "=TEXTJOIN(\",\",,UNIQUE(A1:A4))"),
+            ("C4", "=TEXTJOIN(\",\",,UNIQUE(B1:B4))"),
+            ("C5", "=TEXTJOIN(\",\",,FILTER(B1:B4,A1:A4>1))"),
+            ("C6", "=FILTER(A1:A4,A1:A4>9,\"none\")"),
+            ("C7", "=FILTER(A1:A4,A1:A4>9)"),
+            ("C8", "=TEXTJOIN(\",\",,SORTBY(B1:B4,A1:A4,-1))"),
+            ("C9", "=TEXTJOIN(\",\",,TAKE(A1:A4,2))"),
+            ("C10", "=TEXTJOIN(\",\",,TAKE(A1:A4,-1))"),
+            ("C11", "=TEXTJOIN(\",\",,DROP(A1:A4,3))"),
+            ("C12", "=DROP(A1:A4,4)"),
+            (
+                "C13",
+                "=ROWS(VSTACK(A1:A2,A3:A4))*10+COLUMNS(HSTACK(A1:A4,B1:B4))",
+            ),
+            ("C14", "=TEXTJOIN(\",\",,TOROW(A1:B2))"),
+            ("C15", "=TEXTJOIN(\",\",,TOCOL(A1:B2,,TRUE))"),
+            ("C16", "=TEXTJOIN(\",\",FALSE,WRAPROWS(A1:A4,3,\"-\"))"),
+            ("C17", "=ROWS(WRAPCOLS(A1:A4,3))"),
+            ("C18", "=TEXTJOIN(\",\",,CHOOSECOLS(A1:B1,-1,1))"),
+            ("C19", "=TEXTJOIN(\",\",,CHOOSEROWS(A1:A4,2,-1))"),
+            ("C20", "=COUNTA(EXPAND(A1:A2,3,2,0))"),
+            ("C21", "=ROWS(TRIMRANGE(A:A))"),
+            ("C22", "=ARRAYTOTEXT(A1:B2,1)"),
+            ("C23", "=ARRAYTOTEXT(A1:B2)"),
+            ("C24", "=VALUETOTEXT(\"x\",1)"),
+            ("C25", "=MDETERM(MUNIT(3)*4)"),
+            ("C26", "=SUM(MMULT(MINVERSE({4,7;2,6}),{4,7;2,6}))"),
+            ("C27", "=MINVERSE({1,2;2,4})"),
+            ("C28", "=COUNT(RANDARRAY(2,3))"),
+            ("C29", "=SUM(RANDARRAY(4,4,5,5,TRUE))"),
+            ("E1", "=VSTACK(1,{2,3})"),
+            ("C31", "=TAKE(A1:A4,0)"),
+        ]);
+        let t = |a: &str| v(&wb, a);
+        assert_eq!(t("C1"), Value::text("1,1,2,3"));
+        assert_eq!(t("C2"), Value::text("3,2,1,1"));
+        assert_eq!(t("C3"), Value::text("3,1,2"));
+        assert_eq!(t("C4"), Value::text("c,a,b"));
+        assert_eq!(t("C5"), Value::text("c,b"));
+        assert_eq!(t("C6"), Value::text("none"));
+        assert_eq!(t("C7"), Value::Error(ErrorKind::Calc));
+        assert_eq!(t("C8"), Value::text("c,b,a,A"));
+        assert_eq!(t("C9"), Value::text("3,1"));
+        assert_eq!(t("C10"), Value::text("1"));
+        assert_eq!(t("C11"), Value::text("1"));
+        assert_eq!(t("C12"), Value::Error(ErrorKind::Calc));
+        assert_eq!(t("C13"), n(42.0));
+        assert_eq!(t("C14"), Value::text("3,c,1,a"));
+        assert_eq!(t("C15"), Value::text("3,1,c,a"));
+        assert_eq!(t("C16"), Value::text("3,1,2,1,-,-"));
+        assert_eq!(t("C17"), n(3.0));
+        assert_eq!(t("C18"), Value::text("c,3"));
+        assert_eq!(t("C19"), Value::text("1,1"));
+        assert_eq!(t("C20"), n(6.0));
+        assert_eq!(t("C21"), n(4.0));
+        assert_eq!(t("C22"), Value::text("{3,\"c\";1,\"a\"}"));
+        assert_eq!(t("C23"), Value::text("3, c, 1, a"));
+        assert_eq!(t("C24"), Value::text("\"x\""));
+        assert_eq!(t("C25"), n(64.0));
+        match t("C26") {
+            Value::Number(x) => assert!((x - 2.0).abs() < 1e-9),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(t("C27"), Value::Error(ErrorKind::Num));
+        assert_eq!(t("C28"), n(6.0));
+        assert_eq!(t("C29"), n(80.0));
+        assert_eq!(t("F1"), Value::Error(ErrorKind::NA));
+        assert_eq!(t("F2"), n(3.0));
+        assert_eq!(t("C31"), Value::Error(ErrorKind::Calc));
+    }
+
+    #[test]
+    fn lambdas() {
+        let mut wb = Workbook::new();
+        wb.names.push(sp_model::DefinedName {
+            name: "Hyp".into(),
+            formula: "LAMBDA(x,y,SQRT(x*x+y*y))".into(),
+            scope: None,
+        });
+        for (a, input) in [
+            ("A1", "1"),
+            ("A2", "2"),
+            ("A3", "3"),
+            ("B1", "=LAMBDA(x,x+1)(5)"),
+            ("B2", "=LET(f,LAMBDA(a,b,a*b),f(6,7))"),
+            ("B3", "=Hyp(3,4)"),
+            ("B4", "=LAMBDA(x,y,IF(ISOMITTED(y),\"none\",x+y))(1,)"),
+            ("B5", "=LAMBDA(x,y,IF(ISOMITTED(y),x*2,x+y))(4)"),
+            ("B6", "=TEXTJOIN(\",\",,MAP(A1:A3,LAMBDA(v,v*v)))"),
+            ("B7", "=REDUCE(0,A1:A3,LAMBDA(acc,v,acc+v))"),
+            ("B8", "=TEXTJOIN(\",\",,SCAN(0,A1:A3,LAMBDA(acc,v,acc+v)))"),
+            ("B9", "=TEXTJOIN(\",\",,BYROW({1,2;3,4},LAMBDA(r,SUM(r))))"),
+            ("B10", "=TEXTJOIN(\",\",,BYCOL({1,2;3,4},LAMBDA(c,MAX(c))))"),
+            ("B11", "=SUM(MAKEARRAY(3,3,LAMBDA(r,c,r*c)))"),
+            ("B12", "=LAMBDA(x,x)"),
+            ("B13", "=MAP(A1:A3,LAMBDA(a,b,a))"),
+            ("B14", "=TEXTJOIN(\",\",,BYROW({1,2;3,4},SUM))"),
+            ("B15", "=LET(k,10,f,LAMBDA(x,x*k),f(2))"),
+            ("B16", "=LAMBDA(x,x)(1,2)"),
+            ("B17", "=ISOMITTED(A1)"),
+        ] {
+            let addr = CellAddr::parse(a).unwrap();
+            let cell = match input.strip_prefix('=') {
+                Some(f) => MCell::formula(f),
+                None => MCell::constant(n(input.parse().unwrap())),
+            };
+            wb.sheets[0].set(addr, cell);
+        }
+        recalc(&mut wb, &mut AstCache::default(), OPTS);
+        let t = |a: &str| v(&wb, a);
+        assert_eq!(t("B1"), n(6.0));
+        assert_eq!(t("B2"), n(42.0));
+        assert_eq!(t("B3"), n(5.0));
+        assert_eq!(t("B4"), Value::text("none"));
+        assert_eq!(t("B5"), n(8.0));
+        assert_eq!(t("B6"), Value::text("1,4,9"));
+        assert_eq!(t("B7"), n(6.0));
+        assert_eq!(t("B8"), Value::text("1,3,6"));
+        assert_eq!(t("B9"), Value::text("3,7"));
+        assert_eq!(t("B10"), Value::text("3,4"));
+        assert_eq!(t("B11"), n(36.0));
+        assert_eq!(t("B12"), Value::Error(ErrorKind::Calc));
+        assert_eq!(t("B13"), Value::Error(ErrorKind::Value));
+        assert_eq!(t("B14"), Value::text("3,7"));
+        assert_eq!(t("B15"), n(20.0));
+        assert_eq!(t("B16"), Value::Error(ErrorKind::Value));
+        assert_eq!(t("B17"), Value::Bool(false));
+    }
+
+    #[test]
+    fn runaway_lambda_recursion_terminates() {
+        let mut wb = Workbook::new();
+        wb.names.push(sp_model::DefinedName {
+            name: "Loop".into(),
+            formula: "LAMBDA(x,Loop(x+1))".into(),
+            scope: None,
+        });
+        wb.sheets[0].set(CellAddr::new(0, 0), MCell::formula("Loop(1)"));
+        wb.sheets[0].set(
+            CellAddr::new(1, 0),
+            MCell::formula("MAKEARRAY(100000,100000,LAMBDA(r,c,1))"),
+        );
+        recalc(&mut wb, &mut AstCache::default(), OPTS);
+        assert!(matches!(v(&wb, "A1"), Value::Error(_)));
+        assert!(matches!(v(&wb, "A2"), Value::Error(_)));
     }
 }

@@ -8,8 +8,8 @@ use sp_core::{CellAddr, CellRange, ErrorKind, Value};
 use sp_formula::shift::shift_for_copy;
 use sp_formula::{parse, to_formula};
 use sp_model::{
-    Border, BorderStyle, Cell, Color, Content, DefinedName, HAlign, Sheet, Style, StyleId, VAlign,
-    Visibility, Workbook,
+    Border, BorderStyle, Cell, Color, Content, DefinedName, HAlign, Sheet, SpillArea, Style,
+    StyleId, VAlign, Visibility, Workbook,
 };
 use std::collections::HashMap;
 use std::io::{Read, Seek};
@@ -262,8 +262,22 @@ struct CellBuf {
     f: Option<String>,
     f_shared_si: Option<String>,
     f_ref: Option<String>,
+    /// `<f t="array">`: an array formula over `f_ref`.
+    f_array: bool,
+    /// `cm` cell metadata: a dynamic-array formula.
+    cm: bool,
+    /// `vm` value metadata (1-based): a rich error value.
+    vm: Option<usize>,
     is_text: String,
     has_v: bool,
+}
+
+/// Per-sheet state shared by the cell parser.
+struct SheetCtx<'a> {
+    /// Rich error kinds by value-metadata index (0-based).
+    rich: &'a [Option<ErrorKind>],
+    /// Array-formula areas: (range, fixed legacy array, blocked spill).
+    areas: Vec<(CellRange, bool, bool)>,
 }
 
 fn read_sheet(
@@ -272,6 +286,51 @@ fn read_sheet(
     sst: &[String],
     xf_map: &[StyleId],
     report: &mut LoadReport,
+    rich: &[Option<ErrorKind>],
+) -> Result<(), IoError> {
+    let mut ctx = SheetCtx {
+        rich,
+        areas: Vec::new(),
+    };
+    read_sheet_cells(xml, sheet, sst, xf_map, report, &mut ctx)?;
+    // Cells inside an array area hold spilled values, not constants of their own.
+    for (range, fixed, blocked) in ctx.areas {
+        if !blocked {
+            let inside: Vec<CellAddr> = sheet
+                .cells_in(range)
+                .filter(|(a, c)| *a != range.start && c.formula_src().is_none())
+                .map(|(a, _)| a)
+                .collect();
+            for a in inside {
+                if let Some(c) = sheet.get_mut(a) {
+                    c.content = Content::Value(Value::Empty);
+                    if c.value.is_empty() {
+                        c.value = Value::Number(0.0);
+                    }
+                }
+            }
+        }
+        if sheet.spill_at_anchor(range.start).is_none() {
+            sheet.spills.push(SpillArea {
+                range,
+                fixed,
+                blocked,
+            });
+        }
+    }
+    sheet
+        .spills
+        .sort_by_key(|x| (x.range.start.row, x.range.start.col));
+    Ok(())
+}
+
+fn read_sheet_cells(
+    xml: &str,
+    sheet: &mut Sheet,
+    sst: &[String],
+    xf_map: &[StyleId],
+    report: &mut LoadReport,
+    ctx: &mut SheetCtx<'_>,
 ) -> Result<(), IoError> {
     let mut reader = Reader::from_str(xml);
     let mut shared: HashMap<String, SharedFormula> = HashMap::new();
@@ -329,9 +388,11 @@ fn read_sheet(
                     }
                     c.t = get("t").unwrap_or("n").to_string();
                     c.s = get("s").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    c.cm = get("cm").is_some();
+                    c.vm = get("vm").and_then(|v| v.parse().ok());
                     in_c = !is_empty;
                     if is_empty {
-                        finish_cell(sheet, &mut c, &mut shared, sst, xf_map, report);
+                        finish_cell(sheet, &mut c, &mut shared, sst, xf_map, report, ctx);
                     }
                 }
                 "v" if in_c => field = Some("v"),
@@ -340,6 +401,10 @@ fn read_sheet(
                     c.f = Some(String::new());
                     if get("t") == Some("shared") {
                         c.f_shared_si = get("si").map(str::to_string);
+                        c.f_ref = get("ref").map(str::to_string);
+                    }
+                    if get("t") == Some("array") {
+                        c.f_array = true;
                         c.f_ref = get("ref").map(str::to_string);
                     }
                     if is_empty {
@@ -425,7 +490,7 @@ fn read_sheet(
             Event::End(e) => match local(e.name().as_ref()) {
                 "c" => {
                     in_c = false;
-                    finish_cell(sheet, &mut c, &mut shared, sst, xf_map, report);
+                    finish_cell(sheet, &mut c, &mut shared, sst, xf_map, report, ctx);
                 }
                 "v" | "f" | "t" => field = None,
                 "row" => next_row += 1,
@@ -460,6 +525,7 @@ fn finish_cell(
     sst: &[String],
     xf_map: &[StyleId],
     report: &mut LoadReport,
+    ctx: &mut SheetCtx<'_>,
 ) {
     let Some(addr) = c.addr else { return };
     let style = xf_map.get(c.s).copied().unwrap_or(StyleId::DEFAULT);
@@ -474,7 +540,11 @@ fn finish_cell(
         "str" => Value::text(unescape_ooxml(&c.v)),
         "inlineStr" => Value::text(unescape_ooxml(&c.is_text)),
         "b" => Value::Bool(c.v.trim() == "1"),
-        "e" => Value::Error(ErrorKind::parse(c.v.trim()).unwrap_or(ErrorKind::Value)),
+        "e" => Value::Error(
+            c.vm.and_then(|i| ctx.rich.get(i.checked_sub(1)?).copied().flatten())
+                .or_else(|| ErrorKind::parse(c.v.trim()))
+                .unwrap_or(ErrorKind::Value),
+        ),
         _ if c.has_v => {
             c.v.trim()
                 .parse::<f64>()
@@ -509,12 +579,30 @@ fn finish_cell(
         (Some(src), None) if !src.trim().is_empty() => Some(src),
         _ => None,
     };
+    let area = if c.f_array && formula.is_some() {
+        c.f_ref
+            .as_deref()
+            .and_then(|r| CellRange::parse(r).ok())
+            .filter(|r| r.start == addr)
+    } else {
+        None
+    };
+    if let Some(r) = area {
+        let dynamic = c.cm;
+        let blocked = dynamic && value == Value::Error(ErrorKind::Spill);
+        if !dynamic || !r.is_single() || blocked {
+            ctx.areas.push((r, !dynamic, blocked));
+        }
+    }
+    // Formulas saved without dynamic-array metadata use implicit intersection.
+    let legacy = !c.f_array && !c.cm;
     c.f_ref = None;
+    c.f_array = false;
     let cell = match formula {
         Some(src) => {
             report.formulas += 1;
             Cell {
-                content: Content::Formula(normalize_formula(&src)),
+                content: Content::Formula(normalize_formula(&src, legacy)),
                 value,
                 style,
             }
@@ -533,9 +621,10 @@ fn finish_cell(
 
 /// Canonical in-memory formula text: `_xlfn.`-style prefixes removed. Text we cannot parse
 /// yet is kept verbatim (minus prefixes) so saving does not lose it.
-fn normalize_formula(src: &str) -> String {
+fn normalize_formula(src: &str, legacy: bool) -> String {
     let src = src.trim().trim_start_matches('=');
     match parse(src) {
+        Ok(e) if legacy => to_formula(&e.into_legacy()),
         Ok(e) => to_formula(&e),
         Err(_) => src
             .replace("_xlfn._xlws.", "")
@@ -605,6 +694,80 @@ fn read_extras<R: Read + Seek>(
     Ok(())
 }
 
+/// Error kind encoded by a rich-value `errorType`.
+fn rich_error(code: i64) -> ErrorKind {
+    match code {
+        0..=7 => ErrorKind::ALL
+            .get(code as usize)
+            .copied()
+            .unwrap_or(ErrorKind::Value),
+        8 => ErrorKind::Spill,
+        13 => ErrorKind::Calc,
+        _ => ErrorKind::Value,
+    }
+}
+
+/// Newer error values (`#SPILL!`, `#CALC!`) are saved as `#VALUE!` plus value metadata
+/// pointing at a rich value; resolve each value-metadata index to its error kind.
+fn read_rich_errors<R: Read + Seek>(
+    zip: &mut zip::ZipArchive<R>,
+) -> Result<Vec<Option<ErrorKind>>, IoError> {
+    let (Some(meta), Some(rv)) = (
+        read_part(zip, "xl/metadata.xml")?,
+        read_part(zip, "xl/richData/rdrichvalue.xml")?,
+    ) else {
+        return Ok(Vec::new());
+    };
+    let structs = read_part(zip, "xl/richData/rdrichvaluestructure.xml")?.unwrap_or_default();
+    // Position of `errorType` among each structure's keys (None: not an error).
+    let error_pos: Vec<Option<usize>> = if structs.is_empty() {
+        Vec::new()
+    } else {
+        parse_dom(&structs)?
+            .children_named("s")
+            .map(|s| {
+                (s.attr("t") == Some("_error")).then(|| {
+                    s.children_named("k")
+                        .position(|k| k.attr("n") == Some("errorType"))
+                })?
+            })
+            .collect()
+    };
+    let values: Vec<Option<ErrorKind>> = parse_dom(&rv)?
+        .children_named("rv")
+        .map(|r| {
+            let s: usize = r.attr("s")?.parse().ok()?;
+            let pos = (*error_pos.get(s)?)?;
+            let code: i64 = r.children_named("v").nth(pos)?.text.trim().parse().ok()?;
+            Some(rich_error(code))
+        })
+        .collect();
+    let m = parse_dom(&meta)?;
+    let mut future: Vec<Option<usize>> = Vec::new();
+    for fm in m.children_named("futureMetadata") {
+        if fm.attr("name") == Some("XLRICHVALUE") {
+            future = fm
+                .children_named("bk")
+                .map(|bk| {
+                    let rvb = bk.child("extLst")?.child("ext")?.child("rvb")?;
+                    rvb.attr("i")?.parse().ok()
+                })
+                .collect();
+        }
+    }
+    let Some(vmeta) = m.child("valueMetadata") else {
+        return Ok(Vec::new());
+    };
+    Ok(vmeta
+        .children_named("bk")
+        .map(|bk| {
+            let v: usize = bk.child("rc")?.attr("v")?.parse().ok()?;
+            let i = (*future.get(v)?)?;
+            *values.get(i)?
+        })
+        .collect())
+}
+
 pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), IoError> {
     let mut zip = zip::ZipArchive::new(reader).map_err(|e| IoError::Zip(e.to_string()))?;
     let mut report = LoadReport::default();
@@ -628,6 +791,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
         Some(x) => read_shared_strings(&x)?,
         None => Vec::new(),
     };
+    let rich = read_rich_errors(&mut zip)?;
     let mut wb = Workbook::new();
     wb.sheets.clear();
     let xf_styles = match read_part(&mut zip, "xl/styles.xml")? {
@@ -655,7 +819,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
             .unwrap_or_else(|| format!("xl/worksheets/sheet{}.xml", i + 1));
         match read_part(&mut zip, &path)? {
             Some(x) => {
-                read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report)?;
+                read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report, &rich)?;
                 read_extras(&mut zip, &path, &x, &mut sheet, &mut report)?;
             }
             None => report.warnings.push(format!(
