@@ -3,6 +3,7 @@
 
 pub mod cell_cmds;
 pub mod data_cmds;
+pub mod dialog_cmds;
 pub mod edit_cmds;
 pub mod file_cmds;
 pub mod format_cmds;
@@ -16,6 +17,7 @@ pub fn all_specs() -> Vec<CommandSpec> {
     let mut v = Vec::new();
     v.extend(cell_cmds::specs());
     v.extend(data_cmds::specs());
+    v.extend(dialog_cmds::specs());
     v.extend(edit_cmds::specs());
     v.extend(file_cmds::specs());
     v.extend(format_cmds::specs());

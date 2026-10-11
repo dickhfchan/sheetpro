@@ -60,6 +60,10 @@ enum Cmd {
         width: f32,
         #[arg(long, default_value_t = 800.0)]
         height: f32,
+        /// Open a dialog before rendering: a name (format_cells, find, sort, …) optionally
+        /// followed by a JSON object of dialog fields.
+        #[arg(long)]
+        dialog: Option<String>,
     },
     /// List registered commands as JSON.
     Commands,
@@ -156,6 +160,7 @@ fn main() -> Result<()> {
             script,
             width,
             height,
+            dialog,
         } => {
             let mut s = session_with(open.as_ref())?;
             if let Some(script) = script {
@@ -168,7 +173,7 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            sp_ui::screenshot::render_png(s, (width, height), &out)
+            sp_ui::screenshot::render_png_with_dialog(s, (width, height), &out, dialog.as_deref())
                 .map_err(|e| anyhow::anyhow!(e))?;
             println!("{}", out.display());
         }
