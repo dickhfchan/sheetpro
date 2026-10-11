@@ -5,8 +5,8 @@
 use crate::params::{bool_opt, cell, f64_opt, range, str_opt, u32_opt};
 use crate::{CmdError, CmdResult, CommandSpec, Json, Session};
 use serde_json::json;
-use sp_core::{CellRange, col_to_letters};
 use sp_core::addr::quote_sheet_name;
+use sp_core::{CellRange, col_to_letters};
 use sp_model::{DefinedName, Margins, Orientation, PageSetup};
 
 pub const PRINT_AREA: &str = "_xlnm.Print_Area";
@@ -61,7 +61,9 @@ fn edit_page(
             .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
         f(&mut sh.page_setup)
     })?;
-    Ok(s.wb.sheet(sheet).map_or(Json::Null, |sh| page_json(&sh.page_setup)))
+    Ok(s.wb
+        .sheet(sheet)
+        .map_or(Json::Null, |sh| page_json(&sh.page_setup)))
 }
 
 fn margins(s: &mut Session, p: &Json) -> CmdResult {
@@ -69,7 +71,11 @@ fn margins(s: &mut Session, p: &Json) -> CmdResult {
         Some("normal") => Some(Margins::NORMAL),
         Some("wide") => Some(Margins::WIDE),
         Some("narrow") => Some(Margins::NARROW),
-        Some(o) => return Err(CmdError::Param(format!("unknown preset '{o}' (normal, wide, narrow)"))),
+        Some(o) => {
+            return Err(CmdError::Param(format!(
+                "unknown preset '{o}' (normal, wide, narrow)"
+            )));
+        }
         None => None,
     };
     let mut m = preset.unwrap_or_else(|| {
@@ -136,7 +142,11 @@ fn size(s: &mut Session, p: &Json) -> CmdResult {
             Some(c) if (1..=118).contains(&c) => c,
             _ => return Err(CmdError::Param("paper size code must be 1-118".into())),
         },
-        None => return Err(CmdError::Param("missing 'size' (letter, a4, legal…)".into())),
+        None => {
+            return Err(CmdError::Param(
+                "missing 'size' (letter, a4, legal…)".into(),
+            ));
+        }
     };
     edit_page(s, "Size", |ps| {
         ps.paper_size = code;
@@ -145,7 +155,12 @@ fn size(s: &mut Session, p: &Json) -> CmdResult {
 }
 
 /// Replace (or remove with `None`) a sheet-scoped built-in name.
-fn set_builtin_name(s: &mut Session, sheet: usize, name: &str, formula: Option<String>) -> CmdResult {
+fn set_builtin_name(
+    s: &mut Session,
+    sheet: usize,
+    name: &str,
+    formula: Option<String>,
+) -> CmdResult {
     s.transact(name.trim_start_matches("_xlnm."), |tx, _| {
         tx.touch_book();
         tx.wb
@@ -165,8 +180,16 @@ fn set_builtin_name(s: &mut Session, sheet: usize, name: &str, formula: Option<S
 
 fn print_area_set(s: &mut Session, p: &Json) -> CmdResult {
     let (sheet, r) = range(s, p, "range")?;
-    let name = s.wb.sheet(sheet).map(|sh| sh.name.clone()).unwrap_or_default();
-    set_builtin_name(s, sheet, PRINT_AREA, Some(super::audit_cmds::abs_ref(&name, r)))
+    let name =
+        s.wb.sheet(sheet)
+            .map(|sh| sh.name.clone())
+            .unwrap_or_default();
+    set_builtin_name(
+        s,
+        sheet,
+        PRINT_AREA,
+        Some(super::audit_cmds::abs_ref(&name, r)),
+    )
 }
 
 fn print_area_clear(s: &mut Session, _: &Json) -> CmdResult {
@@ -176,7 +199,10 @@ fn print_area_clear(s: &mut Session, _: &Json) -> CmdResult {
 
 fn print_titles(s: &mut Session, p: &Json) -> CmdResult {
     let sheet = s.sheet_index();
-    let name = s.wb.sheet(sheet).map(|sh| sh.name.clone()).unwrap_or_default();
+    let name =
+        s.wb.sheet(sheet)
+            .map(|sh| sh.name.clone())
+            .unwrap_or_default();
     let q = quote_sheet_name(&name);
     let mut parts = Vec::new();
     if let Some(rows) = str_opt(p, "rows").filter(|t| !t.trim().is_empty()) {
@@ -186,7 +212,10 @@ fn print_titles(s: &mut Session, p: &Json) -> CmdResult {
             .ok_or_else(|| CmdError::Param(format!("'rows' must look like 1:2, not '{rows}'")))?;
         parts.push(format!("{q}!${}:${}", r.start.row + 1, r.end.row + 1));
     }
-    if let Some(cols) = str_opt(p, "cols").or_else(|| str_opt(p, "columns")).filter(|t| !t.trim().is_empty()) {
+    if let Some(cols) = str_opt(p, "cols")
+        .or_else(|| str_opt(p, "columns"))
+        .filter(|t| !t.trim().is_empty())
+    {
         let r = CellRange::parse(&cols.replace('$', ""))
             .ok()
             .filter(CellRange::is_full_cols)
@@ -203,30 +232,42 @@ fn print_titles(s: &mut Session, p: &Json) -> CmdResult {
 
 fn page_break(s: &mut Session, p: &Json, insert: bool) -> CmdResult {
     let (_, at) = cell(s, p, "cell")?;
-    edit_page(s, if insert { "Insert Page Break" } else { "Remove Page Break" }, |ps| {
+    edit_page(
+        s,
         if insert {
-            if at.row == 0 && at.col == 0 {
-                return Err(CmdError::Failed("A page break can't go above or left of A1.".into()));
-            }
-            if ps.row_breaks.len() + ps.col_breaks.len() >= 2_052 {
-                return Err(CmdError::Failed("too many page breaks".into()));
-            }
-            if at.row > 0 {
-                ps.row_breaks.insert(at.row);
-            }
-            if at.col > 0 {
-                ps.col_breaks.insert(at.col);
-            }
-            Ok(())
+            "Insert Page Break"
         } else {
-            let removed = ps.row_breaks.remove(&at.row) | ps.col_breaks.remove(&at.col);
-            if removed {
+            "Remove Page Break"
+        },
+        |ps| {
+            if insert {
+                if at.row == 0 && at.col == 0 {
+                    return Err(CmdError::Failed(
+                        "A page break can't go above or left of A1.".into(),
+                    ));
+                }
+                if ps.row_breaks.len() + ps.col_breaks.len() >= 2_052 {
+                    return Err(CmdError::Failed("too many page breaks".into()));
+                }
+                if at.row > 0 {
+                    ps.row_breaks.insert(at.row);
+                }
+                if at.col > 0 {
+                    ps.col_breaks.insert(at.col);
+                }
                 Ok(())
             } else {
-                Err(CmdError::Failed("There is no manual page break here.".into()))
+                let removed = ps.row_breaks.remove(&at.row) | ps.col_breaks.remove(&at.col);
+                if removed {
+                    Ok(())
+                } else {
+                    Err(CmdError::Failed(
+                        "There is no manual page break here.".into(),
+                    ))
+                }
             }
-        }
-    })
+        },
+    )
 }
 
 fn scale_to_fit(s: &mut Session, p: &Json) -> CmdResult {
@@ -248,7 +289,9 @@ fn scale_to_fit(s: &mut Session, p: &Json) -> CmdResult {
         None => None,
     };
     if width.is_none() && height.is_none() && scale.is_none() {
-        return Err(CmdError::Param("give 'width'/'height' (pages) or 'scale' (%)".into()));
+        return Err(CmdError::Param(
+            "give 'width'/'height' (pages) or 'scale' (%)".into(),
+        ));
     }
     edit_page(s, "Scale to Fit", |ps| {
         if let Some(n) = scale {
@@ -285,8 +328,16 @@ pub fn specs() -> Vec<CommandSpec> {
             r#"{"orientation"?: "portrait|landscape"} (default toggles)"#,
             orientation,
         ),
-        CommandSpec::new("layout.size", r#"{"size": "letter|legal|a4|a3|a5|… | 9"}"#, size),
-        CommandSpec::new("layout.print_area.set", r#"{"range"?: "A1:F40"}"#, print_area_set),
+        CommandSpec::new(
+            "layout.size",
+            r#"{"size": "letter|legal|a4|a3|a5|… | 9"}"#,
+            size,
+        ),
+        CommandSpec::new(
+            "layout.print_area.set",
+            r#"{"range"?: "A1:F40"}"#,
+            print_area_set,
+        ),
         CommandSpec::new("layout.print_area.clear", "{}", print_area_clear),
         CommandSpec::new("layout.page_break.insert", r#"{"cell"?: "A20"}"#, |s, p| {
             page_break(s, p, true)
@@ -311,20 +362,28 @@ pub fn specs() -> Vec<CommandSpec> {
             r#"{"width"?: pages|"automatic", "height"?: pages|"automatic", "scale"?: 10-400}"#,
             scale_to_fit,
         ),
-        CommandSpec::new("layout.gridlines_print", r#"{"on"?: bool} (default toggles)"#, |s, p| {
-            let on = bool_opt(p, "on");
-            edit_page(s, "Print Gridlines", |ps| {
-                ps.print_gridlines = on.unwrap_or(!ps.print_gridlines);
-                Ok(())
-            })
-        }),
-        CommandSpec::new("layout.headings_print", r#"{"on"?: bool} (default toggles)"#, |s, p| {
-            let on = bool_opt(p, "on");
-            edit_page(s, "Print Headings", |ps| {
-                ps.print_headings = on.unwrap_or(!ps.print_headings);
-                Ok(())
-            })
-        }),
+        CommandSpec::new(
+            "layout.gridlines_print",
+            r#"{"on"?: bool} (default toggles)"#,
+            |s, p| {
+                let on = bool_opt(p, "on");
+                edit_page(s, "Print Gridlines", |ps| {
+                    ps.print_gridlines = on.unwrap_or(!ps.print_gridlines);
+                    Ok(())
+                })
+            },
+        ),
+        CommandSpec::new(
+            "layout.headings_print",
+            r#"{"on"?: bool} (default toggles)"#,
+            |s, p| {
+                let on = bool_opt(p, "on");
+                edit_page(s, "Print Headings", |ps| {
+                    ps.print_headings = on.unwrap_or(!ps.print_headings);
+                    Ok(())
+                })
+            },
+        ),
     ]
 }
 
@@ -336,14 +395,18 @@ mod tests {
     #[test]
     fn page_setup_commands() {
         let mut s = Session::new();
-        s.execute("layout.margins", &json!({"preset": "wide"})).unwrap();
+        s.execute("layout.margins", &json!({"preset": "wide"}))
+            .unwrap();
         s.execute("layout.margins", &json!({"left": 0.5})).unwrap();
         s.execute("layout.orientation", &json!({})).unwrap();
         s.execute("layout.size", &json!({"size": "A4"})).unwrap();
-        s.execute("layout.scale_to_fit", &json!({"width": 1})).unwrap();
+        s.execute("layout.scale_to_fit", &json!({"width": 1}))
+            .unwrap();
         s.execute("layout.gridlines_print", &json!({})).unwrap();
-        s.execute("layout.headings_print", &json!({"on": true})).unwrap();
-        s.execute("layout.page_break.insert", &json!({"cell": "C10"})).unwrap();
+        s.execute("layout.headings_print", &json!({"on": true}))
+            .unwrap();
+        s.execute("layout.page_break.insert", &json!({"cell": "C10"}))
+            .unwrap();
         let ps = &s.wb.sheets[0].page_setup;
         assert_eq!(ps.margins.left, 0.5);
         assert_eq!(ps.margins.top, 1.0);
@@ -352,12 +415,19 @@ mod tests {
         assert_eq!((ps.fit_width, ps.fit_height), (Some(1), Some(0)));
         assert!(ps.print_gridlines && ps.print_headings);
         assert!(ps.row_breaks.contains(&9) && ps.col_breaks.contains(&2));
-        s.execute("layout.page_break.remove", &json!({"cell": "A10"})).unwrap();
+        s.execute("layout.page_break.remove", &json!({"cell": "A10"}))
+            .unwrap();
         assert!(s.wb.sheets[0].page_setup.row_breaks.is_empty());
-        assert!(s.execute("layout.page_break.remove", &json!({"cell": "A10"})).is_err());
+        assert!(
+            s.execute("layout.page_break.remove", &json!({"cell": "A10"}))
+                .is_err()
+        );
         s.execute("layout.page_break.reset", &json!({})).unwrap();
         assert!(s.wb.sheets[0].page_setup.col_breaks.is_empty());
-        assert!(s.execute("layout.size", &json!({"size": "napkin"})).is_err());
+        assert!(
+            s.execute("layout.size", &json!({"size": "napkin"}))
+                .is_err()
+        );
         s.execute("edit.undo", &json!({})).unwrap();
         assert!(s.wb.sheets[0].page_setup.col_breaks.contains(&2));
     }
@@ -365,8 +435,13 @@ mod tests {
     #[test]
     fn print_area_and_titles_are_names() {
         let mut s = Session::new();
-        s.execute("layout.print_area.set", &json!({"range": "A1:D20"})).unwrap();
-        s.execute("layout.print_titles", &json!({"rows": "1:2", "cols": "A:A"})).unwrap();
+        s.execute("layout.print_area.set", &json!({"range": "A1:D20"}))
+            .unwrap();
+        s.execute(
+            "layout.print_titles",
+            &json!({"rows": "1:2", "cols": "A:A"}),
+        )
+        .unwrap();
         let n = s.wb.name_lookup(PRINT_AREA, 0).unwrap();
         assert_eq!(n.formula, "Sheet1!$A$1:$D$20");
         assert_eq!(n.scope, Some(0));
@@ -376,7 +451,10 @@ mod tests {
         );
         s.execute("layout.print_area.clear", &json!({})).unwrap();
         assert!(s.wb.name_lookup(PRINT_AREA, 0).is_none());
-        assert!(s.execute("layout.print_titles", &json!({"rows": "A1"})).is_err());
+        assert!(
+            s.execute("layout.print_titles", &json!({"rows": "A1"}))
+                .is_err()
+        );
         let _ = CellAddr::default();
     }
 }

@@ -1,39 +1,39 @@
 {
-  "date": "2026-10-10",
+  "date": "2026-10-11",
   "quick": false,
   "results": {
     "edit_one_cell": [
-      1.706583,
+      3.936292,
       50.0,
       "Type one value into a 100k-row sheet (undo record + recalc). Target app: instant."
     ],
     "grid_layout_screen": [
-      0.11,
+      0.232292,
       8.0,
       "Lay out one 1600x1000 screen at row 50k (must fit in a frame)"
     ],
     "recalc_full_cold": [
-      201.92208300000001,
+      444.15387499999997,
       1500.0,
       "Full recalculation, cold AST cache (parse + evaluate 200k formulas)"
     ],
     "recalc_full_warm": [
-      120.03262500000001,
+      277.93225,
       800.0,
       "Full recalculation, warm AST cache"
     ],
     "sort_rows": [
-      610.218792,
+      1290.3765,
       2000.0,
       "Sort 100k rows x 4 cols descending by column A"
     ],
     "xlsx_load": [
-      278.6195,
+      739.916459,
       1500.0,
       "Load 400k cells from .xlsx"
     ],
     "xlsx_save": [
-      323.763208,
+      678.8462079999999,
       1500.0,
       "Save 400k cells to .xlsx"
     ]

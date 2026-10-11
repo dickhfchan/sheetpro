@@ -11,13 +11,13 @@ oracle results (`cargo xtask test-corpus`), the scorecard, and the honest assess
 |---|---|---|
 | M0 Skeleton | ✅ | workspace, gates (layers / parity / scorecard / corpus / perf / panic-hunt), CI |
 | M1 Foundation | ✅ | core types, sparse model, transactional undo/redo |
-| M2 Formula engine v1 | 🟡 | parser, evaluator, incremental recalc, 397/514 functions; no spill / LAMBDA |
+| M2 Formula engine v1 | ✅ | parser, evaluator, incremental recalc, 496/514 functions; oracle 93.1% of cells |
 | M3 .xlsx v1 | 🟡 | values, formulas (incl. shared), styles subset, sheets, names; 259/259 corpus round-trip |
-| M4 Shell v1 | 🟡 | ribbon from catalog, formula bar, grid, sheet tabs, status bar, screenshots; no dialogs |
+| M4 Shell v1 | ✅ | ribbon from catalog, formula bar, grid, tabs, status bar, dialogs, context menus |
 | M5 Editing parity | ⬜ | clipboard w/ ref shifting, fill/autofill, insert/delete with ref fixups, find/replace |
 | M6 Formatting parity | ⬜ | full Format Cells, number-format engine parity, borders, conditional formatting |
-| M7 Dynamic arrays | ⬜ | spill, `#SPILL!`, FILTER/SORT/UNIQUE/SEQUENCE, LAMBDA family |
-| M8 Data tools | ⬜ | sort dialog, AutoFilter, validation, remove duplicates, text to columns, tables |
+| M7 Dynamic arrays | 🟡 | spill, `#SPILL!`, FILTER/SORT/UNIQUE/SEQUENCE, LAMBDA family |
+| M8 Data tools | 🟡 | sort dialog, AutoFilter, validation, remove duplicates, text to columns, tables |
 | M9 Charts & objects | ⬜ | charts, sparklines, images, comments/notes |
 | M10 Print & PDF | ⬜ | page setup, page breaks, PDF export |
 | M11 Pivot tables | ⬜ | pivot cache, layout, refresh |
@@ -25,17 +25,17 @@ oracle results (`cargo xtask test-corpus`), the scorecard, and the honest assess
 
 ## Honest parity assessment (2026-10-10)
 
-Measured 2026-10-10 after wave 1: catalog wiring 581/818 (commands 184/304, functions 397/514);
-oracle formula cells 89.4% match (114/218 test files fully); 259/259 corpus files round-trip;
-edit latency 1.7 ms at 100k rows (budget 50 ms).
+Measured 2026-10-11 after wave 2: catalog wiring 733/818 (commands 237/304, functions 496/514);
+oracle formula cells 93.1% match (175/218 test files fully); 259/259 corpus files round-trip;
+edit latency 4–8 ms at 100k rows under machine load (budget 50 ms).
 
-- Feature surface that exists in some form: ~30% (core grid, entry, formulas, formatting basics,
+- Feature surface that exists in some form: ~45% (core grid, entry, formulas, formatting basics,
   .xlsx; nothing for charts, pivots, tables, conditional formats, validation, printing).
-- "A professional could switch for daily work": ~5%. A simple budget or list works; any real
+- "A professional could switch for daily work": ~10%. A simple budget or list works; any real
   model hits a missing function, missing dialog, or a dropped feature on save.
-- Biggest gaps: dynamic arrays + LAMBDA family; dialogs (Format Cells, Find, Sort, Paste
-  Special); charts; tables; conditional formatting; incremental recalc;
-  preserving unsupported .xlsx parts on save.
+- Biggest gaps: charts; pivot tables; Excel tables; conditional formatting; printing/PDF;
+  preserving unsupported .xlsx parts on save; no UI for filters/notes/validation dropdowns;
+  structural edits don't move comments/validations/filters.
 - Confidence: moderate for formulas (oracle-backed), low for UI feel (no users yet).
 
 ### Where we're going (priority order)
@@ -47,8 +47,8 @@ edit latency 1.7 ms at 100k rows (budget 50 ms).
 
 ## Current focus (infrastructure before the long tail)
 
-1. Implicit intersection / `@` / `_xlfn.SINGLE`, then dynamic arrays (spill + #SPILL!) and
-   FILTER/SORT/UNIQUE/LAMBDA family.
-2. Function long tail: Financial (bonds/coupons), Text, Lookup, Database, Math remaining.
-3. Criteria engine parity (COUNTIF/SUMIF family mismatches in the corpus).
-4. Missing commands (120): dialogs (Format Cells, Find/Replace, Sort, Paste Special), AutoFilter.
+1. Structural edits move every per-cell feature (comments, links, validations, filters, spills).
+2. Preserve unknown .xlsx parts on save (charts/pivots/drawings pass through untouched).
+3. Conditional formatting (engine + render + .xlsx) and Excel tables.
+4. Charts (engine model + egui rendering + .xlsx).
+5. Workflow tests: 10 realistic multi-command tasks over the control channel.

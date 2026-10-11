@@ -6,46 +6,48 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 
 | Surface | Live | Total | % |
 |---|---|---|---|
-| Commands (ribbon + keyboard) | 184 | 304 | 60.5% |
-| Worksheet functions | 397 | 514 | 77.2% |
-| **All** | **581** | **818** | **71.0%** |
+| Commands (ribbon + keyboard) | 237 | 304 | 78.0% |
+| Worksheet functions | 496 | 514 | 96.5% |
+| **All** | **733** | **818** | **89.6%** |
 
 ## Commands by tab
 
 | Tab | Live | Total | Missing |
 |---|---|---|---|
-| Data | 5 | 23 | `data.get_from_text` `data.refresh_all` `data.filter` `data.filter_clear` `data.filter_reapply` `data.advanced_filter` `data.validation` `data.circle_invalid` `data.consolidate` `data.what_if.scenario` `data.what_if.goal_seek` `data.what_if.data_table` `data.forecast_sheet` `data.group` `data.ungroup` `data.subtotal` `data.show_detail` `data.hide_detail` |
-| File | 9 | 15 | `file.export.pdf` `file.print` `file.protect_workbook` `file.inspect` `file.recent` `file.options` |
+| Data | 16 | 23 | `data.get_from_text` `data.refresh_all` `data.consolidate` `data.what_if.scenario` `data.what_if.goal_seek` `data.what_if.data_table` `data.forecast_sheet` |
+| File | 10 | 15 | `file.export.pdf` `file.print` `file.inspect` `file.recent` `file.options` |
 | Format Cells | 1 | 1 | — |
-| Formulas | 8 | 23 | `formulas.library.financial` `formulas.library.logical` `formulas.library.text` `formulas.library.datetime` `formulas.library.lookup` `formulas.library.math` `formulas.library.more` `formulas.use_in_formula` `formulas.create_from_selection` `formulas.trace_precedents` `formulas.trace_dependents` `formulas.remove_arrows` `formulas.error_checking` `formulas.evaluate_formula` `formulas.watch_window` |
-| Home | 92 | 112 | `home.clipboard.paste_link` `home.clipboard.paste_special` `home.font.dialog` `home.styles.cf.highlight_rules` `home.styles.cf.top_bottom` `home.styles.cf.data_bars` `home.styles.cf.color_scales` `home.styles.cf.icon_sets` `home.styles.cf.new_rule` `home.styles.cf.clear` `home.styles.cf.manage` `home.styles.format_as_table` `home.styles.cell_styles` `home.cells.protect_sheet` `home.editing.fill_series` `home.editing.flash_fill` `home.editing.clear_comments` `home.editing.clear_hyperlinks` `home.editing.filter` `home.editing.goto_special` |
-| Insert | 0 | 24 | `insert.pivot_table` `insert.table` `insert.picture` `insert.shapes` `insert.chart.recommended` `insert.chart.column` `insert.chart.bar` `insert.chart.line` `insert.chart.pie` `insert.chart.area` `insert.chart.scatter` `insert.chart.histogram` `insert.chart.combo` `insert.sparkline.line` `insert.sparkline.column` `insert.sparkline.winloss` `insert.slicer` `insert.hyperlink` `insert.comment` `insert.text_box` `insert.header_footer` `insert.symbol` `insert.equation` `insert.checkbox` |
+| Formulas | 15 | 23 | `formulas.library.financial` `formulas.library.logical` `formulas.library.text` `formulas.library.datetime` `formulas.library.lookup` `formulas.library.math` `formulas.library.more` `formulas.use_in_formula` |
+| Home | 101 | 112 | `home.styles.cf.highlight_rules` `home.styles.cf.top_bottom` `home.styles.cf.data_bars` `home.styles.cf.color_scales` `home.styles.cf.icon_sets` `home.styles.cf.new_rule` `home.styles.cf.clear` `home.styles.cf.manage` `home.styles.format_as_table` `home.styles.cell_styles` `home.editing.flash_fill` |
+| Insert | 2 | 24 | `insert.pivot_table` `insert.table` `insert.picture` `insert.shapes` `insert.chart.recommended` `insert.chart.column` `insert.chart.bar` `insert.chart.line` `insert.chart.pie` `insert.chart.area` `insert.chart.scatter` `insert.chart.histogram` `insert.chart.combo` `insert.sparkline.line` `insert.sparkline.column` `insert.sparkline.winloss` `insert.slicer` `insert.text_box` `insert.header_footer` `insert.symbol` `insert.equation` `insert.checkbox` |
 | Name Box | 1 | 1 | — |
-| Page Layout | 2 | 16 | `layout.themes` `layout.margins` `layout.orientation` `layout.size` `layout.print_area.set` `layout.print_area.clear` `layout.page_break.insert` `layout.page_break.remove` `layout.page_break.reset` `layout.background` `layout.print_titles` `layout.scale_to_fit` `layout.gridlines_print` `layout.headings_print` |
+| Page Layout | 14 | 16 | `layout.themes` `layout.background` |
 | Quick Access | 2 | 2 | — |
-| Review | 1 | 12 | `insert.note` `review.spelling` `review.comment.new` `review.comment.delete` `review.comment.previous` `review.comment.next` `review.comment.show` `review.notes.show_all` `review.protect_sheet` `review.protect_workbook` `review.allow_edit_ranges` |
+| Review | 11 | 12 | `review.spelling` |
 | Sheet tabs | 3 | 3 | — |
 | View | 12 | 20 | `view.page_break_preview` `view.page_layout` `view.ruler` `view.new_window` `view.split` `view.hide_window` `view.switch_windows` `view.macros` |
-| keyboard | 46 | 50 | `cell.newline` `cell.toggle_absolute` `cell.array_enter` `select.visible_cells` |
+| keyboard | 47 | 50 | `cell.newline` `cell.toggle_absolute` `cell.array_enter` |
 | mouse | 2 | 2 | — |
 
 ## Functions by category
 
 | Category | Live | Total | Missing |
 |---|---|---|---|
-| Math & Trig | 73 | 79 | AGGREGATE MDETERM MINVERSE MUNIT RANDARRAY SERIESSUM |
-| Logical | 12 | 19 | BYCOL BYROW LAMBDA MAKEARRAY MAP REDUCE SCAN |
-| Text | 30 | 47 | ARRAYTOTEXT ASC BAHTTEXT DBCS FINDB LEFTB LENB MIDB PHONETIC REGEXEXTRACT REGEXREPLACE REGEXTEST REPLACEB RIGHTB SEARCHB TEXTSPLIT VALUETOTEXT |
+| Math & Trig | 79 | 79 | — |
+| Logical | 19 | 19 | — |
+| Text | 47 | 47 | — |
 | Date & Time | 25 | 25 | — |
-| Lookup & Reference | 18 | 40 | CHOOSECOLS CHOOSEROWS DROP EXPAND FILTER GETPIVOTDATA GROUPBY HSTACK HYPERLINK IMAGE PIVOTBY RTD SORT SORTBY TAKE TOCOL TOROW TRIMRANGE UNIQUE VSTACK WRAPCOLS WRAPROWS |
-| Information | 18 | 21 | CELL INFO ISOMITTED |
+| Lookup & Reference | 37 | 40 | GROUPBY IMAGE PIVOTBY |
+| Information | 21 | 21 | — |
 | Statistical | 107 | 111 | FORECAST.ETS FORECAST.ETS.CONFINT FORECAST.ETS.SEASONALITY FORECAST.ETS.STAT |
-| Financial | 20 | 56 | ACCRINT ACCRINTM AMORDEGRC AMORLINC COUPDAYBS COUPDAYS COUPDAYSNC COUPNCD COUPNUM COUPPCD CUMIPMT CUMPRINC DISC DOLLARDE DOLLARFR DURATION INTRATE MDURATION ODDFPRICE ODDFYIELD ODDLPRICE ODDLYIELD PRICE PRICEDISC PRICEMAT RECEIVED STOCKHISTORY TBILLEQ TBILLPRICE TBILLYIELD VDB XIRR XNPV YIELD YIELDDISC YIELDMAT |
+| Financial | 55 | 56 | STOCKHISTORY |
 | Engineering | 54 | 54 | — |
-| Database | 0 | 12 | DAVERAGE DCOUNT DCOUNTA DGET DMAX DMIN DPRODUCT DSTDEV DSTDEVP DSUM DVAR DVARP |
+| Database | 12 | 12 | — |
 | Web & Cube | 0 | 10 | CUBEKPIMEMBER CUBEMEMBER CUBEMEMBERPROPERTY CUBERANKEDMEMBER CUBESET CUBESETCOUNT CUBEVALUE ENCODEURL FILTERXML WEBSERVICE |
 | Compatibility | 40 | 40 | — |
 
 ## Registered but not in catalog
 
-None.
+- command `format.cells`
+- command `edit.replace_current`
+- command `edit.find_all`

@@ -34,7 +34,10 @@ fn sqref(text: &str) -> Vec<CellRange> {
 }
 
 fn sqref_text(rs: &[CellRange]) -> String {
-    rs.iter().map(CellRange::to_a1).collect::<Vec<_>>().join(" ")
+    rs.iter()
+        .map(CellRange::to_a1)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // ---------------------------------------------------------------------------------------
@@ -196,7 +199,11 @@ pub fn before_merges_xml(sheet: &Sheet) -> String {
                 let _ = write!(x, r#"<filterColumn colId="{}">"#, fc.col);
                 match &fc.criteria {
                     FilterCriteria::Values { values, blanks } => {
-                        x.push_str(if *blanks { r#"<filters blank="1">"# } else { "<filters>" });
+                        x.push_str(if *blanks {
+                            r#"<filters blank="1">"#
+                        } else {
+                            "<filters>"
+                        });
                         for v in values {
                             let _ = write!(x, r#"<filter val="{}"/>"#, esc(v));
                         }
@@ -267,7 +274,11 @@ impl SheetRels {
                 x,
                 r#"<Relationship Id="{id}" Type="{REL_NS}/{kind}" Target="{}"{}/>"#,
                 esc(target),
-                if *external { r#" TargetMode="External""# } else { "" }
+                if *external {
+                    r#" TargetMode="External""#
+                } else {
+                    ""
+                }
             );
         }
         x.push_str("</Relationships>");
@@ -280,7 +291,11 @@ impl SheetRels {
 pub fn after_merges_xml(sheet: &Sheet, n: usize, rels: &mut SheetRels) -> String {
     let mut x = String::new();
     if !sheet.validations.is_empty() {
-        let _ = write!(x, r#"<dataValidations count="{}">"#, sheet.validations.len());
+        let _ = write!(
+            x,
+            r#"<dataValidations count="{}">"#,
+            sheet.validations.len()
+        );
         for v in &sheet.validations {
             x.push_str("<dataValidation");
             if v.kind != ValidationKind::Any {
@@ -371,7 +386,11 @@ pub fn after_merges_xml(sheet: &Sheet, n: usize, rels: &mut SheetRels) -> String
         || ps.fit_width.is_some()
         || ps.fit_height.is_some()
     {
-        let _ = write!(x, r#"<pageSetup paperSize="{}" scale="{}""#, ps.paper_size, ps.scale);
+        let _ = write!(
+            x,
+            r#"<pageSetup paperSize="{}" scale="{}""#,
+            ps.paper_size, ps.scale
+        );
         if let Some(w) = ps.fit_width {
             let _ = write!(x, r#" fitToWidth="{w}""#);
         }
@@ -403,7 +422,11 @@ pub fn after_merges_xml(sheet: &Sheet, n: usize, rels: &mut SheetRels) -> String
     }
     if !sheet.comments.is_empty() {
         rels.add("comments", &format!("../comments{n}.xml"), false);
-        let id = rels.add("vmlDrawing", &format!("../drawings/vmlDrawing{n}.vml"), false);
+        let id = rels.add(
+            "vmlDrawing",
+            &format!("../drawings/vmlDrawing{n}.vml"),
+            false,
+        );
         let _ = write!(x, r#"<legacyDrawing r:id="{id}"/>"#);
     }
     x
@@ -730,7 +753,11 @@ fn read_auto_filter(n: &Node) -> Option<AutoFilter> {
 
 fn read_validation(v: &Node) -> DataValidation {
     let s = |k: &str| v.attr(k).unwrap_or("").to_string();
-    let f = |k: &str| v.child(k).map(|n| n.text.trim().to_string()).unwrap_or_default();
+    let f = |k: &str| {
+        v.child(k)
+            .map(|n| n.text.trim().to_string())
+            .unwrap_or_default()
+    };
     DataValidation {
         ranges: sqref(v.attr("sqref").unwrap_or("")),
         kind: v
@@ -803,7 +830,11 @@ fn text_of(n: &Node) -> String {
     for c in &n.children {
         match c.name.as_str() {
             "t" => s.push_str(&c.text),
-            "r" => s.push_str(&c.children_named("t").map(|t| t.text.as_str()).collect::<String>()),
+            "r" => s.push_str(
+                &c.children_named("t")
+                    .map(|t| t.text.as_str())
+                    .collect::<String>(),
+            ),
             _ => {}
         }
     }
@@ -854,7 +885,10 @@ mod tests {
     fn sample() -> Workbook {
         let mut wb = Workbook::new();
         let sh = &mut wb.sheets[0];
-        sh.set(CellAddr::new(0, 0), sp_model::Cell::constant(Value::text("h")));
+        sh.set(
+            CellAddr::new(0, 0),
+            sp_model::Cell::constant(Value::text("h")),
+        );
         sh.auto_filter = Some(AutoFilter {
             range: CellRange::parse("A1:C9").unwrap(),
             columns: vec![
@@ -870,14 +904,24 @@ mod tests {
                     criteria: FilterCriteria::Custom {
                         and: true,
                         conds: vec![
-                            FilterCond { op: "greaterThan".into(), val: "5".into() },
-                            FilterCond { op: "equal".into(), val: "x*".into() },
+                            FilterCond {
+                                op: "greaterThan".into(),
+                                val: "5".into(),
+                            },
+                            FilterCond {
+                                op: "equal".into(),
+                                val: "x*".into(),
+                            },
                         ],
                     },
                 },
                 FilterColumn {
                     col: 2,
-                    criteria: FilterCriteria::Top10 { top: false, percent: true, val: 20.0 },
+                    criteria: FilterCriteria::Top10 {
+                        top: false,
+                        percent: true,
+                        val: 20.0,
+                    },
                 },
             ],
         });
@@ -888,7 +932,10 @@ mod tests {
         });
         sh.allow_edit_ranges.push(AllowEditRange {
             title: "Inputs".into(),
-            ranges: vec![CellRange::parse("B2:B5").unwrap(), CellRange::parse("D1").unwrap()],
+            ranges: vec![
+                CellRange::parse("B2:B5").unwrap(),
+                CellRange::parse("D1").unwrap(),
+            ],
             password: None,
         });
         sh.validations.push(DataValidation {
@@ -937,7 +984,10 @@ mod tests {
             kind: CommentKind::Thread,
             author: "Bob".into(),
             text: "q".into(),
-            replies: vec![CommentReply { author: "Ann".into(), text: "a".into() }],
+            replies: vec![CommentReply {
+                author: "Ann".into(),
+                text: "a".into(),
+            }],
             visible: false,
             resolved: false,
         });

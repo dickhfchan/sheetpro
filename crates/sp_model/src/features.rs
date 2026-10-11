@@ -748,7 +748,13 @@ mod tests {
     fn validation_ops() {
         assert!(ValidationOp::Between.test(5.0, 10.0, 1.0));
         assert!(ValidationOp::NotBetween.test(11.0, 1.0, 10.0));
-        assert_eq!(ValidationOp::parse(">="), Some(ValidationOp::GreaterThanOrEqual));
-        assert_eq!(ValidationKind::parse("textLength"), Some(ValidationKind::TextLength));
+        assert_eq!(
+            ValidationOp::parse(">="),
+            Some(ValidationOp::GreaterThanOrEqual)
+        );
+        assert_eq!(
+            ValidationKind::parse("textLength"),
+            Some(ValidationKind::TextLength)
+        );
     }
 }

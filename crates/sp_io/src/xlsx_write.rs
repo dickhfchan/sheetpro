@@ -683,7 +683,11 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
                 ct,
                 r#"<Override PartName="/xl/comments{n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>"#
             );
-            put(&mut zip, &format!("xl/comments{n}.xml"), &crate::xlsx_extras::comments_xml(sheet))?;
+            put(
+                &mut zip,
+                &format!("xl/comments{n}.xml"),
+                &crate::xlsx_extras::comments_xml(sheet),
+            )?;
             put(
                 &mut zip,
                 &format!("xl/drawings/vmlDrawing{n}.vml"),
@@ -691,7 +695,11 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             )?;
         }
         if !rels.is_empty() {
-            put(&mut zip, &format!("xl/worksheets/_rels/sheet{n}.xml.rels"), &rels.xml())?;
+            put(
+                &mut zip,
+                &format!("xl/worksheets/_rels/sheet{n}.xml.rels"),
+                &rels.xml(),
+            )?;
         }
     }
     let ns = wb.sheets.len();

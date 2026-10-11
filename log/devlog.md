@@ -59,3 +59,43 @@ Still open:
 - Incremental recalc falls back to full for circular workbooks, sheet-level edits, undo/redo.
 - Borders commands can't set a colour; only built-in fonts (Arial/Times fall back).
 - Commands 120 missing; no dialogs.
+
+## 2026-10-11 — Wave 2 (4 parallel arcs)
+
+Landed:
+- 1 arrays: dynamic-array spill (`Sheet::spills`, spilled values in `Cell.value` with empty
+  content), #SPILL!, `A1#`, `@`/`_xlfn.SINGLE` (`Expr::Implicit`), legacy-formula `@` rewrite on
+  load, dynamic-array save (`cm` + metadata.xml); 22 array functions; LAMBDA family incl. direct
+  invocation and lambdas via LET/defined names.
+- 2 funcs: +74 functions (bonds/coupons/odd periods, XIRR/XNPV, Database, regex engine (own,
+  step-bounded), TEXTSPLIT, *B text, AGGREGATE, CELL/INFO); criteria engine rewritten in criteria.rs.
+- 3 cmds: +51 commands (AutoFilter, advanced filter, outline/subtotal, comments/notes, hyperlinks,
+  protection enforced in `Session::transact`, data validation on entry, page layout, auditing, fill
+  series, Go To Special, paste link); `sp_model::features`, `sp_io::xlsx_extras` round-trip.
+- 4 dialogs: Format Cells (6 tabs), Find/Replace, Go To, Sort, Paste Special, Insert Function,
+  Name Manager, small prompts, JSON params fallback form, ribbon combos/palettes, context menus;
+  egui_kittest UI tests; `sp screenshot --dialog`.
+
+Integration: conflicts in sp_model/lib.rs, sp_io/xlsx_read.rs (arrays vs cmds) and
+functions/mod.rs (arrays vs funcs) were additive; kept both. Overlapping implementations
+(MDETERM/MINVERSE/MUNIT/ARRAYTOTEXT/VALUETOTEXT/TEXTSPLIT): arrays registers last (oracle identical either order).
+
+Numbers (before → after):
+- Commands 184 → 237/304; functions 397 → 496/514. Floors raised.
+- Oracles: files 114 → 175/218; cells 65,468 → 68,176/73,244 (89.4% → 93.1%); round-trip 259/259.
+- Perf: machine load avg ~18 during measurement (non-cargo). Wave-1 commit measured under the same
+  load: within noise everywhere except **xlsx_load 539 → 740 ms (+37%, real)** from extras/rich-value
+  parsing and the legacy `@` rewrite. All benchmarks still within budget.
+
+Still open:
+- xlsx_load regression; re-baseline perf on an idle machine.
+- Row/col insert/delete doesn't shift comments, hyperlinks, validations, filter range, page breaks,
+  outline levels, or fixed (legacy) array areas.
+- SUBTOTAL ignores neither nested SUBTOTAL nor filtered/hidden rows.
+- Remove superseded COUNTIF/SUMIF-family code in stats.rs and `math::criteria_mask`.
+- eval.rs: numeric-text coercion (`"--8"`, currency symbols), negative base ^ fractional exponent,
+  element-wise lifting for DAY/MONTH/YEAR/POWER/EXACT/MID; INDIRECT R1C1; SEQUENCE(-1).
+- Hidden formulas still shown by formula bar / control `get`; no UI for arrows, circles, notes,
+  filter dropdowns.
+- Financial residuals (ACCRINT 30/360, ODDF/ODDLPRICE day counts); BESSELJ/Y precision.
+- Missing commands (67): charts, pivot tables, tables, conditional formatting, print/PDF, windows.

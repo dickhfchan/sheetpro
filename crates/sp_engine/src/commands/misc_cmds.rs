@@ -45,11 +45,17 @@ fn fill_series(s: &mut Session, p: &Json) -> CmdResult {
     let by_cols = match str_opt(p, "series_in") {
         Some("rows") => false,
         Some("columns") => true,
-        Some(o) => return Err(CmdError::Param(format!("'series_in' is rows or columns, not '{o}'"))),
+        Some(o) => {
+            return Err(CmdError::Param(format!(
+                "'series_in' is rows or columns, not '{o}'"
+            )));
+        }
         None => r.rows() >= r.cols(),
     };
     if !matches!(kind, "linear" | "growth" | "date") {
-        return Err(CmdError::Param(format!("unknown type '{kind}' (linear, growth, date)")));
+        return Err(CmdError::Param(format!(
+            "unknown type '{kind}' (linear, growth, date)"
+        )));
     }
     if !matches!(unit, "day" | "weekday" | "month" | "year") {
         return Err(CmdError::Param(format!("unknown date_unit '{unit}'")));
@@ -59,29 +65,46 @@ fn fill_series(s: &mut Session, p: &Json) -> CmdResult {
         let Some(stop) = stop else {
             return Err(CmdError::Param("select a range or give 'stop'".into()));
         };
-        let start = s.wb.sheet(sheet).and_then(|sh| sh.value(r.start).as_number()).unwrap_or(0.0);
+        let start =
+            s.wb.sheet(sheet)
+                .and_then(|sh| sh.value(r.start).as_number())
+                .unwrap_or(0.0);
         let n = match kind {
             "linear" if step != 0.0 => ((stop - start) / step).floor() + 1.0,
-            "growth" if step > 1.0 && start > 0.0 => ((stop / start).ln() / step.ln()).floor() + 1.0,
+            "growth" if step > 1.0 && start > 0.0 => {
+                ((stop / start).ln() / step.ln()).floor() + 1.0
+            }
             _ => 1.0,
         };
         let n = n.clamp(1.0, MAX_SERIES as f64) as u32;
         let end = if by_cols {
-            CellAddr::new(r.start.row.saturating_add(n - 1).min(sp_core::MAX_ROWS - 1), r.start.col)
+            CellAddr::new(
+                r.start.row.saturating_add(n - 1).min(sp_core::MAX_ROWS - 1),
+                r.start.col,
+            )
         } else {
-            CellAddr::new(r.start.row, r.start.col.saturating_add(n - 1).min(sp_core::MAX_COLS - 1))
+            CellAddr::new(
+                r.start.row,
+                r.start.col.saturating_add(n - 1).min(sp_core::MAX_COLS - 1),
+            )
         };
         r = CellRange::new(r.start, end);
     }
     if r.cell_count() > MAX_SERIES {
         return Err(CmdError::Param("range too large".into()));
     }
-    let sh = s.wb.sheet(sheet).ok_or_else(|| CmdError::Failed("no sheet".into()))?;
+    let sh =
+        s.wb.sheet(sheet)
+            .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
     let mut writes: Vec<(CellAddr, Option<Cell>)> = Vec::new();
     let lines: Vec<(CellAddr, u32)> = if by_cols {
-        (r.start.col..=r.end.col).map(|c| (CellAddr::new(r.start.row, c), r.rows())).collect()
+        (r.start.col..=r.end.col)
+            .map(|c| (CellAddr::new(r.start.row, c), r.rows()))
+            .collect()
     } else {
-        (r.start.row..=r.end.row).map(|row| (CellAddr::new(row, r.start.col), r.cols())).collect()
+        (r.start.row..=r.end.row)
+            .map(|row| (CellAddr::new(row, r.start.col), r.cols()))
+            .collect()
     };
     for (first, len) in lines {
         let Some(Value::Number(start)) = sh.get(first).map(|c| c.value.clone()) else {
@@ -106,9 +129,16 @@ fn fill_series(s: &mut Session, p: &Json) -> CmdResult {
             {
                 break;
             }
-            let at = if by_cols { first.offset(i64::from(k), 0) } else { first.offset(0, i64::from(k)) };
+            let at = if by_cols {
+                first.offset(i64::from(k), 0)
+            } else {
+                first.offset(0, i64::from(k))
+            };
             if let Some(at) = at {
-                let old_style = sh.get(at).map(|c| c.style).filter(|s| *s != Default::default());
+                let old_style = sh
+                    .get(at)
+                    .map(|c| c.style)
+                    .filter(|s| *s != Default::default());
                 writes.push((
                     at,
                     Some(Cell {
@@ -120,7 +150,9 @@ fn fill_series(s: &mut Session, p: &Json) -> CmdResult {
         }
     }
     if writes.is_empty() {
-        return Err(CmdError::Failed("No starting number to build a series from.".into()));
+        return Err(CmdError::Failed(
+            "No starting number to build a series from.".into(),
+        ));
     }
     let n = writes.len();
     s.transact("Series", |tx, _| {
@@ -154,7 +186,10 @@ pub fn visible_areas(sh: &Sheet, r: CellRange) -> Vec<CellRange> {
     let mut out = Vec::new();
     for (r0, r1) in &rows {
         for (c0, c1) in &cols {
-            out.push(CellRange::new(CellAddr::new(*r0, *c0), CellAddr::new(*r1, *c1)));
+            out.push(CellRange::new(
+                CellAddr::new(*r0, *c0),
+                CellAddr::new(*r1, *c1),
+            ));
             if out.len() >= MAX_LIST {
                 return out;
             }
@@ -165,18 +200,24 @@ pub fn visible_areas(sh: &Sheet, r: CellRange) -> Vec<CellRange> {
 
 fn select_visible(s: &mut Session, p: &Json) -> CmdResult {
     let (sheet, r) = range(s, p, "range")?;
-    let sh = s.wb.sheet(sheet).ok_or_else(|| CmdError::Failed("no sheet".into()))?;
+    let sh =
+        s.wb.sheet(sheet)
+            .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
     let areas = visible_areas(sh, r);
     if areas.is_empty() {
         return Err(CmdError::Failed("No cells were found.".into()));
     }
-    Ok(json!(areas.iter().map(CellRange::to_a1).collect::<Vec<_>>()))
+    Ok(json!(
+        areas.iter().map(CellRange::to_a1).collect::<Vec<_>>()
+    ))
 }
 
 fn goto_special(s: &mut Session, p: &Json) -> CmdResult {
     let kind = str_opt(p, "kind").unwrap_or("blanks");
     let sheet = s.sheet_index();
-    let sh = s.wb.sheet(sheet).ok_or_else(|| CmdError::Failed("no sheet".into()))?;
+    let sh =
+        s.wb.sheet(sheet)
+            .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
     // Scope: the selection when it spans more than one cell, else the used range.
     let used = sh.used_range();
     let scope = match str_opt(p, "range") {
@@ -191,7 +232,12 @@ fn goto_special(s: &mut Session, p: &Json) -> CmdResult {
     let types: Vec<String> = p
         .get("types")
         .and_then(Json::as_array)
-        .map(|a| a.iter().filter_map(Json::as_str).map(str::to_string).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(Json::as_str)
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default();
     let type_ok = |v: &Value| {
         types.is_empty()
@@ -207,7 +253,9 @@ fn goto_special(s: &mut Session, p: &Json) -> CmdResult {
     match kind {
         "visible" => {
             let areas = visible_areas(sh, scope);
-            return Ok(json!(areas.iter().map(CellRange::to_a1).collect::<Vec<_>>()));
+            return Ok(json!(
+                areas.iter().map(CellRange::to_a1).collect::<Vec<_>>()
+            ));
         }
         "last_cell" => {
             let u = used.ok_or_else(|| CmdError::Failed("No cells were found.".into()))?;
@@ -224,7 +272,10 @@ fn goto_special(s: &mut Session, p: &Json) -> CmdResult {
                 return Err(CmdError::Param("range too large".into()));
             }
             for a in scope.iter() {
-                if sh.get(a).is_none_or(|c| c.value.is_empty() && c.formula_src().is_none()) {
+                if sh
+                    .get(a)
+                    .is_none_or(|c| c.value.is_empty() && c.formula_src().is_none())
+                {
                     hits.push(a);
                     if hits.len() >= MAX_LIST {
                         break;
@@ -250,7 +301,12 @@ fn goto_special(s: &mut Session, p: &Json) -> CmdResult {
                 }
             }
             if matches!(kind, "comments" | "notes") {
-                hits = sh.comments.iter().map(|c| c.addr).filter(|a| scope.contains(*a)).collect();
+                hits = sh
+                    .comments
+                    .iter()
+                    .map(|c| c.addr)
+                    .filter(|a| scope.contains(*a))
+                    .collect();
             }
             if kind == "data_validation" {
                 for v in &sh.validations {
@@ -274,10 +330,15 @@ fn goto_special(s: &mut Session, p: &Json) -> CmdResult {
     let (Some(first), Some(_)) = (hits.first().copied(), hits.last()) else {
         return Err(CmdError::Failed("No cells were found.".into()));
     };
-    let (r0, r1, c0, c1) = hits.iter().fold((u32::MAX, 0, u32::MAX, 0), |(a, b, c, d), x| {
-        (a.min(x.row), b.max(x.row), c.min(x.col), d.max(x.col))
-    });
-    s.select_range(CellRange::new(CellAddr::new(r0, c0), CellAddr::new(r1, c1)), first);
+    let (r0, r1, c0, c1) = hits
+        .iter()
+        .fold((u32::MAX, 0, u32::MAX, 0), |(a, b, c, d), x| {
+            (a.min(x.row), b.max(x.row), c.min(x.col), d.max(x.col))
+        });
+    s.select_range(
+        CellRange::new(CellAddr::new(r0, c0), CellAddr::new(r1, c1)),
+        first,
+    );
     Ok(json!(hits.iter().map(|a| a.to_a1()).collect::<Vec<_>>()))
 }
 
@@ -290,7 +351,10 @@ fn paste_link(s: &mut Session, p: &Json) -> CmdResult {
     if clip.range.cell_count() > 1_000_000 {
         return Err(CmdError::Param("range too large".into()));
     }
-    let src_name = s.wb.sheet(clip.sheet).map(|sh| sh.name.clone()).unwrap_or_default();
+    let src_name =
+        s.wb.sheet(clip.sheet)
+            .map(|sh| sh.name.clone())
+            .unwrap_or_default();
     let prefix = if clip.sheet == sheet {
         String::new()
     } else {
@@ -301,15 +365,27 @@ fn paste_link(s: &mut Session, p: &Json) -> CmdResult {
     for a in clip.range.iter() {
         let (dr, dc) = (a.row - clip.range.start.row, a.col - clip.range.start.col);
         let Some(at) = dest.offset(i64::from(dr), i64::from(dc)) else {
-            return Err(CmdError::Failed("The paste area doesn't fit on the sheet.".into()));
+            return Err(CmdError::Failed(
+                "The paste area doesn't fit on the sheet.".into(),
+            ));
         };
         let reference = if absolute {
             format!("${}${}", col_to_letters(a.col), a.row + 1)
         } else {
             a.to_a1()
         };
-        let style = s.wb.sheet(sheet).and_then(|sh| sh.get(at)).map(|c| c.style).unwrap_or_default();
-        writes.push((at, Cell { style, ..Cell::formula(format!("{prefix}{reference}")) }));
+        let style =
+            s.wb.sheet(sheet)
+                .and_then(|sh| sh.get(at))
+                .map(|c| c.style)
+                .unwrap_or_default();
+        writes.push((
+            at,
+            Cell {
+                style,
+                ..Cell::formula(format!("{prefix}{reference}"))
+            },
+        ));
     }
     let out = CellRange::new(dest, writes.last().map_or(dest, |(a, _)| *a));
     s.transact("Paste Link", |tx, _| {
@@ -334,7 +410,11 @@ pub fn specs() -> Vec<CommandSpec> {
             r#"{"kind": "blanks|constants|formulas|errors|visible|comments|notes|data_validation|current_region|last_cell", "types"?: ["numbers","text","logicals","errors"], "range"?: "A1:D9"}"#,
             goto_special,
         ),
-        CommandSpec::new("select.visible_cells", r#"{"range"?: "A1:D9"} → visible areas"#, select_visible),
+        CommandSpec::new(
+            "select.visible_cells",
+            r#"{"range"?: "A1:D9"} → visible areas"#,
+            select_visible,
+        ),
         CommandSpec::new(
             "home.clipboard.paste_link",
             r#"{"cell"?: "D1", "absolute"?: true}"#,
@@ -348,58 +428,89 @@ mod tests {
     use super::*;
 
     fn v(s: &Session, a: &str) -> String {
-        s.wb.sheets[0].value(CellAddr::parse(a).unwrap()).to_display()
+        s.wb.sheets[0]
+            .value(CellAddr::parse(a).unwrap())
+            .to_display()
     }
 
     #[test]
     fn series() {
         let mut s = Session::new();
-        s.execute("cell.set", &json!({"cell": "A1", "input": "2"})).unwrap();
-        s.execute("home.editing.fill_series", &json!({"range": "A1:A5", "step": 3})).unwrap();
-        assert_eq!(v(&s, "A5"), "14");
-        s.execute("home.editing.fill_series", &json!({"range": "A1", "type": "growth", "step": 2, "stop": 40}))
+        s.execute("cell.set", &json!({"cell": "A1", "input": "2"}))
             .unwrap();
+        s.execute(
+            "home.editing.fill_series",
+            &json!({"range": "A1:A5", "step": 3}),
+        )
+        .unwrap();
+        assert_eq!(v(&s, "A5"), "14");
+        s.execute(
+            "home.editing.fill_series",
+            &json!({"range": "A1", "type": "growth", "step": 2, "stop": 40}),
+        )
+        .unwrap();
         assert_eq!(v(&s, "A5"), "32");
         assert_eq!(v(&s, "A6"), "");
-        s.execute("cell.set", &json!({"cell": "C1", "input": "2024-01-31"})).unwrap();
+        s.execute("cell.set", &json!({"cell": "C1", "input": "2024-01-31"}))
+            .unwrap();
         s.execute(
             "home.editing.fill_series",
             &json!({"range": "C1:C3", "type": "date", "date_unit": "month"}),
         )
         .unwrap();
         let feb = sp_core::date::date_to_serial(2024, 2, 29).unwrap();
-        assert_eq!(s.wb.sheets[0].value(CellAddr::parse("C2").unwrap()), &Value::Number(feb));
+        assert_eq!(
+            s.wb.sheets[0].value(CellAddr::parse("C2").unwrap()),
+            &Value::Number(feb)
+        );
         // Weekdays skip the weekend: Fri 2024-01-05 → Mon 2024-01-08.
-        s.execute("cell.set", &json!({"cell": "D1", "input": "2024-01-05"})).unwrap();
+        s.execute("cell.set", &json!({"cell": "D1", "input": "2024-01-05"}))
+            .unwrap();
         s.execute(
             "home.editing.fill_series",
             &json!({"range": "D1:D2", "type": "date", "date_unit": "weekday"}),
         )
         .unwrap();
         let mon = sp_core::date::date_to_serial(2024, 1, 8).unwrap();
-        assert_eq!(s.wb.sheets[0].value(CellAddr::parse("D2").unwrap()), &Value::Number(mon));
+        assert_eq!(
+            s.wb.sheets[0].value(CellAddr::parse("D2").unwrap()),
+            &Value::Number(mon)
+        );
     }
 
     #[test]
     fn goto_special_visible_and_paste_link() {
         let mut s = Session::new();
         for (a, i) in [("A1", "1"), ("A3", "=A1"), ("B2", "x"), ("B3", "=1/0")] {
-            s.execute("cell.set", &json!({"cell": a, "input": i})).unwrap();
+            s.execute("cell.set", &json!({"cell": a, "input": i}))
+                .unwrap();
         }
-        let r = s.execute("home.editing.goto_special", &json!({"kind": "blanks"})).unwrap();
+        let r = s
+            .execute("home.editing.goto_special", &json!({"kind": "blanks"}))
+            .unwrap();
         assert_eq!(r, json!(["B1", "A2"]));
         let r = s
-            .execute("home.editing.goto_special", &json!({"kind": "constants", "types": ["text"]}))
+            .execute(
+                "home.editing.goto_special",
+                &json!({"kind": "constants", "types": ["text"]}),
+            )
             .unwrap();
         assert_eq!(r, json!(["B2"]));
-        let r = s.execute("home.editing.goto_special", &json!({"kind": "errors"})).unwrap();
+        let r = s
+            .execute("home.editing.goto_special", &json!({"kind": "errors"}))
+            .unwrap();
         assert_eq!(r, json!(["B3"]));
-        s.execute("home.cells.hide_rows", &json!({"range": "A2"})).unwrap();
-        let r = s.execute("select.visible_cells", &json!({"range": "A1:B4"})).unwrap();
+        s.execute("home.cells.hide_rows", &json!({"range": "A2"}))
+            .unwrap();
+        let r = s
+            .execute("select.visible_cells", &json!({"range": "A1:B4"}))
+            .unwrap();
         assert_eq!(r, json!(["A1:B1", "A3:B4"]));
-        s.execute("home.clipboard.copy", &json!({"range": "A1:B1"})).unwrap();
+        s.execute("home.clipboard.copy", &json!({"range": "A1:B1"}))
+            .unwrap();
         s.execute("sheet.insert", &json!({})).ok();
-        s.execute("home.clipboard.paste_link", &json!({"cell": "D5"})).unwrap();
+        s.execute("home.clipboard.paste_link", &json!({"cell": "D5"}))
+            .unwrap();
         let c = s.wb.sheets[0].get(CellAddr::parse("D5").unwrap()).unwrap();
         assert_eq!(c.input_text(), "=$A$1");
         assert_eq!(v(&s, "D5"), "1");

@@ -18,7 +18,11 @@ fn header_key(v: &Value) -> String {
 }
 
 /// Resolve the `field` argument to a 0-based column of `db`. `Ok(None)` = field omitted.
-fn field_column(ev: &mut Ev<'_>, db: &Array2, field: Option<&Expr>) -> Result<Option<usize>, ErrorKind> {
+fn field_column(
+    ev: &mut Ev<'_>,
+    db: &Array2,
+    field: Option<&Expr>,
+) -> Result<Option<usize>, ErrorKind> {
     let Some(fe) = field else {
         return Ok(None);
     };
@@ -186,10 +190,14 @@ pub fn register(r: &mut Registry) {
     r.add("DCOUNTA", 3, 3, |ev, a| dcount(ev, a, true));
     r.add("DGET", 3, 3, dget);
     r.add("DMAX", 3, 3, |ev, a| {
-        agg(ev, a, |v| Ok(v.iter().copied().reduce(f64::max).unwrap_or(0.0)))
+        agg(ev, a, |v| {
+            Ok(v.iter().copied().reduce(f64::max).unwrap_or(0.0))
+        })
     });
     r.add("DMIN", 3, 3, |ev, a| {
-        agg(ev, a, |v| Ok(v.iter().copied().reduce(f64::min).unwrap_or(0.0)))
+        agg(ev, a, |v| {
+            Ok(v.iter().copied().reduce(f64::min).unwrap_or(0.0))
+        })
     });
     r.add("DPRODUCT", 3, 3, |ev, a| {
         agg(ev, a, |v| {
@@ -200,8 +208,12 @@ pub fn register(r: &mut Registry) {
             })
         })
     });
-    r.add("DSTDEV", 3, 3, |ev, a| agg(ev, a, |v| variance(v, true).map(f64::sqrt)));
-    r.add("DSTDEVP", 3, 3, |ev, a| agg(ev, a, |v| variance(v, false).map(f64::sqrt)));
+    r.add("DSTDEV", 3, 3, |ev, a| {
+        agg(ev, a, |v| variance(v, true).map(f64::sqrt))
+    });
+    r.add("DSTDEVP", 3, 3, |ev, a| {
+        agg(ev, a, |v| variance(v, false).map(f64::sqrt))
+    });
     r.add("DSUM", 3, 3, |ev, a| agg(ev, a, |v| Ok(v.iter().sum())));
     r.add("DVAR", 3, 3, |ev, a| agg(ev, a, |v| variance(v, true)));
     r.add("DVARP", 3, 3, |ev, a| agg(ev, a, |v| variance(v, false)));
@@ -242,7 +254,18 @@ mod tests {
 
     #[test]
     fn or_rows_and_empty_row() {
-        let c = Array2::new(3, 2, vec![t("Name"), t("Qty"), t("P"), Value::Empty, Value::Empty, t(">9")]);
+        let c = Array2::new(
+            3,
+            2,
+            vec![
+                t("Name"),
+                t("Qty"),
+                t("P"),
+                Value::Empty,
+                Value::Empty,
+                t(">9"),
+            ],
+        );
         assert_eq!(matching_records(&db(), &c), vec![1, 2]);
         let c = Array2::new(2, 1, vec![t("Qty"), Value::Empty]);
         assert_eq!(matching_records(&db(), &c), vec![1, 2, 3]);

@@ -51,7 +51,11 @@ fn formula_at(s: &Session, sheet: usize, a: CellAddr) -> Option<String> {
 
 /// Direct precedents of the formula in (sheet, a).
 fn precedents_of(wb: &Workbook, sheet: usize, a: CellAddr) -> Vec<(usize, CellRange)> {
-    let Some(src) = wb.sheet(sheet).and_then(|s| s.get(a)).and_then(|c| c.formula_src()) else {
+    let Some(src) = wb
+        .sheet(sheet)
+        .and_then(|s| s.get(a))
+        .and_then(|c| c.formula_src())
+    else {
         return Vec::new();
     };
     let Ok(e) = sp_formula::parse(src) else {
@@ -78,7 +82,9 @@ fn trace_precedents(s: &mut Session, p: &Json) -> CmdResult {
             "The active cell doesn't contain a formula that refers to other cells.".into(),
         ));
     }
-    let levels = crate::params::u32_opt(p, "levels")?.unwrap_or(1).clamp(1, 16);
+    let levels = crate::params::u32_opt(p, "levels")?
+        .unwrap_or(1)
+        .clamp(1, 16);
     let mut frontier = vec![(sheet, at)];
     let mut out = Vec::new();
     for _ in 0..levels {
@@ -333,9 +339,14 @@ fn evaluate_formula(s: &mut Session, p: &Json) -> CmdResult {
         if let Some(slot) = node_at_mut(&mut work, path) {
             *slot = literal(&v);
         }
-        steps.push(json!({ "formula": format!("={before}"), "evaluate": text, "result": shown(&v) }));
+        steps.push(
+            json!({ "formula": format!("={before}"), "evaluate": text, "result": shown(&v) }),
+        );
     }
-    let result = s.wb.sheet(sheet).map(|sh| sh.value(at).clone()).unwrap_or_default();
+    let result =
+        s.wb.sheet(sheet)
+            .map(|sh| sh.value(at).clone())
+            .unwrap_or_default();
     Ok(json!({
         "cell": at.to_a1(),
         "formula": format!("={src}"),
@@ -412,7 +423,10 @@ pub fn name_from_label(text: &str) -> Option<String> {
     if n.is_empty() {
         return None;
     }
-    if n.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '.') {
+    if n.chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_digit() || c == '.')
+    {
         n.insert(0, '_');
     }
     let looks_like_ref = CellAddr::parse(&n).is_ok()
@@ -444,7 +458,9 @@ fn create_from_selection(s: &mut Session, p: &Json) -> CmdResult {
             "select a block with labels in its first row or column".into(),
         ));
     }
-    let sh = s.wb.sheet(sheet).ok_or_else(|| CmdError::Failed("no sheet".into()))?;
+    let sh =
+        s.wb.sheet(sheet)
+            .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
     let is_text = |a: CellAddr| matches!(sh.value(a), Value::Text(_));
     let any = ["top", "left", "bottom", "right"]
         .iter()
@@ -581,7 +597,10 @@ mod tests {
             ("C1", "=B1*2"),
         ]);
         let r = s
-            .execute("formulas.trace_precedents", &json!({"cell": "C1", "levels": 2}))
+            .execute(
+                "formulas.trace_precedents",
+                &json!({"cell": "C1", "levels": 2}),
+            )
             .unwrap();
         assert_eq!(r, json!(["B1", "A1", "A1:A2"]));
         assert_eq!(s.view.review.arrows.len(), 3);
@@ -619,7 +638,10 @@ mod tests {
         assert_eq!(r.as_array().unwrap().len(), 2);
         assert_eq!(s.sel.active, CellAddr::new(1, 1));
         let w = s
-            .execute("formulas.watch_window", &json!({"action": "add", "range": "A1:B1"}))
+            .execute(
+                "formulas.watch_window",
+                &json!({"action": "add", "range": "A1:B1"}),
+            )
             .unwrap();
         assert_eq!(w[0]["value"], "#DIV/0!");
         assert_eq!(w.as_array().unwrap().len(), 2);
@@ -639,9 +661,15 @@ mod tests {
             )
             .unwrap();
         assert_eq!(r, json!(["Item", "Unit_Price"]));
-        s.execute("cell.set", &json!({"cell": "D1", "input": "=SUM(Unit_Price)"}))
-            .unwrap();
-        assert_eq!(s.wb.sheets[0].value(CellAddr::new(0, 3)), &Value::Number(7.0));
+        s.execute(
+            "cell.set",
+            &json!({"cell": "D1", "input": "=SUM(Unit_Price)"}),
+        )
+        .unwrap();
+        assert_eq!(
+            s.wb.sheets[0].value(CellAddr::new(0, 3)),
+            &Value::Number(7.0)
+        );
         assert_eq!(name_from_label("2024 total"), Some("_2024_total".into()));
         assert_eq!(name_from_label("A1"), Some("A1_".into()));
     }

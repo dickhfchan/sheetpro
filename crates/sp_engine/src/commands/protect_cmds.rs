@@ -33,7 +33,9 @@ fn sheet_list(wb: &Workbook) -> Vec<(String, Visibility)> {
 }
 
 fn is_locked(wb: &Workbook, cell: Option<&Cell>) -> bool {
-    wb.styles.get(cell.map_or_else(Default::default, |c| c.style)).locked
+    wb.styles
+        .get(cell.map_or_else(Default::default, |c| c.style))
+        .locked
 }
 
 /// Is `a` inside an allow-edit range the user may edit (no password, or unlocked by title)?
@@ -49,9 +51,7 @@ pub fn cell_editable(wb: &Workbook, unlocked: &[String], sheet: usize, a: CellAd
     let Some(sh) = wb.sheet(sheet) else {
         return true;
     };
-    sh.protection.is_none()
-        || !is_locked(wb, sh.get(a))
-        || in_allowed_range(sh, unlocked, a)
+    sh.protection.is_none() || !is_locked(wb, sh.get(a)) || in_allowed_range(sh, unlocked, a)
 }
 
 /// Text for the formula bar: hides formulas of `hidden_formula` cells on protected sheets.
@@ -150,10 +150,8 @@ impl Guard {
                         return true;
                     };
                     let cells_ok = changed_addrs(&before.cells, &after.cells).iter().all(|a| {
-                        let locked_before = is_locked(
-                            wb,
-                            before.cells.get(&a.row).and_then(|r| r.get(&a.col)),
-                        );
+                        let locked_before =
+                            is_locked(wb, before.cells.get(&a.row).and_then(|r| r.get(&a.col)));
                         !locked_before || in_allowed_range(after, unlocked, *a)
                     });
                     cells_ok
@@ -383,16 +381,15 @@ fn allow_edit_ranges(s: &mut Session, p: &Json) -> CmdResult {
     }
     if action == "unlock" {
         let title = str_req(p, "title")?;
-        let r = s
-            .wb
-            .sheet(sheet)
-            .and_then(|sh| {
-                sh.allow_edit_ranges
-                    .iter()
-                    .find(|r| r.title.eq_ignore_ascii_case(title))
-            })
-            .cloned()
-            .ok_or_else(|| CmdError::Param(format!("no range titled '{title}'")))?;
+        let r =
+            s.wb.sheet(sheet)
+                .and_then(|sh| {
+                    sh.allow_edit_ranges
+                        .iter()
+                        .find(|r| r.title.eq_ignore_ascii_case(title))
+                })
+                .cloned()
+                .ok_or_else(|| CmdError::Param(format!("no range titled '{title}'")))?;
         check_password(r.password.as_ref(), p)?;
         if !s.view.review.unlocked.iter().any(|t| t == &r.title) {
             s.view.review.unlocked.push(r.title);
@@ -494,7 +491,12 @@ mod tests {
         // Unlock B1:B3 before protecting.
         s.execute("home.cells.lock_cell", &json!({"range": "B1:B3"}))
             .unwrap();
-        assert!(!s.wb.styles.get(s.wb.sheets[0].get(CellAddr::new(0, 1)).unwrap().style).locked);
+        assert!(
+            !s.wb
+                .styles
+                .get(s.wb.sheets[0].get(CellAddr::new(0, 1)).unwrap().style)
+                .locked
+        );
         s.execute("review.protect_sheet", &json!({"password": "pw"}))
             .unwrap();
         let e = s
@@ -516,7 +518,10 @@ mod tests {
         );
         assert_eq!(v(&s, "A1"), "1");
         // Wrong password keeps it protected.
-        assert!(s.execute("review.protect_sheet", &json!({"password": "x"})).is_err());
+        assert!(
+            s.execute("review.protect_sheet", &json!({"password": "x"}))
+                .is_err()
+        );
         s.execute("review.protect_sheet", &json!({"password": "pw"}))
             .unwrap();
         s.execute("cell.set", &json!({"cell": "A1", "input": "2"}))
@@ -540,12 +545,16 @@ mod tests {
         )
         .unwrap();
         s.wb.sheets[0].entry(CellAddr::new(0, 2)).style =
-            s.wb.styles.derive(Default::default(), |st| st.hidden_formula = true);
+            s.wb.styles
+                .derive(Default::default(), |st| st.hidden_formula = true);
         s.execute("home.cells.protect_sheet", &json!({})).unwrap();
         assert_eq!(visible_input(&s.wb, 0, CellAddr::new(0, 2)), "");
         s.execute("cell.set", &json!({"cell": "A3", "input": "ok"}))
             .unwrap();
-        assert!(s.execute("cell.set", &json!({"cell": "D1", "input": "x"})).is_err());
+        assert!(
+            s.execute("cell.set", &json!({"cell": "D1", "input": "x"}))
+                .is_err()
+        );
         s.execute(
             "review.allow_edit_ranges",
             &json!({"action": "unlock", "title": "Secret", "password": "k"}),

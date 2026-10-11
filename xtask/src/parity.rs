@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 /// Raise these when parity rises; never lower them.
-pub const COMMAND_FLOOR: usize = 184;
-pub const FUNCTION_FLOOR: usize = 397;
+pub const COMMAND_FLOOR: usize = 237;
+pub const FUNCTION_FLOOR: usize = 496;
 
 pub struct Parity {
     pub commands_live: usize,

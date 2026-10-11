@@ -1,6 +1,11 @@
 //! End-to-end checks for the criteria engine and the function long tail (known values).
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 use sp_core::{CellAddr, ErrorKind, Value};
 use sp_formula::{AstCache, RecalcOptions, recalc};
@@ -20,7 +25,14 @@ fn wb_with(cells: &[(&str, &str)]) -> Workbook {
         wb.sheets[0].set(addr, cell);
     }
     let mut cache = AstCache::default();
-    recalc(&mut wb, &mut cache, RecalcOptions { now: Some(45306.5), seed: 7 });
+    recalc(
+        &mut wb,
+        &mut cache,
+        RecalcOptions {
+            now: Some(45306.5),
+            seed: 7,
+        },
+    );
     wb
 }
 
@@ -99,19 +111,34 @@ fn database_functions() {
 #[test]
 fn financial_known_values() {
     let wb = wb_with(&[
-        ("A1", "=PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2,0)"),
-        ("A2", "=YIELD(DATE(2008,2,15),DATE(2016,11,15),0.0575,95.04287,100,2,0)"),
+        (
+            "A1",
+            "=PRICE(DATE(2008,2,15),DATE(2017,11,15),0.0575,0.065,100,2,0)",
+        ),
+        (
+            "A2",
+            "=YIELD(DATE(2008,2,15),DATE(2016,11,15),0.0575,95.04287,100,2,0)",
+        ),
         ("A3", "=ACCRINT(39508,39691,39569,0.1,1000,2,0)"),
         ("A4", "=ACCRINTM(39539,39614,0.1,1000,3)"),
         ("A5", "=COUPNUM(DATE(2011,1,25),DATE(2011,11,15),2,1)"),
         ("A6", "=DISC(DATE(2018,1,25),DATE(2018,6,15),97.975,100,1)"),
         ("A7", "=TBILLPRICE(DATE(2008,3,31),DATE(2008,6,1),0.09)"),
         ("A8", "=CUMIPMT(0.09/12,30*12,125000,13,24,0)"),
-        ("A9", "=XNPV(0.09,{-10000,2750,4250,3250,2750},{39448,39508,39751,39859,39904})"),
-        ("A10", "=XIRR({-10000,2750,4250,3250,2750},{39448,39508,39751,39859,39904})"),
+        (
+            "A9",
+            "=XNPV(0.09,{-10000,2750,4250,3250,2750},{39448,39508,39751,39859,39904})",
+        ),
+        (
+            "A10",
+            "=XIRR({-10000,2750,4250,3250,2750},{39448,39508,39751,39859,39904})",
+        ),
         ("A11", "=VDB(2400,300,10,0,1)"),
         ("A12", "=DOLLARDE(1.02,16)"),
-        ("A13", "=MDURATION(DATE(2008,1,1),DATE(2016,1,1),0.08,0.09,2,1)"),
+        (
+            "A13",
+            "=MDURATION(DATE(2008,1,1),DATE(2016,1,1),0.08,0.09,2,1)",
+        ),
         ("A14", "=AMORLINC(2400,39679,39813,300,1,0.15,1)"),
     ]);
     assert!(close(num(&wb, "A1"), 94.634_361_31));
@@ -134,7 +161,10 @@ fn financial_known_values() {
 fn text_math_info() {
     let wb = wb_with(&[
         ("A1", "JamesBond"),
-        ("B1", "=REGEXREPLACE(A1,\"([A-Z][a-z]+)([A-Z][a-z]+)\",\"$2, $1 $2\")"),
+        (
+            "B1",
+            "=REGEXREPLACE(A1,\"([A-Z][a-z]+)([A-Z][a-z]+)\",\"$2, $1 $2\")",
+        ),
         ("B2", "=REGEXTEST(\"abc123\",\"\\d{3}$\")"),
         ("B3", "=REGEXEXTRACT(\"Lonely Planet\",\"[A-Z][a-z]+$\")"),
         ("B4", "=TEXTSPLIT(\"a,b,c\",\",\")"),
@@ -146,7 +176,10 @@ fn text_math_info() {
         ("C3", "2"),
         ("B8", "=CELL(\"address\",C3)"),
         ("B9", "=LENB(\"abc\")"),
-        ("B10", "=REGEXTEST(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\",\"(a+)+b\")"),
+        (
+            "B10",
+            "=REGEXTEST(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\",\"(a+)+b\")",
+        ),
     ]);
     assert_eq!(v(&wb, "B1"), Value::text("Bond, James Bond"));
     assert_eq!(v(&wb, "B2"), Value::Bool(true));
@@ -158,7 +191,10 @@ fn text_math_info() {
     assert_eq!(v(&wb, "B8"), Value::text("$C$3"));
     assert_eq!(num(&wb, "B9"), 3.0);
     // Catastrophic backtracking is cut off rather than hanging.
-    assert!(matches!(v(&wb, "B10"), Value::Bool(false) | Value::Error(_)));
+    assert!(matches!(
+        v(&wb, "B10"),
+        Value::Bool(false) | Value::Error(_)
+    ));
 }
 
 #[test]

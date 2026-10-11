@@ -19,7 +19,11 @@ fn args_n(ev: &mut Ev<'_>, args: &[Expr], defaults: &[Option<f64>]) -> Result<Ve
 }
 
 /// Like `args_n`, but logicals are `#VALUE!` (analysis-style functions).
-fn args_strict(ev: &mut Ev<'_>, args: &[Expr], defaults: &[Option<f64>]) -> Result<Vec<f64>, ErrorKind> {
+fn args_strict(
+    ev: &mut Ev<'_>,
+    args: &[Expr],
+    defaults: &[Option<f64>],
+) -> Result<Vec<f64>, ErrorKind> {
     for e in args.iter().take(defaults.len()) {
         if !matches!(e, Expr::Missing) && matches!(ev.eval_scalar(e), Value::Bool(_)) {
             return Err(ErrorKind::Value);
@@ -283,13 +287,22 @@ fn cum(ev: &mut Ev<'_>, args: &[Expr], principal: bool) -> Result<f64, ErrorKind
 
 /// Depreciation for whole period `p` (1-based) under declining balance with an optional
 /// switch to straight line, given the book value at the start of the period.
-fn vdb_schedule(cost: f64, salvage: f64, life: f64, factor: f64, no_switch: bool, periods: usize) -> Vec<f64> {
+fn vdb_schedule(
+    cost: f64,
+    salvage: f64,
+    life: f64,
+    factor: f64,
+    no_switch: bool,
+    periods: usize,
+) -> Vec<f64> {
     let mut out = Vec::with_capacity(periods);
     let mut book = cost;
     let mut sl: Option<f64> = None;
     for p in 0..periods {
         let remaining = life - p as f64;
-        let ddb = (book * factor / life).min((book - salvage).max(0.0)).max(0.0);
+        let ddb = (book * factor / life)
+            .min((book - salvage).max(0.0))
+            .max(0.0);
         let dep = match sl {
             Some(s) => s.min((book - salvage).max(0.0)),
             None if !no_switch && remaining > 0.0 => {
@@ -340,7 +353,12 @@ fn vdb(ev: &mut Ev<'_>, args: &[Expr]) -> Result<f64, ErrorKind> {
 }
 
 /// Values and dates of XNPV/XIRR: equal counts, numbers only, dates not before the first.
-fn x_flows(ev: &mut Ev<'_>, args: &[Expr], vi: usize, di: usize) -> Result<(Vec<f64>, Vec<f64>), ErrorKind> {
+fn x_flows(
+    ev: &mut Ev<'_>,
+    args: &[Expr],
+    vi: usize,
+    di: usize,
+) -> Result<(Vec<f64>, Vec<f64>), ErrorKind> {
     let vals = arg_array(ev, args, vi)?;
     let dates = arg_array(ev, args, di)?;
     if vals.data.len() != dates.data.len() || vals.data.is_empty() {

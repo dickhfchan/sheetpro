@@ -1,0 +1,31 @@
+area = "Data & review"
+
+[[item]]
+name = "AutoFilter and advanced filter"
+status = "partial"
+note = "Engine + .xlsx done; no filter dropdowns in the grid yet"
+
+[[item]]
+name = "Outline (group/ungroup) and subtotals"
+status = "partial"
+note = "SUBTOTAL ignores neither nested subtotals nor filtered rows"
+
+[[item]]
+name = "Comments, notes, hyperlinks"
+status = "partial"
+note = "Threaded comments saved as legacy notes; not shown in the grid; don't move on row/col insert"
+
+[[item]]
+name = "Sheet/workbook protection"
+status = "done"
+note = "Enforced in Session::transact; hidden formulas still visible in formula bar"
+
+[[item]]
+name = "Data validation"
+status = "partial"
+note = "Typing validated; paste not validated; no in-cell dropdown or circles drawn"
+
+[[item]]
+name = "Charts, pivot tables, tables, conditional formatting"
+status = "missing"
+note = ""

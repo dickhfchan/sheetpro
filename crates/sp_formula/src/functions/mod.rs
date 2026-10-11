@@ -17,10 +17,10 @@ pub mod logical;
 pub mod lookup;
 pub mod math;
 pub mod math_ext;
+pub mod regex;
 pub mod special;
 pub mod stats;
 pub mod stats_ext;
-pub mod regex;
 pub mod text;
 pub mod text_ext;
 

@@ -240,7 +240,11 @@ fn randbetween(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
 
 /// Numbers for GCD/LCM/MULTINOMIAL: logicals are `#VALUE!`; numeric text counts (in
 /// ranges only when `text_in_refs`); blanks skip, but only blank direct arguments is `#VALUE!`.
-fn strict_numbers(ev: &mut Ev<'_>, args: &[Expr], text_in_refs: bool) -> Result<Vec<f64>, ErrorKind> {
+fn strict_numbers(
+    ev: &mut Ev<'_>,
+    args: &[Expr],
+    text_in_refs: bool,
+) -> Result<Vec<f64>, ErrorKind> {
     let mut out = Vec::new();
     let mut direct_blank = false;
     for a in args {

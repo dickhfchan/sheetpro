@@ -7,23 +7,23 @@ note = "Structured refs (Table1[Col]) and external refs ([Book]Sheet!A1) are rej
 
 [[item]]
 name = "Recalc: dependency ordering, long chains, cycles"
-status = "partial"
-note = "Full recalc on every edit (no incremental dirty tracking yet); cycles evaluate to 0 with no warning UI"
+status = "done"
+note = "Incremental via dependency graph; falls back to full for circular workbooks, sheet-level edits, undo/redo"
 
 [[item]]
 name = "Dynamic arrays / spill"
-status = "missing"
-note = "Array results show the top-left value only; no #SPILL!"
+status = "partial"
+note = "Spill, #SPILL!, A1#, array functions done; overlapping spills unresolved; #SPILL! saved as #VALUE!"
 
 [[item]]
 name = "LAMBDA family (LAMBDA, MAP, REDUCE, SCAN, BYROW…)"
-status = "missing"
-note = ""
+status = "partial"
+note = "LAMBDA/MAP/REDUCE/SCAN/BYROW/BYCOL/MAKEARRAY/ISOMITTED; GROUPBY/PIVOTBY missing"
 
 [[item]]
 name = "Implicit intersection / @ operator"
 status = "partial"
-note = "Multi-cell refs in scalar context intersect with the formula row/col; @ parsed as no-op"
+note = "@ and SINGLE implemented; legacy rewrite only at top level of a formula"
 
 [[item]]
 name = "Iterative calculation setting"

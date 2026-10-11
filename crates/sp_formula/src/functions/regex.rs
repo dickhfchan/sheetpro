@@ -312,7 +312,13 @@ impl Matcher<'_> {
         }
     }
 
-    fn m(&mut self, n: &Node, pos: usize, caps: &mut Caps, k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool) -> bool {
+    fn m(
+        &mut self,
+        n: &Node,
+        pos: usize,
+        caps: &mut Caps,
+        k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool,
+    ) -> bool {
         if !self.tick() || self.depth > 600 {
             self.exhausted = true;
             return false;
@@ -323,7 +329,13 @@ impl Matcher<'_> {
         r
     }
 
-    fn m_inner(&mut self, n: &Node, pos: usize, caps: &mut Caps, k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool) -> bool {
+    fn m_inner(
+        &mut self,
+        n: &Node,
+        pos: usize,
+        caps: &mut Caps,
+        k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool,
+    ) -> bool {
         if let Some(ok) = self.single(n, pos) {
             return ok && k(self, pos + 1, caps);
         }
@@ -337,19 +349,24 @@ impl Matcher<'_> {
             }
             Node::Group(inner, cap) => {
                 let idx = *cap;
-                self.m(inner, pos, caps, &mut |me: &mut Self, end, caps: &mut Caps| {
-                    let saved = idx.and_then(|i| caps.get(i).copied().flatten());
-                    if let Some(slot) = idx.and_then(|i| caps.get_mut(i)) {
-                        *slot = Some((pos, end));
-                    }
-                    if k(me, end, caps) {
-                        return true;
-                    }
-                    if let Some(slot) = idx.and_then(|i| caps.get_mut(i)) {
-                        *slot = saved;
-                    }
-                    false
-                })
+                self.m(
+                    inner,
+                    pos,
+                    caps,
+                    &mut |me: &mut Self, end, caps: &mut Caps| {
+                        let saved = idx.and_then(|i| caps.get(i).copied().flatten());
+                        if let Some(slot) = idx.and_then(|i| caps.get_mut(i)) {
+                            *slot = Some((pos, end));
+                        }
+                        if k(me, end, caps) {
+                            return true;
+                        }
+                        if let Some(slot) = idx.and_then(|i| caps.get_mut(i)) {
+                            *slot = saved;
+                        }
+                        false
+                    },
+                )
             }
             Node::Concat(items) => self.concat(items, 0, pos, caps, k),
             Node::Alt(branches) => {
@@ -415,17 +432,25 @@ impl Matcher<'_> {
         caps: &mut Caps,
         k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool,
     ) -> bool {
-        let more = |me: &mut Self, caps: &mut Caps, k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool| -> bool {
+        let more = |me: &mut Self,
+                    caps: &mut Caps,
+                    k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool|
+         -> bool {
             if count >= max {
                 return false;
             }
-            me.m(node, pos, caps, &mut |me2: &mut Self, end, caps: &mut Caps| {
-                // Empty iterations past the minimum cannot make progress.
-                if end == pos && count >= min {
-                    return false;
-                }
-                me2.rep(node, min, max, greedy, count + 1, end, caps, k)
-            })
+            me.m(
+                node,
+                pos,
+                caps,
+                &mut |me2: &mut Self, end, caps: &mut Caps| {
+                    // Empty iterations past the minimum cannot make progress.
+                    if end == pos && count >= min {
+                        return false;
+                    }
+                    me2.rep(node, min, max, greedy, count + 1, end, caps, k)
+                },
+            )
         };
         if count < min {
             return more(self, caps, k);
@@ -437,7 +462,14 @@ impl Matcher<'_> {
         }
     }
 
-    fn concat(&mut self, items: &[Node], i: usize, pos: usize, caps: &mut Caps, k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool) -> bool {
+    fn concat(
+        &mut self,
+        items: &[Node],
+        i: usize,
+        pos: usize,
+        caps: &mut Caps,
+        k: &mut dyn FnMut(&mut Self, usize, &mut Caps) -> bool,
+    ) -> bool {
         match items.get(i) {
             None => k(self, pos, caps),
             Some(n) => self.m(n, pos, caps, &mut |me: &mut Self, p, caps: &mut Caps| {
@@ -488,13 +520,18 @@ impl Regex {
         for start in from..=t.len() {
             let mut caps: Caps = vec![None; self.groups + 1];
             let mut end = None;
-            let ok = m.m(&self.root, start, &mut caps, &mut |_, e, caps: &mut Caps| {
-                end = Some(e);
-                if let Some(c0) = caps.get_mut(0) {
-                    *c0 = Some((start, e));
-                }
-                true
-            });
+            let ok = m.m(
+                &self.root,
+                start,
+                &mut caps,
+                &mut |_, e, caps: &mut Caps| {
+                    end = Some(e);
+                    if let Some(c0) = caps.get_mut(0) {
+                        *c0 = Some((start, e));
+                    }
+                    true
+                },
+            );
             if m.exhausted {
                 return Err(ErrorKind::Value);
             }
@@ -512,8 +549,14 @@ impl Regex {
         let mut out = Vec::new();
         let mut from = 0;
         while from <= t.len() {
-            let Some(m) = self.find_at(t, from)? else { break };
-            from = if m.span.1 > m.span.0 { m.span.1 } else { m.span.1 + 1 };
+            let Some(m) = self.find_at(t, from)? else {
+                break;
+            };
+            from = if m.span.1 > m.span.0 {
+                m.span.1
+            } else {
+                m.span.1 + 1
+            };
             out.push(m);
             if out.len() > 100_000 {
                 return Err(ErrorKind::Value);
@@ -524,7 +567,9 @@ impl Regex {
 }
 
 fn slice(t: &[char], s: (usize, usize)) -> String {
-    t.get(s.0..s.1).map(|x| x.iter().collect()).unwrap_or_default()
+    t.get(s.0..s.1)
+        .map(|x| x.iter().collect())
+        .unwrap_or_default()
 }
 
 /// Expand `$0`..`$99` / `${n}` in a replacement string.
@@ -688,7 +733,10 @@ mod tests {
         assert_eq!(find("a.*?c", "abcbc").as_deref(), Some("abc"));
         assert_eq!(find("(cat|dog)s?$", "hotdogs").as_deref(), Some("dogs"));
         assert_eq!(find(r"\bPlanet", "LonelyPlanet"), None);
-        assert_eq!(find("[A-Z][a-z]+$", "LonelyPlanet").as_deref(), Some("Planet"));
+        assert_eq!(
+            find("[A-Z][a-z]+$", "LonelyPlanet").as_deref(),
+            Some("Planet")
+        );
     }
 
     #[test]
@@ -715,7 +763,19 @@ mod tests {
     #[test]
     fn case_insensitive() {
         let t: Vec<char> = "HELLO".chars().collect();
-        assert!(Regex::new("hel+o", true).unwrap().find_at(&t, 0).unwrap().is_some());
-        assert!(Regex::new("[a-z]+", true).unwrap().find_at(&t, 0).unwrap().is_some());
+        assert!(
+            Regex::new("hel+o", true)
+                .unwrap()
+                .find_at(&t, 0)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            Regex::new("[a-z]+", true)
+                .unwrap()
+                .find_at(&t, 0)
+                .unwrap()
+                .is_some()
+        );
     }
 }

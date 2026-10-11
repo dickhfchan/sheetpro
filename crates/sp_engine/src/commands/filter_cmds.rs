@@ -5,7 +5,9 @@ use crate::params::{bool_opt, cell, f64_opt, parse_ref, range, str_opt};
 use crate::{CmdError, CmdResult, CommandSpec, Json, Session};
 use serde_json::json;
 use sp_core::{CellAddr, CellRange, Value};
-use sp_model::{AutoFilter, Cell, DefinedName, FilterColumn, FilterCond, FilterCriteria, Sheet, Workbook};
+use sp_model::{
+    AutoFilter, Cell, DefinedName, FilterColumn, FilterCond, FilterCriteria, Sheet, Workbook,
+};
 use std::collections::HashSet;
 
 /// Rows a filter may span (keeps hidden-row bookkeeping bounded).
@@ -240,11 +242,10 @@ fn target_range(s: &Session, p: &Json) -> Result<(usize, CellRange), CmdError> {
     } else {
         r
     };
-    let used = s
-        .wb
-        .sheet(sheet)
-        .and_then(Sheet::used_range)
-        .unwrap_or(CellRange::single(r.start));
+    let used =
+        s.wb.sheet(sheet)
+            .and_then(Sheet::used_range)
+            .unwrap_or(CellRange::single(r.start));
     let r = r.intersect(&used).unwrap_or(r);
     if r.rows() > MAX_FILTER_ROWS || r.cols() > 16_384 {
         return Err(CmdError::Param("range too large".into()));
@@ -312,7 +313,9 @@ fn criteria_of(p: &Json) -> Result<Option<FilterCriteria>, CmdError> {
     }
     if let Some(conds) = p.get("custom").and_then(Json::as_array) {
         if conds.is_empty() || conds.len() > 2 {
-            return Err(CmdError::Param("custom filters take 1 or 2 conditions".into()));
+            return Err(CmdError::Param(
+                "custom filters take 1 or 2 conditions".into(),
+            ));
         }
         let conds = conds.iter().map(cond_of).collect::<Result<Vec<_>, _>>()?;
         return Ok(Some(FilterCriteria::Custom {
@@ -413,10 +416,7 @@ fn filter(s: &mut Session, p: &Json) -> CmdResult {
         sh.auto_filter = Some(af);
         Ok(())
     })?;
-    s.status = format!(
-        "{shown} of {} records found",
-        r.rows().saturating_sub(1)
-    );
+    s.status = format!("{shown} of {} records found", r.rows().saturating_sub(1));
     Ok(json!({ "filter": r.to_a1(), "shown": shown }))
 }
 
@@ -432,14 +432,18 @@ fn filter_clear(s: &mut Session, _: &Json) -> CmdResult {
         return Ok(json!({ "shown": shown }));
     }
     // An in-place Advanced Filter: show every row of its list range.
-    let db = s
-        .wb
-        .names
-        .iter()
-        .find(|n| n.scope == Some(sheet) && n.name.eq_ignore_ascii_case(FILTER_DB))
-        .map(|n| n.formula.clone());
-    let Some(r) = db.and_then(|f| parse_ref(s, &f.replace('$', "")).ok()).map(|x| x.1) else {
-        return Err(CmdError::Failed("This sheet has no filter to clear.".into()));
+    let db =
+        s.wb.names
+            .iter()
+            .find(|n| n.scope == Some(sheet) && n.name.eq_ignore_ascii_case(FILTER_DB))
+            .map(|n| n.formula.clone());
+    let Some(r) = db
+        .and_then(|f| parse_ref(s, &f.replace('$', "")).ok())
+        .map(|x| x.1)
+    else {
+        return Err(CmdError::Failed(
+            "This sheet has no filter to clear.".into(),
+        ));
     };
     s.transact("Clear Filter", |tx, _| {
         tx.touch_sheet(sheet);
@@ -523,7 +527,9 @@ fn advanced_filter(s: &mut Session, p: &Json) -> CmdResult {
     let crit_txt =
         str_opt(p, "criteria").ok_or_else(|| CmdError::Param("missing 'criteria' range".into()))?;
     let (csheet, crit) = parse_ref(s, crit_txt)?;
-    if list.rows() < 1 || list.cell_count() > sp_core::MAX_CELLS_PER_OP || crit.cell_count() > 100_000
+    if list.rows() < 1
+        || list.cell_count() > sp_core::MAX_CELLS_PER_OP
+        || crit.cell_count() > 100_000
     {
         return Err(CmdError::Param("range too large".into()));
     }
@@ -533,8 +539,12 @@ fn advanced_filter(s: &mut Session, p: &Json) -> CmdResult {
         None => None,
     };
     let wb = &s.wb;
-    let sh = wb.sheet(sheet).ok_or_else(|| CmdError::Failed("no sheet".into()))?;
-    let csh = wb.sheet(csheet).ok_or_else(|| CmdError::Failed("no sheet".into()))?;
+    let sh = wb
+        .sheet(sheet)
+        .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
+    let csh = wb
+        .sheet(csheet)
+        .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
     // Map criteria headers to list columns.
     let header = |sh: &Sheet, row: u32, col: u32| sh.value(CellAddr::new(row, col)).to_display();
     let mut crit_cols = Vec::new();
@@ -606,12 +616,11 @@ fn advanced_filter(s: &mut Session, p: &Json) -> CmdResult {
                     ));
                 }
             }
-            let dest_rect = CellRange::new(
-                dest,
-                out.last().map_or(dest, |(a, _)| *a),
-            );
+            let dest_rect = CellRange::new(dest, out.last().map_or(dest, |(a, _)| *a));
             if dsheet == sheet && dest_rect.intersect(&list).is_some() {
-                return Err(CmdError::Param("the copy-to range overlaps the list".into()));
+                return Err(CmdError::Param(
+                    "the copy-to range overlaps the list".into(),
+                ));
             }
             s.transact("Advanced Filter", |tx, _| {
                 for (a, c) in out {
@@ -625,9 +634,9 @@ fn advanced_filter(s: &mut Session, p: &Json) -> CmdResult {
             let sheet_name = sh.name.clone();
             s.transact("Advanced Filter", |tx, _| {
                 tx.touch_book();
-                tx.wb
-                    .names
-                    .retain(|n| !(n.scope == Some(sheet) && n.name.eq_ignore_ascii_case(FILTER_DB)));
+                tx.wb.names.retain(|n| {
+                    !(n.scope == Some(sheet) && n.name.eq_ignore_ascii_case(FILTER_DB))
+                });
                 tx.wb.names.push(DefinedName {
                     name: FILTER_DB.into(),
                     formula: super::audit_cmds::abs_ref(&sheet_name, list),
@@ -708,7 +717,8 @@ mod tests {
         assert_eq!(hidden(&s), vec![3, 4, 5]);
         s.execute("data.filter_clear", &json!({})).unwrap();
         assert!(hidden(&s).is_empty());
-        s.execute("data.filter", &json!({"column": "C", "top": 2})).unwrap();
+        s.execute("data.filter", &json!({"column": "C", "top": 2}))
+            .unwrap();
         assert_eq!(hidden(&s), vec![2, 4, 6]);
         s.execute(
             "data.filter",
@@ -717,8 +727,10 @@ mod tests {
         .unwrap();
         assert_eq!(hidden(&s), vec![2, 3, 4, 5, 6]);
         // Data changes: reapply.
-        s.execute("cell.set", &json!({"cell": "C3", "input": "95"})).unwrap();
-        s.execute("data.filter", &json!({"column": 0, "clear": true})).unwrap();
+        s.execute("cell.set", &json!({"cell": "C3", "input": "95"}))
+            .unwrap();
+        s.execute("data.filter", &json!({"column": 0, "clear": true}))
+            .unwrap();
         s.execute("data.filter_reapply", &json!({})).unwrap();
         assert_eq!(hidden(&s), vec![2, 4, 6]);
         s.execute("edit.undo", &json!({})).unwrap();
@@ -733,10 +745,14 @@ mod tests {
     #[test]
     fn advanced_filter_in_place_and_copy() {
         let mut s = session();
-        s.execute("cell.set", &json!({"cell": "E1", "input": "Dept"})).unwrap();
-        s.execute("cell.set", &json!({"cell": "F1", "input": "Pay"})).unwrap();
-        s.execute("cell.set", &json!({"cell": "E2", "input": "Ops"})).unwrap();
-        s.execute("cell.set", &json!({"cell": "F2", "input": ">=50"})).unwrap();
+        s.execute("cell.set", &json!({"cell": "E1", "input": "Dept"}))
+            .unwrap();
+        s.execute("cell.set", &json!({"cell": "F1", "input": "Pay"}))
+            .unwrap();
+        s.execute("cell.set", &json!({"cell": "E2", "input": "Ops"}))
+            .unwrap();
+        s.execute("cell.set", &json!({"cell": "F2", "input": ">=50"}))
+            .unwrap();
         let r = s
             .execute(
                 "data.advanced_filter",
@@ -755,7 +771,12 @@ mod tests {
             .unwrap();
         assert_eq!(r["found"], 1);
         assert_eq!(r["copied_to"], "H1:J2");
-        assert_eq!(s.wb.sheets[0].value(CellAddr::parse("H2").unwrap()).to_display(), "Ann");
+        assert_eq!(
+            s.wb.sheets[0]
+                .value(CellAddr::parse("H2").unwrap())
+                .to_display(),
+            "Ann"
+        );
         assert!(
             s.execute(
                 "data.advanced_filter",

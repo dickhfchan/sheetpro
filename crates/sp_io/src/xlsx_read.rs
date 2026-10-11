@@ -431,8 +431,7 @@ fn read_sheet_cells(
                             if hidden {
                                 sheet.hidden_cols.insert(col);
                             }
-                            if let Some(l) =
-                                get("outlineLevel").and_then(|v| v.parse::<u8>().ok())
+                            if let Some(l) = get("outlineLevel").and_then(|v| v.parse::<u8>().ok())
                                 && l > 0
                             {
                                 sheet.outline.cols.insert(col, l.min(7));

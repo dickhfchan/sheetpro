@@ -1,23 +1,23 @@
 //! Command modules. Each `<area>_cmds` module exposes `specs()`; add new modules here with
 //! a one-line edit (see AGENTS.md › Parallel agents).
 
+pub mod audit_cmds;
 pub mod cell_cmds;
+pub mod comment_cmds;
 pub mod data_cmds;
 pub mod dialog_cmds;
 pub mod edit_cmds;
 pub mod file_cmds;
-pub mod format_cmds;
-pub mod nav_cmds;
-pub mod sheet_cmds;
-pub mod view_cmds;
-pub mod audit_cmds;
-pub mod comment_cmds;
 pub mod filter_cmds;
+pub mod format_cmds;
 pub mod layout_cmds;
 pub mod misc_cmds;
+pub mod nav_cmds;
 pub mod outline_cmds;
 pub mod protect_cmds;
+pub mod sheet_cmds;
 pub mod validation_cmds;
+pub mod view_cmds;
 
 use crate::CommandSpec;
 

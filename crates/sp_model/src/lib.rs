@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub use features::{
     AllowEditRange, AutoFilter, Comment, CommentKind, CommentReply, DataValidation, ErrorStyle,
-    FilterColumn, FilterCond, FilterCriteria, Hyperlink, Margins, Orientation, Outline,
-    PageSetup, PasswordHash, SheetProtection, ValidationKind, ValidationOp, WorkbookProtection,
+    FilterColumn, FilterCond, FilterCriteria, Hyperlink, Margins, Orientation, Outline, PageSetup,
+    PasswordHash, SheetProtection, ValidationKind, ValidationOp, WorkbookProtection,
 };
 pub use style::{Border, BorderStyle, Color, HAlign, Style, StyleId, StyleTable, VAlign};
 

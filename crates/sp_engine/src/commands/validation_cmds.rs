@@ -105,7 +105,13 @@ pub fn list_items(wb: &Workbook, sheet: usize, rule: &DataValidation, at: CellAd
     }
 }
 
-fn bound(wb: &Workbook, sheet: usize, rule: &DataValidation, at: CellAddr, src: &str) -> Option<f64> {
+fn bound(
+    wb: &Workbook,
+    sheet: usize,
+    rule: &DataValidation,
+    at: CellAddr,
+    src: &str,
+) -> Option<f64> {
     if src.trim().is_empty() {
         return None;
     }
@@ -255,13 +261,10 @@ fn operand(p: &Json, keys: &[&str], kind: ValidationKind) -> Result<String, CmdE
         _ => return Err(CmdError::Param("rule operands are numbers or text".into())),
     };
     if let Some(f) = text.strip_prefix('=') {
-        sp_formula::parse(f)
-            .map_err(|e| CmdError::Param(format!("bad formula '{text}': {e}")))?;
+        sp_formula::parse(f).map_err(|e| CmdError::Param(format!("bad formula '{text}': {e}")))?;
         return Ok(f.to_string());
     }
-    if matches!(kind, ValidationKind::Date | ValidationKind::Time)
-        && text.parse::<f64>().is_err()
-    {
+    if matches!(kind, ValidationKind::Date | ValidationKind::Time) && text.parse::<f64>().is_err() {
         let year = 2000;
         if let Some((n, _)) = sp_core::parse::parse_numeric_input(&text, year) {
             return Ok(sp_core::value::format_general(n));
@@ -351,7 +354,13 @@ fn set_validation(s: &mut Session, p: &Json) -> CmdResult {
         "information" | "info" => ErrorStyle::Information,
         o => return Err(CmdError::Param(format!("unknown error_style '{o}'"))),
     };
-    let text = |k: &str| str_opt(p, k).unwrap_or("").chars().take(255).collect::<String>();
+    let text = |k: &str| {
+        str_opt(p, k)
+            .unwrap_or("")
+            .chars()
+            .take(255)
+            .collect::<String>()
+    };
     let rule = DataValidation {
         ranges: vec![r],
         kind,
@@ -437,8 +446,10 @@ mod tests {
         assert!(set(&mut s, "A5", "=B1").is_err());
         set(&mut s, "A5", "=A1*2").unwrap();
         // Paste bypasses validation, as in the target app; circle_invalid finds it.
-        s.execute("home.clipboard.copy", &json!({"range": "B1"})).unwrap();
-        s.execute("home.clipboard.paste", &json!({"cell": "A6"})).unwrap();
+        s.execute("home.clipboard.copy", &json!({"range": "B1"}))
+            .unwrap();
+        s.execute("home.clipboard.paste", &json!({"cell": "A6"}))
+            .unwrap();
         let r = s.execute("data.circle_invalid", &json!({})).unwrap();
         assert_eq!(r, json!(["A6"]));
         // Undo history holds no failed entries.

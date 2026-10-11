@@ -40,7 +40,16 @@ fn width(ev: &mut Ev<'_>, args: &[Expr], f: fn(&str) -> String) -> EvalValue {
 }
 
 const THAI_DIGITS: [&str; 10] = [
-    "ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า",
+    "ศูนย์",
+    "หนึ่ง",
+    "สอง",
+    "สาม",
+    "สี่",
+    "ห้า",
+    "หก",
+    "เจ็ด",
+    "แปด",
+    "เก้า",
 ];
 const THAI_PLACES: [&str; 6] = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"];
 
@@ -211,7 +220,9 @@ fn split_on(s: &str, ds: &[String], icase: bool) -> Vec<String> {
         })
         .collect();
     let cmp: Vec<char> = if icase {
-        hay.iter().map(|c| c.to_lowercase().next().unwrap_or(*c)).collect()
+        hay.iter()
+            .map(|c| c.to_lowercase().next().unwrap_or(*c))
+            .collect()
     } else {
         hay.clone()
     };
@@ -290,11 +301,15 @@ fn textsplit(ev: &mut Ev<'_>, args: &[Expr]) -> Result<EvalValue, ErrorKind> {
             });
         }
     }
-    Ok(EvalValue::Array(crate::eval::Array2::new(nrows, ncols, data)))
+    Ok(EvalValue::Array(crate::eval::Array2::new(
+        nrows, ncols, data,
+    )))
 }
 
 pub fn register(r: &mut Registry) {
-    r.add("TEXTSPLIT", 2, 6, |ev, a| textsplit(ev, a).unwrap_or_else(EvalValue::err));
+    r.add("TEXTSPLIT", 2, 6, |ev, a| {
+        textsplit(ev, a).unwrap_or_else(EvalValue::err)
+    });
     r.add("ASC", 1, 1, |ev, a| width(ev, a, to_half_width));
     r.add("DBCS", 1, 1, |ev, a| width(ev, a, to_full_width));
     r.add("PHONETIC", 1, 1, |ev, a| width(ev, a, |s| s.to_string()));
@@ -303,9 +318,11 @@ pub fn register(r: &mut Registry) {
             return EvalValue::err(ErrorKind::Value);
         };
         let v = ev.eval(x);
-        lift1(ev, v, |x| match crate::eval::to_number(x).and_then(bahttext) {
-            Ok(s) => Value::text(s),
-            Err(e) => Value::Error(e),
+        lift1(ev, v, |x| {
+            match crate::eval::to_number(x).and_then(bahttext) {
+                Ok(s) => Value::text(s),
+                Err(e) => Value::Error(e),
+            }
         })
     });
     r.add("VALUETOTEXT", 1, 2, valuetotext);
@@ -332,7 +349,10 @@ mod tests {
     fn split() {
         let ds = vec![",".to_string(), ";".to_string()];
         assert_eq!(split_on("a,b;;c", &ds, false), vec!["a", "b", "", "c"]);
-        assert_eq!(split_on("aXbxc", &["x".to_string()], true), vec!["a", "b", "c"]);
+        assert_eq!(
+            split_on("aXbxc", &["x".to_string()], true),
+            vec!["a", "b", "c"]
+        );
     }
 
     #[test]

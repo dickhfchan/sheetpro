@@ -22,7 +22,9 @@ fn author(s: &Session, p: &Json) -> String {
 fn text_param(p: &Json) -> Result<String, CmdError> {
     let t = str_opt(p, "text").ok_or_else(|| CmdError::Param("missing string 'text'".into()))?;
     if t.chars().count() > sp_core::MAX_TEXT_LEN {
-        return Err(CmdError::Param("text is longer than 32,767 characters".into()));
+        return Err(CmdError::Param(
+            "text is longer than 32,767 characters".into(),
+        ));
     }
     Ok(t.to_string())
 }
@@ -94,7 +96,10 @@ fn new_note(s: &mut Session, p: &Json) -> CmdResult {
     let text = text_param(p)?;
     let who = author(s, p);
     let existing = s.wb.sheet(sheet).and_then(|sh| sh.comment_at(at)).cloned();
-    if existing.as_ref().is_some_and(|c| c.kind == CommentKind::Thread) {
+    if existing
+        .as_ref()
+        .is_some_and(|c| c.kind == CommentKind::Thread)
+    {
         return Err(CmdError::Failed(
             "This cell already has a comment thread.".into(),
         ));
@@ -109,25 +114,33 @@ fn new_note(s: &mut Session, p: &Json) -> CmdResult {
         resolved: false,
     };
     let out = comment_json(&c);
-    s.transact(if existing.is_some() { "Edit Note" } else { "New Note" }, |tx, _| {
-        tx.touch_sheet(sheet);
-        if let Some(sh) = tx.wb.sheet_mut(sheet) {
-            put_comment(sh, c);
-        }
-        Ok(())
-    })?;
+    s.transact(
+        if existing.is_some() {
+            "Edit Note"
+        } else {
+            "New Note"
+        },
+        |tx, _| {
+            tx.touch_sheet(sheet);
+            if let Some(sh) = tx.wb.sheet_mut(sheet) {
+                put_comment(sh, c);
+            }
+            Ok(())
+        },
+    )?;
     Ok(out)
 }
 
 fn delete_in(s: &mut Session, p: &Json, label: &str, must_exist: bool) -> CmdResult {
     let (sheet, r) = range(s, p, "range")?;
-    let n = s
-        .wb
-        .sheet(sheet)
-        .map_or(0, |sh| sh.comments.iter().filter(|c| r.contains(c.addr)).count());
+    let n = s.wb.sheet(sheet).map_or(0, |sh| {
+        sh.comments.iter().filter(|c| r.contains(c.addr)).count()
+    });
     if n == 0 {
         return if must_exist {
-            Err(CmdError::Failed("There are no comments or notes here.".into()))
+            Err(CmdError::Failed(
+                "There are no comments or notes here.".into(),
+            ))
         } else {
             Ok(json!(0))
         };
@@ -144,16 +157,19 @@ fn delete_in(s: &mut Session, p: &Json, label: &str, must_exist: bool) -> CmdRes
 
 fn step_comment(s: &mut Session, forward: bool) -> CmdResult {
     let sheet = s.sheet_index();
-    let addrs: Vec<CellAddr> = s
-        .wb
-        .sheet(sheet)
-        .map(|sh| sh.comments.iter().map(|c| c.addr).collect())
-        .unwrap_or_default();
+    let addrs: Vec<CellAddr> =
+        s.wb.sheet(sheet)
+            .map(|sh| sh.comments.iter().map(|c| c.addr).collect())
+            .unwrap_or_default();
     let cur = s.sel.active;
     let next = if forward {
         addrs.iter().find(|a| **a > cur).or_else(|| addrs.first())
     } else {
-        addrs.iter().rev().find(|a| **a < cur).or_else(|| addrs.last())
+        addrs
+            .iter()
+            .rev()
+            .find(|a| **a < cur)
+            .or_else(|| addrs.last())
     }
     .copied()
     .ok_or_else(|| CmdError::Failed("There are no comments on this sheet.".into()))?;
@@ -165,17 +181,16 @@ fn step_comment(s: &mut Session, forward: bool) -> CmdResult {
 fn show_comments(s: &mut Session, p: &Json) -> CmdResult {
     s.view.review.comments_pane = bool_opt(p, "show").unwrap_or(!s.view.review.comments_pane);
     let sheet = s.sheet_index();
-    let list: Vec<Json> = s
-        .wb
-        .sheet(sheet)
-        .map(|sh| {
-            sh.comments
-                .iter()
-                .filter(|c| c.kind == CommentKind::Thread)
-                .map(comment_json)
-                .collect()
-        })
-        .unwrap_or_default();
+    let list: Vec<Json> =
+        s.wb.sheet(sheet)
+            .map(|sh| {
+                sh.comments
+                    .iter()
+                    .filter(|c| c.kind == CommentKind::Thread)
+                    .map(comment_json)
+                    .collect()
+            })
+            .unwrap_or_default();
     Ok(json!({ "pane": s.view.review.comments_pane, "comments": list }))
 }
 
@@ -190,7 +205,9 @@ fn show_all_notes(s: &mut Session, p: &Json) -> CmdResult {
     };
     let all: Vec<bool> = s.wb.sheets.iter().flat_map(notes).collect();
     if all.is_empty() {
-        return Err(CmdError::Failed("There are no notes in this workbook.".into()));
+        return Err(CmdError::Failed(
+            "There are no notes in this workbook.".into(),
+        ));
     }
     let show = bool_opt(p, "show").unwrap_or(!all.iter().all(|v| *v));
     let sheets: Vec<usize> = (0..s.wb.sheets.len()).collect();
@@ -199,7 +216,11 @@ fn show_all_notes(s: &mut Session, p: &Json) -> CmdResult {
             if tx.wb.sheet(i).is_some_and(|sh| !notes(sh).is_empty()) {
                 tx.touch_sheet(i);
                 if let Some(sh) = tx.wb.sheet_mut(i) {
-                    for c in sh.comments.iter_mut().filter(|c| c.kind == CommentKind::Note) {
+                    for c in sh
+                        .comments
+                        .iter_mut()
+                        .filter(|c| c.kind == CommentKind::Note)
+                    {
                         c.visible = show;
                     }
                 }
@@ -224,16 +245,24 @@ fn insert_hyperlink(s: &mut Session, p: &Json) -> CmdResult {
     let target = str_opt(p, "address").unwrap_or("").trim().to_string();
     let location = str_opt(p, "location").unwrap_or("").trim().to_string();
     if target.is_empty() && location.is_empty() {
-        return Err(CmdError::Param("give 'address' (URL/file) or 'location' (Sheet2!A1)".into()));
+        return Err(CmdError::Param(
+            "give 'address' (URL/file) or 'location' (Sheet2!A1)".into(),
+        ));
     }
     if !location.is_empty() {
         crate::params::parse_ref(s, &location)?;
     }
     if target.len() > 2_079 {
-        return Err(CmdError::Param("addresses are limited to 2,079 characters".into()));
+        return Err(CmdError::Param(
+            "addresses are limited to 2,079 characters".into(),
+        ));
     }
     let text = str_opt(p, "text").map(str::to_string);
-    let tooltip = str_opt(p, "tooltip").unwrap_or("").chars().take(255).collect::<String>();
+    let tooltip = str_opt(p, "tooltip")
+        .unwrap_or("")
+        .chars()
+        .take(255)
+        .collect::<String>();
     let display = text.clone().unwrap_or_else(|| {
         if target.is_empty() {
             location.clone()
@@ -250,7 +279,9 @@ fn insert_hyperlink(s: &mut Session, p: &Json) -> CmdResult {
     };
     let anchor = r.start;
     let old = s.wb.sheet(sheet).and_then(|sh| sh.get(anchor)).cloned();
-    let empty = old.as_ref().is_none_or(|c| c.value.is_empty() && c.formula_src().is_none());
+    let empty = old
+        .as_ref()
+        .is_none_or(|c| c.value.is_empty() && c.formula_src().is_none());
     let style = old.as_ref().map(|c| c.style).unwrap_or_default();
     let link_style = s.wb.styles.derive(style, |st| {
         if st.font_color.is_none() {
@@ -281,17 +312,16 @@ fn insert_hyperlink(s: &mut Session, p: &Json) -> CmdResult {
 fn clear_hyperlinks(s: &mut Session, p: &Json) -> CmdResult {
     let (sheet, r) = range(s, p, "range")?;
     let formats = bool_opt(p, "formats").unwrap_or(false);
-    let hit: Vec<CellRange> = s
-        .wb
-        .sheet(sheet)
-        .map(|sh| {
-            sh.hyperlinks
-                .iter()
-                .filter(|h| h.range.intersect(&r).is_some())
-                .map(|h| h.range)
-                .collect()
-        })
-        .unwrap_or_default();
+    let hit: Vec<CellRange> =
+        s.wb.sheet(sheet)
+            .map(|sh| {
+                sh.hyperlinks
+                    .iter()
+                    .filter(|h| h.range.intersect(&r).is_some())
+                    .map(|h| h.range)
+                    .collect()
+            })
+            .unwrap_or_default();
     if hit.is_empty() {
         return Ok(json!(0));
     }
@@ -345,13 +375,25 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("review.comment.delete", r#"{"range"?: "A1:C9"}"#, |s, p| {
             delete_in(s, p, "Delete Comment", true)
         }),
-        CommandSpec::new("review.comment.previous", "{}", |s, _| step_comment(s, false)),
-        CommandSpec::new("review.comment.next", "{}", |s, _| step_comment(s, true)),
-        CommandSpec::new("review.comment.show", r#"{"show"?: bool (default toggles)}"#, show_comments),
-        CommandSpec::new("review.notes.show_all", r#"{"show"?: bool (default toggles)}"#, show_all_notes),
-        CommandSpec::new("home.editing.clear_comments", r#"{"range"?: "A1:C9"}"#, |s, p| {
-            delete_in(s, p, "Clear Comments", false)
+        CommandSpec::new("review.comment.previous", "{}", |s, _| {
+            step_comment(s, false)
         }),
+        CommandSpec::new("review.comment.next", "{}", |s, _| step_comment(s, true)),
+        CommandSpec::new(
+            "review.comment.show",
+            r#"{"show"?: bool (default toggles)}"#,
+            show_comments,
+        ),
+        CommandSpec::new(
+            "review.notes.show_all",
+            r#"{"show"?: bool (default toggles)}"#,
+            show_all_notes,
+        ),
+        CommandSpec::new(
+            "home.editing.clear_comments",
+            r#"{"range"?: "A1:C9"}"#,
+            |s, p| delete_in(s, p, "Clear Comments", false),
+        ),
         CommandSpec::new("insert.hyperlink", link, insert_hyperlink),
         CommandSpec::new(
             "home.editing.clear_hyperlinks",
@@ -368,17 +410,35 @@ mod tests {
     #[test]
     fn comments_notes_navigation() {
         let mut s = Session::new();
-        s.execute("insert.comment", &json!({"cell": "B2", "text": "Check this", "author": "Ann"}))
-            .unwrap();
-        s.execute("review.comment.new", &json!({"cell": "B2", "text": "Done", "author": "Bob"}))
-            .unwrap();
+        s.execute(
+            "insert.comment",
+            &json!({"cell": "B2", "text": "Check this", "author": "Ann"}),
+        )
+        .unwrap();
+        s.execute(
+            "review.comment.new",
+            &json!({"cell": "B2", "text": "Done", "author": "Bob"}),
+        )
+        .unwrap();
         s.execute("insert.note", &json!({"cell": "D5", "text": "a note"}))
             .unwrap();
-        assert!(s.execute("insert.note", &json!({"cell": "B2", "text": "x"})).is_err());
-        assert!(s.execute("insert.comment", &json!({"cell": "D5", "text": "x"})).is_err());
+        assert!(
+            s.execute("insert.note", &json!({"cell": "B2", "text": "x"}))
+                .is_err()
+        );
+        assert!(
+            s.execute("insert.comment", &json!({"cell": "D5", "text": "x"}))
+                .is_err()
+        );
         let sh = &s.wb.sheets[0];
         assert_eq!(sh.comments.len(), 2);
-        assert_eq!(sh.comment_at(CellAddr::parse("B2").unwrap()).unwrap().replies.len(), 1);
+        assert_eq!(
+            sh.comment_at(CellAddr::parse("B2").unwrap())
+                .unwrap()
+                .replies
+                .len(),
+            1
+        );
         let n = s.execute("review.comment.next", &json!({})).unwrap();
         assert_eq!(n["cell"], "B2");
         let n = s.execute("review.comment.next", &json!({})).unwrap();
@@ -392,10 +452,15 @@ mod tests {
         assert!(s.wb.sheets[0].comments[1].visible);
         let r = s.execute("review.comment.show", &json!({})).unwrap();
         assert_eq!(r["comments"].as_array().unwrap().len(), 1);
-        s.execute("review.comment.delete", &json!({"range": "B2"})).unwrap();
+        s.execute("review.comment.delete", &json!({"range": "B2"}))
+            .unwrap();
         assert_eq!(s.wb.sheets[0].comments.len(), 1);
-        assert!(s.execute("review.comment.delete", &json!({"range": "B2"})).is_err());
-        s.execute("home.editing.clear_comments", &json!({"range": "A1:Z99"})).unwrap();
+        assert!(
+            s.execute("review.comment.delete", &json!({"range": "B2"}))
+                .is_err()
+        );
+        s.execute("home.editing.clear_comments", &json!({"range": "A1:Z99"}))
+            .unwrap();
         assert!(s.wb.sheets[0].comments.is_empty());
         s.execute("edit.undo", &json!({})).unwrap();
         assert_eq!(s.wb.sheets[0].comments.len(), 1);
@@ -404,25 +469,52 @@ mod tests {
     #[test]
     fn hyperlinks() {
         let mut s = Session::new();
-        s.execute("cell.set", &json!({"cell": "A2", "input": "Docs"})).unwrap();
-        s.execute("insert.hyperlink", &json!({"cell": "A1", "address": "https://example.com"}))
+        s.execute("cell.set", &json!({"cell": "A2", "input": "Docs"}))
             .unwrap();
-        s.execute("insert.hyperlink", &json!({"cell": "A2", "location": "Sheet1!C3", "tooltip": "go"}))
-            .unwrap();
+        s.execute(
+            "insert.hyperlink",
+            &json!({"cell": "A1", "address": "https://example.com"}),
+        )
+        .unwrap();
+        s.execute(
+            "insert.hyperlink",
+            &json!({"cell": "A2", "location": "Sheet1!C3", "tooltip": "go"}),
+        )
+        .unwrap();
         let sh = &s.wb.sheets[0];
-        assert_eq!(sh.value(CellAddr::new(0, 0)).to_display(), "https://example.com");
+        assert_eq!(
+            sh.value(CellAddr::new(0, 0)).to_display(),
+            "https://example.com"
+        );
         assert_eq!(sh.value(CellAddr::new(1, 0)).to_display(), "Docs");
         assert_eq!(sh.hyperlinks.len(), 2);
         let st = s.wb.styles.get(sh.get(CellAddr::new(1, 0)).unwrap().style);
         assert_eq!(st.font_color, Some(LINK_COLOR));
-        assert!(s.execute("insert.hyperlink", &json!({"cell": "A3"})).is_err());
-        assert!(s.execute("insert.hyperlink", &json!({"cell": "A3", "location": "Nope!A1"})).is_err());
+        assert!(
+            s.execute("insert.hyperlink", &json!({"cell": "A3"}))
+                .is_err()
+        );
+        assert!(
+            s.execute(
+                "insert.hyperlink",
+                &json!({"cell": "A3", "location": "Nope!A1"})
+            )
+            .is_err()
+        );
         let n = s
-            .execute("home.editing.clear_hyperlinks", &json!({"range": "A1:A1", "formats": true}))
+            .execute(
+                "home.editing.clear_hyperlinks",
+                &json!({"range": "A1:A1", "formats": true}),
+            )
             .unwrap();
         assert_eq!(n, 1);
         let sh = &s.wb.sheets[0];
         assert_eq!(sh.hyperlinks.len(), 1);
-        assert_eq!(s.wb.styles.get(sh.get(CellAddr::new(0, 0)).unwrap().style).underline, 0);
+        assert_eq!(
+            s.wb.styles
+                .get(sh.get(CellAddr::new(0, 0)).unwrap().style)
+                .underline,
+            0
+        );
     }
 }

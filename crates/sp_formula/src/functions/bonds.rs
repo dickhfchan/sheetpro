@@ -849,14 +849,19 @@ fn amor_args(ev: &mut Ev<'_>, args: &[Expr]) -> R<(f64, f64, f64, f64, f64)> {
     let period = num(ev, args, 4)?.trunc();
     let rate = num(ev, args, 5)?;
     let basis = basis(ev, args, 6)?;
-    if basis == 2 || cost < 0.0 || salvage < 0.0 || salvage > cost || period < 0.0 || rate <= 0.0
-    {
+    if basis == 2 || cost < 0.0 || salvage < 0.0 || salvage > cost || period < 0.0 || rate <= 0.0 {
         return Err(ErrorKind::Num);
     }
     if bought > first {
         return Err(ErrorKind::Num);
     }
-    Ok((cost, year_frac(bought, first, basis)?, salvage, period, rate))
+    Ok((
+        cost,
+        year_frac(bought, first, basis)?,
+        salvage,
+        period,
+        rate,
+    ))
 }
 
 fn amorlinc(ev: &mut Ev<'_>, args: &[Expr]) -> R<f64> {

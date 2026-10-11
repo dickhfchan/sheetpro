@@ -30,7 +30,9 @@ fn square_matrix(ev: &mut Ev<'_>, args: &[Expr]) -> R<(usize, Vec<f64>)> {
 /// `inverse` is set, the inverse (row-major).
 fn eliminate(n: usize, mut a: Vec<f64>, inverse: bool) -> R<(f64, Option<Vec<f64>>)> {
     let mut inv: Vec<f64> = if inverse {
-        (0..n * n).map(|i| if i / n == i % n { 1.0 } else { 0.0 }).collect()
+        (0..n * n)
+            .map(|i| if i / n == i % n { 1.0 } else { 0.0 })
+            .collect()
     } else {
         Vec::new()
     };
@@ -342,7 +344,11 @@ fn aggregate(ev: &mut Ev<'_>, args: &[Expr]) -> R<f64> {
         2 => Ok(v.len() as f64),
         4 => Ok(v.iter().copied().reduce(f64::max).unwrap_or(0.0)),
         5 => Ok(v.iter().copied().reduce(f64::min).unwrap_or(0.0)),
-        6 => Ok(if v.is_empty() { 0.0 } else { v.iter().product() }),
+        6 => Ok(if v.is_empty() {
+            0.0
+        } else {
+            v.iter().product()
+        }),
         7 => var(&v, true).map(f64::sqrt),
         8 => var(&v, false).map(f64::sqrt),
         9 => Ok(v.iter().sum()),

@@ -22,8 +22,8 @@ note = "Ctrl+key names are mapped; macOS Cmd counts as Ctrl; untested against ev
 
 [[item]]
 name = "Dialogs (Format Cells, Find, Sort, Paste Special…)"
-status = "missing"
-note = ""
+status = "partial"
+note = "Format Cells, Find/Replace, Go To, Sort, Paste Special, Insert Function, Name Manager, small prompts, context menus; no Paste Special operations"
 
 [[item]]
 name = "Headless screenshots + JSON control channel"

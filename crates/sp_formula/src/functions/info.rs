@@ -156,7 +156,11 @@ fn info_fn(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         "osversion" => EvalValue::text(std::env::consts::OS),
         "recalc" => EvalValue::text("Automatic"),
         "release" => EvalValue::text("16.0"),
-        "system" => EvalValue::text(if cfg!(target_os = "macos") { "mac" } else { "pcdos" }),
+        "system" => EvalValue::text(if cfg!(target_os = "macos") {
+            "mac"
+        } else {
+            "pcdos"
+        }),
         _ => EvalValue::err(ErrorKind::Value),
     }
 }

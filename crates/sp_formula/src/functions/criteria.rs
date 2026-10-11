@@ -244,8 +244,10 @@ impl Src {
         match self {
             Src::Ref(r) => match ev.host.used_range(r.sheet) {
                 Some(u) => {
-                    let rows = (u64::from(u.end.row) + 1).saturating_sub(u64::from(r.range.start.row));
-                    let cols = (u64::from(u.end.col) + 1).saturating_sub(u64::from(r.range.start.col));
+                    let rows =
+                        (u64::from(u.end.row) + 1).saturating_sub(u64::from(r.range.start.row));
+                    let cols =
+                        (u64::from(u.end.col) + 1).saturating_sub(u64::from(r.range.start.col));
                     let (dr, dc) = self.dims();
                     (rows.min(dr), cols.min(dc))
                 }
@@ -414,11 +416,7 @@ impl Prepared {
 
 /// Evaluate the criterion arguments of `pairs` and run `f` once per criteria tuple: once
 /// for scalar criteria, elementwise (broadcast) when a criterion is an array or range.
-fn per_criteria(
-    ev: &mut Ev<'_>,
-    pairs: &[Expr],
-    f: &dyn Fn(&[Criterion]) -> Value,
-) -> EvalValue {
+fn per_criteria(ev: &mut Ev<'_>, pairs: &[Expr], f: &dyn Fn(&[Criterion]) -> Value) -> EvalValue {
     let mut cvals: Vec<Array2> = Vec::with_capacity(pairs.len() / 2);
     let (mut rows, mut cols) = (1usize, 1usize);
     for ce in pairs.iter().skip(1).step_by(2) {

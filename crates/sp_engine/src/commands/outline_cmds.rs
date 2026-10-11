@@ -17,7 +17,9 @@ fn axis_of(p: &Json, r: CellRange) -> Result<bool, CmdError> {
     match str_opt(p, "by") {
         Some("rows") => Ok(true),
         Some("columns") | Some("cols") => Ok(false),
-        Some(o) => Err(CmdError::Param(format!("'by' is rows or columns, not '{o}'"))),
+        Some(o) => Err(CmdError::Param(format!(
+            "'by' is rows or columns, not '{o}'"
+        ))),
         None => Ok(!(r.is_full_cols() && !r.is_full_rows())),
     }
 }
@@ -64,7 +66,8 @@ fn group(s: &mut Session, p: &Json, delta: i8) -> CmdResult {
         let mut cleared = Vec::new();
         for i in lo..=hi {
             let cur = lv.get(&i).copied().unwrap_or(0);
-            let new = (i16::from(cur) + i16::from(delta)).clamp(0, i16::from(MAX_OUTLINE_LEVEL)) as u8;
+            let new =
+                (i16::from(cur) + i16::from(delta)).clamp(0, i16::from(MAX_OUTLINE_LEVEL)) as u8;
             if new == 0 {
                 lv.remove(&i);
                 if cur > 0 {
@@ -91,7 +94,11 @@ fn group(s: &mut Session, p: &Json, delta: i8) -> CmdResult {
 /// The group attached to row/col `i`: the detail block it summarises (summary row/col
 /// just below/right of the block), else the innermost block containing `i`.
 fn group_at(sh: &Sheet, rows: bool, i: u32) -> Option<(u32, u32)> {
-    let lv = if rows { &sh.outline.rows } else { &sh.outline.cols };
+    let lv = if rows {
+        &sh.outline.rows
+    } else {
+        &sh.outline.cols
+    };
     let level = |k: u32| lv.get(&k).copied().unwrap_or(0);
     let below = if rows {
         sh.outline.summary_below
@@ -99,7 +106,11 @@ fn group_at(sh: &Sheet, rows: bool, i: u32) -> Option<(u32, u32)> {
         sh.outline.summary_right
     };
     let me = level(i);
-    let neighbour = if below { i.checked_sub(1) } else { i.checked_add(1) };
+    let neighbour = if below {
+        i.checked_sub(1)
+    } else {
+        i.checked_add(1)
+    };
     let (seed, min) = match neighbour {
         Some(n) if level(n) > me => (n, me + 1),
         _ if me > 0 => (i, me),
@@ -131,11 +142,10 @@ fn detail(s: &mut Session, p: &Json, show: bool) -> CmdResult {
         }
     };
     let i = if rows { r.start.row } else { r.start.col };
-    let (a, b) = s
-        .wb
-        .sheet(sheet)
-        .and_then(|sh| group_at(sh, rows, i))
-        .ok_or_else(|| CmdError::Failed("There is no outline group here.".into()))?;
+    let (a, b) =
+        s.wb.sheet(sheet)
+            .and_then(|sh| group_at(sh, rows, i))
+            .ok_or_else(|| CmdError::Failed("There is no outline group here.".into()))?;
     s.transact(if show { "Show Detail" } else { "Hide Detail" }, |tx, _| {
         tx.touch_sheet(sheet);
         let sh = tx
@@ -197,7 +207,8 @@ fn col_param(v: &Json, r: CellRange) -> Result<u32, CmdError> {
     let t = v
         .as_str()
         .ok_or_else(|| CmdError::Param("columns are letters like \"C\"".into()))?;
-    let c = sp_core::letters_to_col(t).ok_or_else(|| CmdError::Param(format!("bad column '{t}'")))?;
+    let c =
+        sp_core::letters_to_col(t).ok_or_else(|| CmdError::Param(format!("bad column '{t}'")))?;
     if c < r.start.col || c > r.end.col {
         return Err(CmdError::Param(format!("column {t} is outside the list")));
     }
@@ -226,7 +237,10 @@ fn subtotal(s: &mut Session, p: &Json) -> CmdResult {
     let fnum = function_number(fname)
         .ok_or_else(|| CmdError::Param(format!("unknown summary function '{fname}'")))?;
     let cols: Vec<u32> = match p.get("columns").or_else(|| p.get("add_to")) {
-        Some(Json::Array(a)) => a.iter().map(|v| col_param(v, r)).collect::<Result<_, _>>()?,
+        Some(Json::Array(a)) => a
+            .iter()
+            .map(|v| col_param(v, r))
+            .collect::<Result<_, _>>()?,
         Some(v) => vec![col_param(v, r)?],
         None => vec![r.end.col],
     };
@@ -234,7 +248,9 @@ fn subtotal(s: &mut Session, p: &Json) -> CmdResult {
         return Err(CmdError::Param("no columns to subtotal".into()));
     }
     let replace = bool_opt(p, "replace").unwrap_or(true);
-    let sh = s.wb.sheet(sheet).ok_or_else(|| CmdError::Failed("no sheet".into()))?;
+    let sh =
+        s.wb.sheet(sheet)
+            .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
     // Existing subtotal rows (replaced by default).
     let old: Vec<u32> = if replace {
         (r.start.row + 1..=r.end.row)
@@ -244,9 +260,7 @@ fn subtotal(s: &mut Session, p: &Json) -> CmdResult {
         Vec::new()
     };
     let wb_styles = &s.wb;
-    let key = |row: u32| {
-        super::filter_cmds::cell_text(wb_styles, sh, CellAddr::new(row, by))
-    };
+    let key = |row: u32| super::filter_cmds::cell_text(wb_styles, sh, CellAddr::new(row, by));
     // Groups of the remaining data rows, in post-removal coordinates.
     let data: Vec<u32> = (r.start.row + 1..=r.end.row)
         .filter(|row| !old.contains(row))
@@ -297,7 +311,9 @@ fn subtotal(s: &mut Session, p: &Json) -> CmdResult {
             tx.set_cell(
                 sheet,
                 CellAddr::new(at, by),
-                Some(Cell::constant(sp_core::Value::text(format!("{name} {label}").trim()))),
+                Some(Cell::constant(sp_core::Value::text(
+                    format!("{name} {label}").trim(),
+                ))),
             );
             for c in &cols {
                 tx.set_cell(sheet, CellAddr::new(at, *c), Some(sum_cell(*c, a, b)));
@@ -309,10 +325,16 @@ fn subtotal(s: &mut Session, p: &Json) -> CmdResult {
         tx.set_cell(
             sheet,
             CellAddr::new(grand, by),
-            Some(Cell::constant(sp_core::Value::text(format!("Grand {label}")))),
+            Some(Cell::constant(sp_core::Value::text(format!(
+                "Grand {label}"
+            )))),
         );
         for c in &cols {
-            tx.set_cell(sheet, CellAddr::new(grand, *c), Some(sum_cell(*c, first, grand - 1)));
+            tx.set_cell(
+                sheet,
+                CellAddr::new(grand, *c),
+                Some(sum_cell(*c, first, grand - 1)),
+            );
         }
         tx.touch_sheet(sheet);
         if let Some(sh) = tx.wb.sheet_mut(sheet) {
@@ -370,19 +392,29 @@ mod tests {
         assert_eq!(sh.outline.rows.get(&1), Some(&1));
         assert_eq!(sh.outline.rows.get(&2), Some(&2));
         // Hide from the summary row (row 5) collapses rows 2-4.
-        let r = s.execute("data.hide_detail", &json!({"range": "A5"})).unwrap();
+        let r = s
+            .execute("data.hide_detail", &json!({"range": "A5"}))
+            .unwrap();
         assert_eq!(r["group"], "2:4");
         assert_eq!(s.wb.sheets[0].hidden_rows.len(), 3);
-        s.execute("data.show_detail", &json!({"range": "A5"})).unwrap();
+        s.execute("data.show_detail", &json!({"range": "A5"}))
+            .unwrap();
         assert!(s.wb.sheets[0].hidden_rows.is_empty());
         // Inner group from its own row.
-        let r = s.execute("data.hide_detail", &json!({"range": "A3"})).unwrap();
+        let r = s
+            .execute("data.hide_detail", &json!({"range": "A3"}))
+            .unwrap();
         assert_eq!(r["group"], "3:3");
-        s.execute("data.ungroup", &json!({"range": "A2:A4"})).unwrap();
-        s.execute("data.ungroup", &json!({"range": "A2:A4"})).unwrap();
+        s.execute("data.ungroup", &json!({"range": "A2:A4"}))
+            .unwrap();
+        s.execute("data.ungroup", &json!({"range": "A2:A4"}))
+            .unwrap();
         assert!(s.wb.sheets[0].outline.rows.is_empty());
         assert!(s.wb.sheets[0].hidden_rows.is_empty());
-        assert!(s.execute("data.ungroup", &json!({"range": "A2:A4"})).is_err());
+        assert!(
+            s.execute("data.ungroup", &json!({"range": "A2:A4"}))
+                .is_err()
+        );
         // Columns.
         s.execute("data.group", &json!({"range": "B:C"})).unwrap();
         assert_eq!(s.wb.sheets[0].outline.cols.len(), 2);
@@ -390,9 +422,13 @@ mod tests {
             .unwrap();
         assert!(s.wb.sheets[0].hidden_cols.contains(&1));
         for _ in 0..7 {
-            s.execute("data.group", &json!({"range": "A10:A11"})).unwrap();
+            s.execute("data.group", &json!({"range": "A10:A11"}))
+                .unwrap();
         }
-        assert!(s.execute("data.group", &json!({"range": "A10:A11"})).is_err());
+        assert!(
+            s.execute("data.group", &json!({"range": "A10:A11"}))
+                .is_err()
+        );
     }
 
     #[test]
@@ -406,18 +442,28 @@ mod tests {
             ["North", "16"],
         ]);
         let r = s
-            .execute("data.subtotal", &json!({"range": "A1:B6", "by": "A", "columns": ["B"]}))
+            .execute(
+                "data.subtotal",
+                &json!({"range": "A1:B6", "by": "A", "columns": ["B"]}),
+            )
             .unwrap();
         assert_eq!(r["groups"], 3);
         let sh = &s.wb.sheets[0];
-        let text = |a: &str| sh.get(CellAddr::parse(a).unwrap()).map(|c| c.input_text()).unwrap_or_default();
+        let text = |a: &str| {
+            sh.get(CellAddr::parse(a).unwrap())
+                .map(|c| c.input_text())
+                .unwrap_or_default()
+        };
         assert_eq!(text("A4"), "East Total");
         assert_eq!(text("B4"), "=SUBTOTAL(9,B2:B3)");
         assert_eq!(text("A6"), "West Total");
         assert_eq!(text("B9"), "=SUBTOTAL(9,B7:B8)");
         assert_eq!(text("A10"), "Grand Total");
         assert_eq!(text("B10"), "=SUBTOTAL(9,B2:B9)");
-        assert_eq!(sh.value(CellAddr::parse("B9").unwrap()), &Value::Number(24.0));
+        assert_eq!(
+            sh.value(CellAddr::parse("B9").unwrap()),
+            &Value::Number(24.0)
+        );
         assert_eq!(sh.outline.rows.get(&3), Some(&1));
         assert_eq!(sh.outline.rows.get(&1), Some(&2));
         // Re-running replaces the old subtotal rows instead of nesting them.
@@ -427,7 +473,11 @@ mod tests {
         )
         .unwrap();
         let sh = &s.wb.sheets[0];
-        let text = |a: &str| sh.get(CellAddr::parse(a).unwrap()).map(|c| c.input_text()).unwrap_or_default();
+        let text = |a: &str| {
+            sh.get(CellAddr::parse(a).unwrap())
+                .map(|c| c.input_text())
+                .unwrap_or_default()
+        };
         assert_eq!(text("A4"), "East Count");
         assert_eq!(text("B10"), "=SUBTOTAL(2,B2:B9)");
         assert_eq!(text("A11"), "");

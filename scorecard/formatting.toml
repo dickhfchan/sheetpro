@@ -17,13 +17,13 @@ note = ""
 
 [[item]]
 name = "Borders"
-status = "partial"
-note = "Stored and saved to .xlsx, but not drawn by the grid yet"
+status = "done"
+note = "All six styles drawn; dialog sets one colour for all edges"
 
 [[item]]
 name = "Alignment, wrap, indent, rotation"
-status = "partial"
-note = "Horizontal alignment drawn; wrap/indent/rotation/vertical alignment stored but not drawn"
+status = "done"
+note = "Horizontal/vertical, wrap, indent, rotation drawn"
 
 [[item]]
 name = "Merge cells"
