@@ -3,12 +3,12 @@ area = "Files"
 [[item]]
 name = ".xlsx read: values, formulas (incl. shared), styles subset, merges, sizes, names, freeze"
 status = "partial"
-note = "No tables, charts, images, comments, data validation, conditional formats (dropped on load)"
+note = "Tables, CF, charts (2D types), sparklines, comments, validation modelled; pictures/shapes/pivots passed through only"
 
 [[item]]
 name = ".xlsx write: valid package, _xlfn prefixes, styles, merges, names"
-status = "partial"
-note = "Unsupported parts from the source file are not preserved on save"
+status = "done"
+note = "Unknown parts and elements passed through; package validator passes on all 259 corpus files"
 
 [[item]]
 name = "CSV/TSV import/export"

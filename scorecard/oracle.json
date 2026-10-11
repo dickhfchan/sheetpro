@@ -5,7 +5,7 @@
   "calc_files_total": 218,
   "calc_files_pass": 175,
   "cells_compared": 73244,
-  "cells_matched": 68176,
+  "cells_matched": 68359,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -53,15 +53,15 @@
       "kind": "io",
       "load_error": null,
       "compared": 208,
-      "matched": 11,
+      "matched": 194,
       "skipped_volatile": 4,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "WithHeaders!F2 =SUM(Table1[[#This Row],[Jan]:[Dec]]) → expected 15, got #NAME?",
-        "WithHeaders!F3 =SUM(Table1[[#This Row],[Jan]:[Dec]]) → expected 40, got #NAME?",
-        "WithHeaders!I3 =SUM(Table1[#This Row]) → expected 80, got #NAME?",
-        "WithHeaders!J3 =SUM(Table1[#All]) → expected 538, got #NAME?",
-        "WithHeaders!L3 =SUM(Table1[[#Data],[Jan]:[Mar]]) → expected 109, got #NAME?"
+        "Hidden!H5 =SUM(Table3[[#Totals],[the two]]) → expected 38, got #REF!",
+        "Hidden!I5 =SUM(Table3[[#Totals],[the two]:[last]]) → expected 65, got #REF!",
+        "Hidden!B6 =SUBTOTAL(109,Table3[the two]) → expected 38, got #REF!",
+        "Hidden!B8 =SUM(Table3[the two]) → expected 42, got #REF!",
+        "Hidden!B9 =SUBTOTAL(9,Table3[the two]) → expected 42, got #REF!"
       ]
     },
     {

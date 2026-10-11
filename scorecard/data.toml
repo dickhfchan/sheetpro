@@ -27,5 +27,15 @@ note = "Typing validated; paste not validated; no in-cell dropdown or circles dr
 
 [[item]]
 name = "Charts, pivot tables, tables, conditional formatting"
-status = "missing"
-note = ""
+status = "partial"
+note = "Charts, tables and CF done; pivot tables missing"
+
+[[item]]
+name = "Charts and sparklines"
+status = "partial"
+note = "9 chart kinds + 3 sparkline kinds, DrawingML round-trip; no mouse select/move; 3D/stock/radar passed through unrendered"
+
+[[item]]
+name = "Excel tables + structured references"
+status = "partial"
+note = "Auto-expand, calculated columns, totals, banding; column rename doesn't rewrite formulas; filter/sort don't act on tables"

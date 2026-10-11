@@ -99,3 +99,43 @@ Still open:
   filter dropdowns.
 - Financial residuals (ACCRINT 30/360, ODDF/ODDLPRICE day counts); BESSELJ/Y precision.
 - Missing commands (67): charts, pivot tables, tables, conditional formatting, print/PDF, windows.
+
+## 2026-10-12 — Wave 3 (4 parallel arcs)
+
+Landed:
+- 1 struct: insert/delete rows/cols move comments, links, validations, AutoFilter, page breaks,
+  outline levels, spills (`features::LineShift`); SUBTOTAL skips nested SUBTOTAL/AGGREGATE and
+  filtered (1–11) / hidden (101–111) rows; removed superseded criteria code;
+  `sp_engine/tests/workflows.rs` (11 control-channel workflows) — found and fixed rename/insert not
+  updating validation sources and hyperlink targets.
+- 2 io: pass-through of unmodelled parts/elements (`sp_model::passthrough`, `sp_io::xlsx_passthrough`,
+  HANDLED_* registry), `validate_package` + `tests/package_validity.rs` (259/259 valid, also after
+  duplicate/rename/reorder/delete); xlsx_load regression fixed (split extras at opening sheetData,
+  fast path for canonical formulas, fewer allocations).
+- 3 cftables: conditional formatting (all rule kinds, data bars, colour scales, vector icon sets),
+  Excel tables, structured references (`Expr::Table`, `structref.rs`), auto-expand, CF/table
+  shifting on insert/delete (`sp_ops/table_shift.rs`); `[@Col]` saved qualified.
+- 4 charts: 9 chart commands + 3 sparkline commands, `sp_render/chart.rs` geometry, `sp_ui/chart.rs`,
+  DrawingML read/write; charts in drawings we fully model are adopted, others stay passed through;
+  anchors/series shift on insert/delete (`sp_ops/chart_shift.rs`).
+
+Integration: cftables and charts conflicted with io's writer refactor (RawRel ids); each arc agent
+merged main into its own branch and adapted (sequentially), then merged cleanly.
+
+Numbers (before → after):
+- Commands 237 → 259/304; functions 496/514. Floors raised.
+- Oracles: files 175/218 (unchanged); cells 68,176 → 68,359 (93.1% → 93.3%); round-trip 259/259;
+  package validity 259/259 (new gate).
+- Perf (load avg 19–30, non-cargo): xlsx_load 740 → ~305 ms (regression fixed); others in budget.
+
+Still open:
+- package_validity no longer checks passed-through drawing/chart parts byte-for-byte (adopted chart
+  parts are regenerated) — narrow the exemption to adopted charts only.
+- Charts in drawings with pictures/shapes/unsupported types are kept but not shown; shared captured
+  drawings drop new charts; no mouse select/move of charts.
+- Sort doesn't move comments/links/validations; column rename doesn't rewrite structured refs;
+  filter/sort don't act on tables; no CF/table dialogs.
+- Captured parts (chart series, pivot sources) aren't rewritten on sheet rename/delete.
+- Ribbon groups overflow/overlap text when a tab has many commands (seen on Home in charts.png).
+- Missing commands (45): pivot tables, slicers, pictures/shapes, print/PDF, windows/split, themes.
+- Re-baseline perf on an idle machine.

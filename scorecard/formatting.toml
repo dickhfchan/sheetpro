@@ -32,5 +32,5 @@ note = "Merged text centred over the area; borders over merges not drawn"
 
 [[item]]
 name = "Conditional formatting"
-status = "missing"
-note = ""
+status = "partial"
+note = "All rule types, data bars, colour scales, icon sets; no CF dialog; theme colours in dxfs read as none"

@@ -6,9 +6,9 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 
 | Surface | Live | Total | % |
 |---|---|---|---|
-| Commands (ribbon + keyboard) | 237 | 304 | 78.0% |
+| Commands (ribbon + keyboard) | 259 | 304 | 85.2% |
 | Worksheet functions | 496 | 514 | 96.5% |
-| **All** | **733** | **818** | **89.6%** |
+| **All** | **755** | **818** | **92.3%** |
 
 ## Commands by tab
 
@@ -18,8 +18,8 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 | File | 10 | 15 | `file.export.pdf` `file.print` `file.inspect` `file.recent` `file.options` |
 | Format Cells | 1 | 1 | — |
 | Formulas | 15 | 23 | `formulas.library.financial` `formulas.library.logical` `formulas.library.text` `formulas.library.datetime` `formulas.library.lookup` `formulas.library.math` `formulas.library.more` `formulas.use_in_formula` |
-| Home | 101 | 112 | `home.styles.cf.highlight_rules` `home.styles.cf.top_bottom` `home.styles.cf.data_bars` `home.styles.cf.color_scales` `home.styles.cf.icon_sets` `home.styles.cf.new_rule` `home.styles.cf.clear` `home.styles.cf.manage` `home.styles.format_as_table` `home.styles.cell_styles` `home.editing.flash_fill` |
-| Insert | 2 | 24 | `insert.pivot_table` `insert.table` `insert.picture` `insert.shapes` `insert.chart.recommended` `insert.chart.column` `insert.chart.bar` `insert.chart.line` `insert.chart.pie` `insert.chart.area` `insert.chart.scatter` `insert.chart.histogram` `insert.chart.combo` `insert.sparkline.line` `insert.sparkline.column` `insert.sparkline.winloss` `insert.slicer` `insert.text_box` `insert.header_footer` `insert.symbol` `insert.equation` `insert.checkbox` |
+| Home | 110 | 112 | `home.styles.cell_styles` `home.editing.flash_fill` |
+| Insert | 15 | 24 | `insert.pivot_table` `insert.picture` `insert.shapes` `insert.slicer` `insert.text_box` `insert.header_footer` `insert.symbol` `insert.equation` `insert.checkbox` |
 | Name Box | 1 | 1 | — |
 | Page Layout | 14 | 16 | `layout.themes` `layout.background` |
 | Quick Access | 2 | 2 | — |
@@ -51,3 +51,4 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 - command `format.cells`
 - command `edit.replace_current`
 - command `edit.find_all`
+- command `table.design`

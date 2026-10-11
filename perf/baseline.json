@@ -3,37 +3,37 @@
   "quick": false,
   "results": {
     "edit_one_cell": [
-      3.936292,
+      3.4971669999999997,
       50.0,
       "Type one value into a 100k-row sheet (undo record + recalc). Target app: instant."
     ],
     "grid_layout_screen": [
-      0.232292,
+      0.304292,
       8.0,
       "Lay out one 1600x1000 screen at row 50k (must fit in a frame)"
     ],
     "recalc_full_cold": [
-      444.15387499999997,
+      471.50566599999996,
       1500.0,
       "Full recalculation, cold AST cache (parse + evaluate 200k formulas)"
     ],
     "recalc_full_warm": [
-      277.93225,
+      282.611542,
       800.0,
       "Full recalculation, warm AST cache"
     ],
     "sort_rows": [
-      1290.3765,
+      1405.465,
       2000.0,
       "Sort 100k rows x 4 cols descending by column A"
     ],
     "xlsx_load": [
-      739.916459,
+      305.48004099999997,
       1500.0,
       "Load 400k cells from .xlsx"
     ],
     "xlsx_save": [
-      678.8462079999999,
+      686.9109589999999,
       1500.0,
       "Save 400k cells to .xlsx"
     ]
