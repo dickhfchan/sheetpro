@@ -19,6 +19,7 @@ pub mod outline_cmds;
 pub mod protect_cmds;
 pub mod sheet_cmds;
 pub mod table_cmds;
+pub mod ui_cmds;
 pub mod validation_cmds;
 pub mod view_cmds;
 
@@ -46,5 +47,6 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(chart_cmds::specs());
     v.extend(cf_cmds::specs());
     v.extend(table_cmds::specs());
+    v.extend(ui_cmds::specs());
     v
 }
