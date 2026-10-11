@@ -1,6 +1,7 @@
 //! L6 shell: a thin egui front end over `sp_engine::Session`. Every action goes through
 //! `Session::execute`; this crate owns only transient view state (edit buffer, hover…).
 
+pub mod chart;
 pub mod dialogs;
 pub mod grid;
 mod menus;
@@ -604,6 +605,7 @@ impl App {
                 T.selection_border,
             );
         }
+        chart::paint_objects(&painter, s, &view, cells_origin, cell_area);
         // Headings.
         if s.view.show_headings {
             let top = Rect::from_min_max(rect.min, Pos2::new(rect.max.x, rect.min.y + hh));

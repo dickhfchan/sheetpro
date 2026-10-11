@@ -342,7 +342,14 @@ pub fn bin_label(b: &Bin, first: bool) -> String {
     } else {
         1.0
     };
-    let f = |v: f64| format_tick(v, step.max(1e-9), false);
+    let f = |v: f64| {
+        let t = format_tick(v, step.max(1e-9), false);
+        if t.contains('.') {
+            t.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            t
+        }
+    };
     format!("{}{}, {}]", if first { "[" } else { "(" }, f(b.lo), f(b.hi))
 }
 
@@ -586,16 +593,17 @@ fn pie(c: &mut Ctx, d: &ChartData, area: (f32, f32, f32, f32)) {
         if sweep <= 0.0 {
             continue;
         }
-        let steps = ((sweep / tau * ARC_STEPS).ceil() as usize).max(1);
+        // Convex fans of at most half a turn each, finely subdivided along the arc.
         let fill = Paint::Series(i);
-        for k in 0..steps {
-            let a0 = a + sweep * k as f32 / steps as f32;
-            let a1 = a + sweep * (k + 1) as f32 / steps as f32;
-            let pts = if inner > 0.0 {
-                vec![pt(a0, inner), pt(a0, r), pt(a1, r), pt(a1, inner)]
-            } else {
-                vec![(cx, cy), pt(a0, r), pt(a1, r)]
-            };
+        let pieces = ((sweep / std::f32::consts::PI).ceil() as usize).max(1);
+        for k in 0..pieces {
+            let a0 = a + sweep * k as f32 / pieces as f32;
+            let a1 = a + sweep * (k + 1) as f32 / pieces as f32;
+            let steps = (((a1 - a0) / tau * ARC_STEPS).ceil() as usize).max(1);
+            let mut pts = vec![(cx, cy)];
+            for j in 0..=steps {
+                pts.push(pt(a0 + (a1 - a0) * j as f32 / steps as f32, r));
+            }
             c.out.push(Prim::Poly { pts, fill });
         }
         // Slice separators.
@@ -617,6 +625,14 @@ fn pie(c: &mut Ctx, d: &ChartData, area: (f32, f32, f32, f32)) {
             labels.push((lx, ly, format!("{:.0}%", v / total * 100.0)));
         }
         a += sweep;
+    }
+    if inner > 0.0 {
+        c.out.push(Prim::Circle {
+            x: cx,
+            y: cy,
+            r: inner,
+            fill: Paint::Background,
+        });
     }
     for (x, y, t) in labels {
         c.text(
@@ -1492,7 +1508,7 @@ mod tests {
         let same = histogram_bins(&[2.0, 2.0], None);
         assert_eq!(same.len(), 1);
         assert_eq!(same.first().map(|x| x.count), Some(2));
-        assert_eq!(bin_label(&b[0], true), "[1.0, 25.8]");
+        assert_eq!(bin_label(&b[0], true), "[1, 25.8]");
         assert!(histogram_bins(&[1.0, 2.0], Some(u32::MAX)).len() <= MAX_BINS);
     }
 

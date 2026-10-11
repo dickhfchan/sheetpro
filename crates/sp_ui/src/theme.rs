@@ -37,6 +37,13 @@ pub struct Theme {
     pub list_selected: Color32,
     pub preview_bg: Color32,
     pub swatch_border: Color32,
+    /// Chart objects: plot background, frame, axis lines, gridlines, titles, tick labels.
+    pub chart_bg: Color32,
+    pub chart_border: Color32,
+    pub chart_axis: Color32,
+    pub chart_grid: Color32,
+    pub chart_text: Color32,
+    pub chart_subtext: Color32,
 }
 
 pub const LIGHT: Theme = Theme {
@@ -73,7 +80,33 @@ pub const LIGHT: Theme = Theme {
     list_selected: Color32::from_rgb(211, 227, 217),
     preview_bg: Color32::WHITE,
     swatch_border: Color32::from_rgb(140, 140, 140),
+    chart_bg: Color32::WHITE,
+    chart_border: Color32::from_rgb(200, 200, 200),
+    chart_axis: Color32::from_rgb(170, 170, 170),
+    chart_grid: Color32::from_rgb(228, 228, 228),
+    chart_text: Color32::from_rgb(64, 64, 64),
+    chart_subtext: Color32::from_rgb(96, 96, 96),
 };
+
+/// Default colours for chart series and sparklines, in order (cycled past the end).
+pub const SERIES_PALETTE: [Color32; 8] = [
+    Color32::from_rgb(46, 110, 190),
+    Color32::from_rgb(232, 126, 44),
+    Color32::from_rgb(86, 158, 80),
+    Color32::from_rgb(196, 66, 72),
+    Color32::from_rgb(128, 96, 178),
+    Color32::from_rgb(38, 160, 168),
+    Color32::from_rgb(214, 172, 36),
+    Color32::from_rgb(118, 118, 118),
+];
+
+/// The `i`-th series colour.
+pub fn series_color(i: usize) -> Color32 {
+    SERIES_PALETTE
+        .get(i % SERIES_PALETTE.len())
+        .copied()
+        .unwrap_or(Color32::GRAY)
+}
 
 /// Colour choices offered by the fill / font / tab colour pickers: a row of standard hues,
 /// then tints and shades. These are cell data values the user picks, not chrome colours.
