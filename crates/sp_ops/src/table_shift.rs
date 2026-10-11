@@ -2,7 +2,7 @@
 //! ranges, rename/insert table columns, drop tables whose header row (or every column) is
 //! deleted, and turn structured references to removed tables/columns into `#REF!`.
 
-use sp_core::{CellAddr, CellRange, ErrorKind, Value};
+use sp_core::{CellAddr, ErrorKind, Value};
 use sp_formula::Expr;
 use sp_formula::shift::shift_for_copy;
 use sp_model::features::LineShift;
@@ -260,18 +260,17 @@ pub fn invalidate_refs(wb: &mut Workbook, losses: &[TableLoss]) {
     }
 }
 
-/// Bounding check helper used by tests.
-#[cfg(test)]
-fn r(s: &str) -> CellRange {
-    CellRange::parse(s).unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::history::Tx;
+    use sp_core::CellRange;
     use sp_formula::shift::Axis;
     use sp_model::{CfRule, CondFormat, DiffStyle};
+
+    fn r(s: &str) -> CellRange {
+        CellRange::parse(s).unwrap()
+    }
 
     fn book() -> Workbook {
         let mut wb = Workbook::new();

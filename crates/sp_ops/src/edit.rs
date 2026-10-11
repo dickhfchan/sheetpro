@@ -501,7 +501,7 @@ pub fn insert_delete(
             }
         }
     }
-    let mut losses = Vec::new();
+    let losses;
     {
         let s = tx.wb.sheet_mut(sheet).ok_or(OpError::NoSheet)?;
         match axis {
