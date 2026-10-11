@@ -246,18 +246,50 @@ pub fn before_merges_xml(sheet: &Sheet) -> String {
     x
 }
 
-/// Relationships a worksheet needs (hyperlink targets, comments, VML).
+/// Relationships a worksheet needs (hyperlink targets, comments, VML, pass-through).
 #[derive(Default)]
 pub struct SheetRels {
+    /// (id, full type URI, target, external).
     pub rels: Vec<(String, String, String, bool)>,
+    /// Ids taken by pass-through relationships (never allocated here).
+    pub reserved: std::collections::HashSet<String>,
+    next: usize,
 }
 
 impl SheetRels {
+    /// Empty set whose allocated ids avoid `reserved`.
+    pub fn with_reserved(reserved: std::collections::HashSet<String>) -> Self {
+        SheetRels {
+            reserved,
+            ..SheetRels::default()
+        }
+    }
+
     fn add(&mut self, kind: &str, target: &str, external: bool) -> String {
-        let id = format!("rId{}", self.rels.len() + 1);
-        self.rels
-            .push((id.clone(), kind.to_string(), target.to_string(), external));
+        let id = loop {
+            self.next += 1;
+            let id = format!("rId{}", self.next);
+            if !self.reserved.contains(&id) {
+                break id;
+            }
+        };
+        self.rels.push((
+            id.clone(),
+            format!("{REL_NS}/{kind}"),
+            target.to_string(),
+            external,
+        ));
         id
+    }
+
+    /// Add a relationship with a fixed id and full type (pass-through).
+    pub fn push_raw(&mut self, id: &str, rel_type: &str, target: &str, external: bool) {
+        self.rels.push((
+            id.to_string(),
+            rel_type.to_string(),
+            target.to_string(),
+            external,
+        ));
     }
 
     pub fn is_empty(&self) -> bool {
@@ -272,7 +304,8 @@ impl SheetRels {
         for (id, kind, target, external) in &self.rels {
             let _ = write!(
                 x,
-                r#"<Relationship Id="{id}" Type="{REL_NS}/{kind}" Target="{}"{}/>"#,
+                r#"<Relationship Id="{id}" Type="{}" Target="{}"{}/>"#,
+                esc(kind),
                 esc(target),
                 if *external {
                     r#" TargetMode="External""#

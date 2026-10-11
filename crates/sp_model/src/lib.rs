@@ -1,6 +1,7 @@
 //! L1 data model: workbook, sheets, cells, styles, defined names. Pure data.
 
 pub mod features;
+pub mod passthrough;
 pub mod style;
 
 use serde::{Deserialize, Serialize};
@@ -166,6 +167,9 @@ pub struct Sheet {
     /// Array-formula areas, sorted by anchor (row-major).
     #[serde(default)]
     pub spills: Vec<SpillArea>,
+    /// File content we don't model, re-emitted on save (see `passthrough.rs`).
+    #[serde(default)]
+    pub passthrough: passthrough::Passthrough,
 }
 
 pub const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -196,6 +200,7 @@ impl Sheet {
             validations: Vec::new(),
             page_setup: PageSetup::default(),
             spills: Vec::new(),
+            passthrough: Default::default(),
         }
     }
 
@@ -343,6 +348,9 @@ pub struct Workbook {
     pub props: DocProps,
     #[serde(default)]
     pub protection: Option<WorkbookProtection>,
+    /// File content we don't model, re-emitted on save (see `passthrough.rs`).
+    #[serde(default)]
+    pub passthrough: passthrough::Passthrough,
 }
 
 impl Default for Workbook {
@@ -365,6 +373,7 @@ impl Workbook {
             calc_mode: CalcMode::Automatic,
             props: DocProps::default(),
             protection: None,
+            passthrough: Default::default(),
         }
     }
 

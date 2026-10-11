@@ -1,5 +1,6 @@
 //! .xlsx (SpreadsheetML, ECMA-376) reader.
 
+use crate::xlsx_passthrough as pass;
 use crate::xml::{Node, local, parse_dom, resolve_ref, unescape_ooxml};
 use crate::{IoError, LoadReport};
 use quick_xml::Reader;
@@ -374,14 +375,21 @@ fn read_sheet_cells(
             // Only elements we read attributes from pay for attribute decoding.
             let wanted = matches!(
                 name,
-                "row" | "c" | "col" | "mergeCell" | "pane" | "sheetView" | "sheetFormatPr"
+                "row"
+                    | "c"
+                    | "col"
+                    | "mergeCell"
+                    | "pane"
+                    | "sheetView"
+                    | "sheetFormatPr"
                     | "tabColor"
             );
             let mut a: Vec<(&str, std::borrow::Cow<'_, str>)> = Vec::new();
             if wanted {
                 for at in e.attributes().with_checks(false).flatten() {
                     let v = if at.value.contains('&') {
-                        at.normalized_value(quick_xml::XmlVersion::Implicit1_0).unwrap_or_default()
+                        at.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                            .unwrap_or_default()
                     } else {
                         at.value
                     };
@@ -439,7 +447,10 @@ fn read_sheet_cells(
                     c.f = Some(String::new());
                     let mut t = None;
                     for at in e.attributes().with_checks(false).flatten() {
-                        let v = at.normalized_value(quick_xml::XmlVersion::Implicit1_0).unwrap_or_default().into_owned();
+                        let v = at
+                            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                            .unwrap_or_default()
+                            .into_owned();
                         match at.key.local_name().as_ref() {
                             "t" => t = Some(v),
                             "si" => c.f_shared_si = Some(v),
@@ -743,7 +754,8 @@ fn is_simple_canonical(src: &str) -> bool {
                     }
                     // A letter/`(`/`.`/`!`/`:`/`_` after it: a name, call, sheet or range.
                     if b.get(i).is_some_and(|c| {
-                        c.is_ascii_alphanumeric() || matches!(c, b'(' | b'.' | b'!' | b':' | b'_' | b'$')
+                        c.is_ascii_alphanumeric()
+                            || matches!(c, b'(' | b'.' | b'!' | b':' | b'_' | b'$')
                     }) {
                         return false;
                     }
@@ -922,18 +934,28 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     let wb_xml = read_part(&mut zip, "xl/workbook.xml")?
         .ok_or_else(|| IoError::Format("missing xl/workbook.xml".into()))?;
     let rels_xml = read_part(&mut zip, "xl/_rels/workbook.xml.rels")?.unwrap_or_default();
-    let rels: HashMap<String, String> = if rels_xml.is_empty() {
-        HashMap::new()
+    let raw_rels = if rels_xml.is_empty() {
+        Vec::new()
     } else {
-        parse_dom(&rels_xml)?
-            .children_named("Relationship")
-            .filter_map(|r| {
-                Some((
-                    r.attr("Id")?.to_string(),
-                    resolve_target("xl", r.attr("Target")?),
-                ))
-            })
-            .collect()
+        pass::parse_raw_rels(&rels_xml, "xl")?
+    };
+    let rels: HashMap<String, (String, String)> = raw_rels
+        .iter()
+        .map(|r| (r.id.clone(), (r.target.clone(), r.rel_type.clone())))
+        .collect();
+    let ct = match read_part(&mut zip, "[Content_Types].xml")? {
+        Some(x) => pass::ContentTypes::parse(&x).unwrap_or_default(),
+        None => pass::ContentTypes::default(),
+    };
+    let mut capture = pass::Capture::new(ct);
+    let wb_pass = match capture.workbook(&mut zip, &wb_xml, &raw_rels) {
+        Ok(p) => p,
+        Err(e) => {
+            report
+                .warnings
+                .push(format!("workbook: unmodelled content dropped ({e})"));
+            Default::default()
+        }
     };
     let sst: Vec<Arc<str>> = match read_part(&mut zip, "xl/sharedStrings.xml")? {
         Some(x) => read_shared_strings(&x)?
@@ -963,25 +985,60 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
             Some("veryHidden") => Visibility::VeryHidden,
             _ => Visibility::Visible,
         };
-        let path = sn
+        let (path, rel_type) = sn
             .attr("id")
             .and_then(|id| rels.get(id))
             .cloned()
-            .unwrap_or_else(|| format!("xl/worksheets/sheet{}.xml", i + 1));
-        match read_part(&mut zip, &path)? {
-            Some(x) => {
-                read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report, &rich)?;
-                read_extras(&mut zip, &path, &x, &mut sheet, &mut report)?;
+            .unwrap_or_else(|| (format!("xl/worksheets/sheet{}.xml", i + 1), String::new()));
+        if pass::is_opaque_sheet_rel(&rel_type) {
+            match capture.opaque_sheet(&mut zip, &path, &rel_type) {
+                Ok(Some(p)) => sheet.passthrough = p,
+                Ok(None) => {
+                    capture.skip_sheet();
+                    report
+                        .warnings
+                        .push(format!("sheet '{name}': part {path} not found"));
+                }
+                Err(e) => {
+                    capture.skip_sheet();
+                    report
+                        .warnings
+                        .push(format!("sheet '{name}': dropped ({e})"));
+                }
             }
-            None => report.warnings.push(format!(
-                "sheet '{name}': part {path} not found (chart sheet?)"
-            )),
+        } else {
+            match read_part(&mut zip, &path)? {
+                Some(x) => {
+                    read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report, &rich)?;
+                    read_extras(&mut zip, &path, &x, &mut sheet, &mut report)?;
+                    let (head, tail) =
+                        crate::xlsx_extras::split_at_sheet_data(&x).unwrap_or((x.as_str(), ""));
+                    match capture.worksheet(&mut zip, &path, head, tail) {
+                        Ok(p) => sheet.passthrough = p,
+                        Err(e) => {
+                            capture.skip_sheet();
+                            report
+                                .warnings
+                                .push(format!("sheet '{name}': unmodelled content dropped ({e})"));
+                        }
+                    }
+                }
+                None => {
+                    capture.skip_sheet();
+                    report
+                        .warnings
+                        .push(format!("sheet '{name}': part {path} not found"));
+                }
+            }
         }
+        sheet.passthrough.sheet_id = sn.attr("sheetId").and_then(|v| v.parse().ok());
         wb.sheets.push(sheet);
     }
     if wb.sheets.is_empty() {
         return Err(IoError::Format("workbook contains no sheets".into()));
     }
+    wb.passthrough = wb_pass;
+    capture.finish(&mut wb);
     if let Some(dn) = wbdom.child("definedNames") {
         for d in dn.children_named("definedName") {
             let Some(name) = d.attr("name") else { continue };
@@ -1083,8 +1140,26 @@ mod tests {
             }
         }
         for f in [
-            "", "-A1", "+A1", "A1+", "SUM(A1)", "A1:B2", "a1", "A1 + 1", "1.5", "1E5", "007",
-            "XFE1", "A0", "Sheet1!A1", "A1%", "(A1", "A1)", "AB", "A1#", "TRUE",
+            "",
+            "-A1",
+            "+A1",
+            "A1+",
+            "SUM(A1)",
+            "A1:B2",
+            "a1",
+            "A1 + 1",
+            "1.5",
+            "1E5",
+            "007",
+            "XFE1",
+            "A0",
+            "Sheet1!A1",
+            "A1%",
+            "(A1",
+            "A1)",
+            "AB",
+            "A1#",
+            "TRUE",
         ] {
             assert!(!is_simple_canonical(f), "{f}");
         }
