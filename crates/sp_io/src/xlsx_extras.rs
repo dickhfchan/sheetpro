@@ -534,11 +534,13 @@ pub fn parse_rels(xml: &str, base_dir: &str) -> Result<Rels, IoError> {
         .collect())
 }
 
-/// Find the end of `sheetData` and split the document there.
-fn split_at_sheet_data(xml: &str) -> Option<(&str, &str)> {
-    let pos = xml.rfind("sheetData")?;
-    let start = xml.get(..pos)?.rfind('<')?;
-    let close = pos + xml.get(pos..)?.find('>')?;
+/// Split a worksheet around `sheetData`: (text before its start tag, text after its end tag).
+/// Only these small pieces are re-parsed; the cell data is never scanned twice.
+pub fn split_at_sheet_data(xml: &str) -> Option<(&str, &str)> {
+    let first = xml.find("sheetData")?;
+    let start = xml.get(..first)?.rfind('<')?;
+    let last = xml.rfind("sheetData")?;
+    let close = last + xml.get(last..)?.find('>')?;
     Some((xml.get(..start)?, xml.get(close + 1..)?))
 }
 
