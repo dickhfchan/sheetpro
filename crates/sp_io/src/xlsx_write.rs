@@ -748,6 +748,18 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>"#,
     );
+    // A workbook carrying a VBA project must declare the macro-enabled main content type.
+    if wb
+        .passthrough
+        .rels
+        .iter()
+        .any(|r| pass::rel_kind(&r.rel_type) == "vbaProject")
+    {
+        ct = ct.replace(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+            "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+        );
+    }
     let override_ct = |ct: &mut String, path: &str, t: &str| {
         let _ = write!(
             ct,

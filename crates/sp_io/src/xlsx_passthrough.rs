@@ -335,10 +335,7 @@ impl Child<'_> {
 /// Top-level elements of `xml`. With `skip_root`, the first start tag is the root: its
 /// attributes are returned and its children listed (an unclosed root is fine). Without,
 /// the fragment's own top-level elements are listed.
-pub fn scan_children(
-    xml: &str,
-    skip_root: bool,
-) -> Result<Scanned<'_>, IoError> {
+pub fn scan_children(xml: &str, skip_root: bool) -> Result<Scanned<'_>, IoError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().check_end_names = false;
     let mut root_attrs = Vec::new();
@@ -1342,6 +1339,25 @@ mod tests {
         let ws = text(&out, "xl/worksheets/sheet1.xml").unwrap();
         assert_eq!(ws.matches("<legacyDrawing").count(), 1);
         assert!(!ws.contains("rId9"));
+    }
+
+    #[test]
+    fn vba_project_keeps_macro_enabled_workbook() {
+        let mut wb = sample();
+        wb.passthrough
+            .rels
+            .push(rel("rId2", "vbaProject", "xl/vbaProject.bin"));
+        wb.passthrough.parts.push(part(
+            "xl/vbaProject.bin",
+            "application/vnd.ms-office.vbaProject",
+            "VBA",
+            vec![],
+        ));
+        let out = save(&wb);
+        assert_eq!(validate_package(&out), Vec::<String>::new());
+        let ct = text(&out, "[Content_Types].xml").unwrap();
+        assert!(ct.contains("macroEnabled.main+xml"), "{ct}");
+        assert_eq!(text(&out, "xl/vbaProject.bin").unwrap(), "VBA");
     }
 
     #[test]
