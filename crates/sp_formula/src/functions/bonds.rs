@@ -257,6 +257,26 @@ fn accrual_periods(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<
     accrual_core(from, to, anchor, freq, basis, false)
 }
 
+/// Like [`accrual_periods`], but a quasi-coupon period never contributes more than 1.
+fn accrual_capped(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<f64> {
+    let s = Schedule::new(anchor, freq)?;
+    let k0 = s.index_at_or_before(from.min(to))?;
+    let (lo_t, hi_t) = (from.min(to), from.max(to));
+    let mut total = 0.0;
+    for k in (k0..).take(20_000) {
+        let (a, b) = (s.date(k)?, s.date(k + 1)?);
+        if a >= hi_t {
+            let sign = if to < from { -1.0 } else { 1.0 };
+            return Ok(sign * total);
+        }
+        let (lo, hi) = (lo_t.max(a), hi_t.min(b));
+        if hi > lo {
+            total += (day_diff(lo, hi, basis)? / period_len(a, b, freq, basis)).min(1.0);
+        }
+    }
+    Err(ErrorKind::Num)
+}
+
 /// Accrual as ACCRINT counts it: periods wholly covered before the one holding `to` count
 /// exactly 1, and actual/actual uses the length of the period ending at the anchor.
 fn accrual_accrint(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<f64> {
@@ -372,8 +392,8 @@ impl Bond {
         let c = coupon(self.settle, self.mat, self.freq)?;
         let e = coup_days(&c, self.freq, self.basis);
         let a = coup_daybs(&c, self.settle, self.basis)?;
-        let dsc = coup_daysnc(&c, self.settle, self.freq, self.basis)?;
-        Ok((e, a, dsc, c.num))
+        // Pricing measures settlement→next coupon as E − A in every basis.
+        Ok((e, a, e - a, c.num))
     }
 
     fn price(&self, yld: f64, red: f64) -> R<f64> {
@@ -723,7 +743,7 @@ impl OddFirst {
         let base = 1.0 + yld / f;
         // Regular coupons after the first one.
         let regular = coupon(self.first, self.mat, f).map_or(0.0, |c| c.num);
-        let first_cpn = cpn * accrual_periods(self.issue, self.first, self.first, f, self.basis)?;
+        let first_cpn = cpn * accrual_capped(self.issue, self.first, self.first, f, self.basis)?;
         // Periods from settlement to the first coupon (quasi-coupon periods).
         let to_first = accrual_periods(self.settle, self.first, self.first, f, self.basis)?;
         let mut p = first_cpn / base.powf(to_first);
