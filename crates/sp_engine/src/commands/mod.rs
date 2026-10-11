@@ -10,6 +10,14 @@ pub mod format_cmds;
 pub mod nav_cmds;
 pub mod sheet_cmds;
 pub mod view_cmds;
+pub mod audit_cmds;
+pub mod comment_cmds;
+pub mod filter_cmds;
+pub mod layout_cmds;
+pub mod misc_cmds;
+pub mod outline_cmds;
+pub mod protect_cmds;
+pub mod validation_cmds;
 
 use crate::CommandSpec;
 
@@ -24,5 +32,13 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(nav_cmds::specs());
     v.extend(sheet_cmds::specs());
     v.extend(view_cmds::specs());
+    v.extend(audit_cmds::specs());
+    v.extend(comment_cmds::specs());
+    v.extend(filter_cmds::specs());
+    v.extend(layout_cmds::specs());
+    v.extend(misc_cmds::specs());
+    v.extend(outline_cmds::specs());
+    v.extend(protect_cmds::specs());
+    v.extend(validation_cmds::specs());
     v
 }
