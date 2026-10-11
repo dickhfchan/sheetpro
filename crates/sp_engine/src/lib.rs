@@ -321,6 +321,14 @@ impl Session {
                         }
                     }
                     self.history.push(t);
+                    // Typing next to a table grows it (its own undo step).
+                    if self.validate_entry
+                        && let Some(cells) = changed
+                    {
+                        self.validate_entry = false;
+                        commands::table_cmds::auto_expand(self, &cells);
+                        self.validate_entry = true;
+                    }
                 }
                 Ok(v)
             }

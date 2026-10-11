@@ -265,7 +265,8 @@ impl SheetRels {
         }
     }
 
-    fn add(&mut self, kind: &str, target: &str, external: bool) -> String {
+    /// Allocate a fresh id (avoiding reserved pass-through ids) for a new relationship.
+    pub fn add(&mut self, kind: &str, target: &str, external: bool) -> String {
         let id = loop {
             self.next += 1;
             let id = format!("rId{}", self.next);

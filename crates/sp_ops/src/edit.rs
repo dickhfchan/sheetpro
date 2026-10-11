@@ -357,6 +357,7 @@ fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &st
                 *src = new;
             }
         }
+        crate::table_shift::rewrite_formulas(sheet, &|src| rewritten(src, &g));
     }
     for n in &mut wb.names {
         let home = n
@@ -500,6 +501,7 @@ pub fn insert_delete(
             }
         }
     }
+    let losses;
     {
         let s = tx.wb.sheet_mut(sheet).ok_or(OpError::NoSheet)?;
         match axis {
@@ -518,6 +520,7 @@ pub fn insert_delete(
             }
         }
         shift_sheet_features(s, &sh);
+        losses = crate::table_shift::shift_cf_and_tables(s, &sh);
     }
     let ed_name = name.clone();
     rewrite_all_formulas(tx.wb, &move |e, formula_sheet| {
@@ -529,6 +532,7 @@ pub fn insert_delete(
         };
         adjust_for_struct_edit(e, formula_sheet, &ed);
     });
+    crate::table_shift::invalidate_refs(tx.wb, &losses);
     Ok(())
 }
 

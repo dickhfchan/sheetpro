@@ -8,6 +8,7 @@ pub mod parser;
 pub mod print;
 pub mod recalc;
 pub mod shift;
+pub mod structref;
 
 pub use ast::Expr;
 pub use parser::{ParseError, parse};

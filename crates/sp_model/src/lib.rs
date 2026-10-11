@@ -1,19 +1,25 @@
 //! L1 data model: workbook, sheets, cells, styles, defined names. Pure data.
 
+pub mod condfmt;
 pub mod features;
 pub mod passthrough;
 pub mod style;
+pub mod table;
 
 use serde::{Deserialize, Serialize};
 use sp_core::{CellAddr, CellRange, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub use condfmt::{
+    CfKind, CfOp, CfRule, Cfvo, CfvoKind, CondFormat, DiffStyle, TextOp, TimePeriod,
+};
 pub use features::{
     AllowEditRange, AutoFilter, Comment, CommentKind, CommentReply, DataValidation, ErrorStyle,
     FilterColumn, FilterCond, FilterCriteria, Hyperlink, Margins, Orientation, Outline, PageSetup,
     PasswordHash, SheetProtection, ValidationKind, ValidationOp, WorkbookProtection,
 };
 pub use style::{Border, BorderStyle, Color, HAlign, Style, StyleId, StyleTable, VAlign};
+pub use table::{Table, TableColumn};
 
 /// What the user entered into a cell.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -167,6 +173,12 @@ pub struct Sheet {
     /// Array-formula areas, sorted by anchor (row-major).
     #[serde(default)]
     pub spills: Vec<SpillArea>,
+    /// Conditional formats (see `condfmt.rs`).
+    #[serde(default)]
+    pub cond_formats: Vec<CondFormat>,
+    /// Structured tables (see `table.rs`).
+    #[serde(default)]
+    pub tables: Vec<Table>,
     /// File content we don't model, re-emitted on save (see `passthrough.rs`).
     #[serde(default)]
     pub passthrough: passthrough::Passthrough,
@@ -200,6 +212,8 @@ impl Sheet {
             validations: Vec::new(),
             page_setup: PageSetup::default(),
             spills: Vec::new(),
+            cond_formats: Vec::new(),
+            tables: Vec::new(),
             passthrough: Default::default(),
         }
     }

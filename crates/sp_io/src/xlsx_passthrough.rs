@@ -117,6 +117,7 @@ pub const HANDLED_SHEET_ELEMENTS: &[&str] = &[
     "protectedRanges",
     "autoFilter",
     "mergeCells",
+    "conditionalFormatting",
     "dataValidations",
     "hyperlinks",
     "printOptions",
@@ -124,6 +125,7 @@ pub const HANDLED_SHEET_ELEMENTS: &[&str] = &[
     "pageSetup",
     "rowBreaks",
     "colBreaks",
+    "tableParts",
 ];
 
 /// Workbook children the writer generates from the model.
@@ -137,7 +139,7 @@ pub const HANDLED_WORKBOOK_ELEMENTS: &[&str] = &[
 
 /// Sheet relationship types (last URI segment) that are modelled even when no element
 /// references them: legacy comments (notes) and the threaded comments tied to them.
-pub const HANDLED_SHEET_REL_TYPES: &[&str] = &["comments", "threadedComment"];
+pub const HANDLED_SHEET_REL_TYPES: &[&str] = &["comments", "threadedComment", "table"];
 
 /// Workbook relationship types (last URI segment) the writer generates or deliberately drops
 /// (`calcChain` is rebuilt by recalculation; rich values only back `vm` cell attributes,
@@ -1264,9 +1266,18 @@ mod tests {
         assert!(rels.contains(r#"Id="rId3""#), "{rels}");
         let (back, _) = crate::xlsx_read::read_xlsx(std::io::Cursor::new(out.clone())).unwrap();
         let (a, b) = (&wb.sheets[0].passthrough, &back.sheets[0].passthrough);
-        assert_eq!(a.elements.len(), b.elements.len());
-        // The image is now reachable from one sheet only, so that sheet owns it.
-        assert_eq!(b.parts.len(), 4);
+        // Captured elements that are now modelled (conditional formats, table parts) are
+        // read into the model instead of being captured again.
+        let unhandled = a
+            .elements
+            .iter()
+            .filter(|e| !HANDLED_SHEET_ELEMENTS.contains(&crate::xml::local(&e.name)))
+            .count();
+        assert_eq!(unhandled, b.elements.len());
+        assert_eq!(back.sheets[0].cond_formats.len(), 1);
+        // The image is now reachable from one sheet only, so that sheet owns it; the
+        // (invalid) table part is dropped with its now-handled relationship.
+        assert_eq!(b.parts.len(), 3);
         assert_eq!(back.passthrough.parts.len(), 1);
         assert_eq!(back.sheets[0].hyperlinks, wb.sheets[0].hyperlinks);
         // Byte-identical parts.

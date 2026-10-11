@@ -60,6 +60,7 @@ fn regenerated(name: &str, content_type: &str) -> bool {
         "threadedcomments+xml",
         "vmlDrawing",
         "printerSettings",
+        "spreadsheetml.table+xml",
     ];
     name.ends_with(".rels")
         || name == "[Content_Types].xml"

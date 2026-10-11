@@ -1,0 +1,114 @@
+{"op": "exec", "id": "home.cells.column_width", "params": {"range": "A1:H1", "width": 13}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A1", "input": "Region"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B1", "input": "Sales"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C1", "input": "Growth"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D1", "input": "Score"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E1", "input": "Status"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F1", "input": "Health"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G1", "input": "Rating"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H1", "input": "Margin"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A2", "input": "North"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B2", "input": "1200"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C2", "input": "0.12"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D2", "input": "88"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E2", "input": "On track"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F2", "input": "0.9"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G2", "input": "4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H2", "input": "0.31"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A3", "input": "South"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B3", "input": "450"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C3", "input": "-0.05"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D3", "input": "42"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E3", "input": "Late"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F3", "input": "0.2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G3", "input": "1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H3", "input": "0.12"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A4", "input": "East"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B4", "input": "980"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C4", "input": "0.04"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D4", "input": "67"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E4", "input": "On track"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F4", "input": "0.6"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G4", "input": "3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H4", "input": "0.22"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A5", "input": "West"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B5", "input": "1500"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C5", "input": "0.18"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D5", "input": "95"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E5", "input": "Done"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F5", "input": "0.95"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G5", "input": "5"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H5", "input": "0.35"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A6", "input": "Central"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B6", "input": "300"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C6", "input": "-0.11"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D6", "input": "23"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E6", "input": "Late"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F6", "input": "0.1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G6", "input": "0"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H6", "input": "0.05"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A7", "input": "Coast"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B7", "input": "760"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C7", "input": "0.02"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D7", "input": "58"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E7", "input": "Review"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F7", "input": "0.5"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G7", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H7", "input": "0.18"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A8", "input": "Hills"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B8", "input": "1100"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C8", "input": "0.09"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D8", "input": "79"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E8", "input": "Done"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F8", "input": "0.8"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G8", "input": "4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H8", "input": "0.27"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A9", "input": "Plains"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B9", "input": "620"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C9", "input": "-0.02"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D9", "input": "49"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E9", "input": "Review"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F9", "input": "0.4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G9", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H9", "input": "0.15"}}
+{"op": "exec", "id": "home.styles.cf.data_bars", "params": {"range": "B2:B9"}}
+{"op": "exec", "id": "home.styles.cf.top_bottom", "params": {"range": "B2:B9", "rule": "top", "rank": 2, "format": {"bold": true}}}
+{"op": "exec", "id": "home.styles.cf.color_scales", "params": {"range": "C2:C9", "scale": "green_yellow_red"}}
+{"op": "exec", "id": "home.styles.cf.icon_sets", "params": {"range": "D2:D9", "set": "3Arrows"}}
+{"op": "exec", "id": "home.styles.cf.highlight_rules", "params": {"range": "E2:E9", "rule": "text_contains", "text": "late"}}
+{"op": "exec", "id": "home.styles.cf.highlight_rules", "params": {"range": "E2:E9", "rule": "equal_to", "value": "Done", "format": "green"}}
+{"op": "exec", "id": "home.styles.cf.icon_sets", "params": {"range": "F2:F9", "set": "3TrafficLights1", "show_value": false}}
+{"op": "exec", "id": "home.styles.cf.icon_sets", "params": {"range": "G2:G9", "set": "5Rating"}}
+{"op": "exec", "id": "home.styles.cf.data_bars", "params": {"range": "H2:H9", "color": "green", "gradient": false}}
+{"op": "exec", "id": "home.styles.cf.new_rule", "params": {"range": "A2:A9", "formula": "=$D2<50", "format": {"font_color": "#C00000", "italic": true}}}
+{"op": "exec", "id": "home.styles.cf.icon_sets", "params": {"range": "D12:H12", "set": "5Quarters"}}
+{"op": "exec", "id": "home.styles.cf.icon_sets", "params": {"range": "D13:H13", "set": "3Symbols"}}
+{"op": "exec", "id": "home.styles.cf.icon_sets", "params": {"range": "D14:H14", "set": "3Flags"}}
+{"op": "exec", "id": "home.styles.cf.icon_sets", "params": {"range": "D15:H15", "set": "3Stars"}}
+{"op": "exec", "id": "home.styles.cf.icon_sets", "params": {"range": "D16:H16", "set": "5Arrows"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D12", "input": "0"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E12", "input": "1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F12", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G12", "input": "3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H12", "input": "4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D13", "input": "0"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E13", "input": "1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F13", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G13", "input": "3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H13", "input": "4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D14", "input": "0"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E14", "input": "1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F14", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G14", "input": "3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H14", "input": "4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D15", "input": "0"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E15", "input": "1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F15", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G15", "input": "3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H15", "input": "4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D16", "input": "0"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E16", "input": "1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F16", "input": "2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "G16", "input": "3"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "H16", "input": "4"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A12", "input": "Icon gallery"}}

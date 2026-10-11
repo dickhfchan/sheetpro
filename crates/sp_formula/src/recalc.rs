@@ -330,6 +330,10 @@ impl Host for WbHost<'_> {
         self.wb.sheet(i).map(|s| s.name.clone())
     }
 
+    fn workbook(&self) -> Option<&Workbook> {
+        Some(self.wb)
+    }
+
     fn sheet_count(&self) -> usize {
         self.wb.sheets.len()
     }
@@ -850,6 +854,14 @@ pub fn eval_formula(wb: &Workbook, sheet: usize, at: CellAddr, src: &str) -> Val
             finalize(&ev, r)
         }
     }
+}
+
+/// Evaluate a parsed expression as if entered in `at` (cached values; no recalculation).
+pub fn eval_expr(wb: &Workbook, sheet: usize, at: CellAddr, expr: &Expr) -> Value {
+    let host = WbHost::new(wb, true, None, RecalcOptions::default());
+    let mut ev = Ev::new(&host, sheet, at);
+    let r = ev.eval(expr);
+    finalize(&ev, r)
 }
 
 #[cfg(test)]

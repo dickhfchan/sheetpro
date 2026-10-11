@@ -127,7 +127,7 @@ fn needs_prefix(name: &str) -> Option<&'static str> {
 /// Formula text as stored in the file (prefixes added; no leading `=`).
 pub fn file_formula(src: &str) -> String {
     match parse(src) {
-        Ok(e) => file_expr(e),
+        Ok(e) => file_expr(e, None),
         // Keep unparseable text untouched so nothing is lost.
         Err(_) => src.to_string(),
     }
@@ -142,6 +142,7 @@ struct FileFormula {
 
 fn formula_for_cell(src: &str, sheet: &sp_model::Sheet, at: sp_core::CellAddr) -> FileFormula {
     let area = sheet.spill_at_anchor(at);
+    let table = sheet.table_at(at).map(|t| t.name.as_str());
     let Ok(e) = parse(src) else {
         return FileFormula {
             text: src.to_string(),
@@ -155,23 +156,36 @@ fn formula_for_cell(src: &str, sheet: &sp_model::Sheet, at: sp_core::CellAddr) -
             a.range
         };
         return FileFormula {
-            text: file_expr(e),
+            text: file_expr(e, table),
             array: Some((r.to_a1(), !a.fixed)),
         };
     }
     match e.clone().from_legacy() {
         Some(plain) => FileFormula {
-            text: file_expr(plain),
+            text: file_expr(plain, table),
             array: None,
         },
         None => FileFormula {
-            text: file_expr(e),
+            text: file_expr(e, table),
             array: Some((at.to_a1(), true)),
         },
     }
 }
 
-fn file_expr(mut e: Expr) -> String {
+/// `table`: the table containing the formula's cell, which qualifies `[@Col]`-style
+/// references (files always name the table and spell `@` as `[#This Row]`).
+fn file_expr(mut e: Expr, table: Option<&str>) -> String {
+    e.walk_mut(&mut |n| {
+        if let Expr::Table(t) = n {
+            if t.table.is_none() {
+                t.table = table.map(str::to_string);
+            }
+            if t.table.is_some() {
+                // A name node prints verbatim.
+                *n = Expr::Name(sp_formula::structref::print_file(t));
+            }
+        }
+    });
     // LET / LAMBDA parameter names carry the `_xlpm.` prefix in files.
     let mut params: Vec<String> = Vec::new();
     e.walk(&mut |n| {
@@ -742,6 +756,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             .iter()
             .map(|s| s.to_string()),
     );
+    reserved.extend(crate::xlsx_cf::table_part_names(wb));
     let emit = pass::Emit::plan(wb, &reserved, &generated);
 
     let mut ct = String::from(
@@ -781,6 +796,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     let mut wb_rels: Vec<RawRel> = Vec::new();
     let mut sheets_xml = String::new();
     let mut uses_dynamic = false;
+    let mut cfw = crate::xlsx_cf::CfWriter::new();
     let ids = sheet_ids(wb);
 
     for (i, sheet) in wb.sheets.iter().enumerate() {
@@ -851,9 +867,11 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             m.push_str("</mergeCells>");
             known.push(("mergeCells".into(), m));
         }
+        known.extend(pass::split_known(&cfw.sheet_cf_xml(sheet)));
         known.extend(pass::split_known(&crate::xlsx_extras::after_merges_xml(
             sheet, n, &mut rels,
         )));
+        known.extend(cfw.sheet_tail(sheet, &mut rels, pt));
         let (items, used_ids) =
             pass::merge_elements(pass::WORKSHEET_ORDER, &known, pt, &|_| false, &valid);
         let all_ids = pass::referenced_ids(pt);
@@ -920,6 +938,11 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             target: target.into(),
             external: false,
         });
+    }
+    let styles_out = cfw.styles_xml(&styles.xml);
+    for (path, data) in cfw.finish() {
+        override_ct(&mut ct, &path, pass::TABLE_CONTENT_TYPE);
+        put(&mut zip, &path, data.as_bytes())?;
     }
     if uses_dynamic {
         wb_rels.push(RawRel {
@@ -1070,7 +1093,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         "xl/_rels/workbook.xml.rels",
         pass::rels_xml(&wb_rels).as_bytes(),
     )?;
-    put(&mut zip, "xl/styles.xml", styles.xml.as_bytes())?;
+    put(&mut zip, "xl/styles.xml", styles_out.as_bytes())?;
     put(&mut zip, "xl/sharedStrings.xml", sst_xml.as_bytes())?;
     put(&mut zip, "docProps/core.xml", core.as_bytes())?;
     put(&mut zip, "docProps/app.xml", app.as_bytes())?;
