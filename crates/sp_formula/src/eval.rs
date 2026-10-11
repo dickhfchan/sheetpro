@@ -158,6 +158,10 @@ pub trait Host {
     fn spill_range(&self, _sheet: usize, _a: CellAddr) -> Option<CellRange> {
         None
     }
+    /// The workbook, for resolving structured table references.
+    fn workbook(&self) -> Option<&sp_model::Workbook> {
+        None
+    }
 }
 
 /// A `LAMBDA` value: parameter names, body, and the outer `LET`/parameter bindings its body
@@ -269,6 +273,7 @@ impl<'h> Ev<'h> {
                 None => EvalValue::err(ErrorKind::Value),
             },
             Expr::Name(n) => self.eval_name(n),
+            Expr::Table(t) => self.eval_table(t),
             Expr::Array(rows) => {
                 let nrows = rows.len();
                 let ncols = rows.first().map_or(0, Vec::len);
@@ -476,6 +481,19 @@ impl<'h> Ev<'h> {
         match &r.sheet {
             None => Some(self.sheet),
             Some(s) => self.host.sheet_index(s),
+        }
+    }
+
+    fn eval_table(&self, r: &crate::structref::StructRef) -> EvalValue {
+        let Some(wb) = self.host.workbook() else {
+            return EvalValue::err(ErrorKind::Ref);
+        };
+        let Some((sheet, t)) = crate::structref::find_table(wb, r, self.sheet, self.cell) else {
+            return EvalValue::err(ErrorKind::Ref);
+        };
+        match crate::structref::resolve(t, r, Some(self.cell)) {
+            Ok(range) => EvalValue::Ref(SheetRange { sheet, range }),
+            Err(e) => EvalValue::err(e),
         }
     }
 

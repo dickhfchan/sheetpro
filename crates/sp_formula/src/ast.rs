@@ -121,6 +121,8 @@ pub enum Expr {
     Implicit(Box<Expr>),
     /// Call of a computed function value, e.g. `LAMBDA(x,x+1)(5)`.
     Invoke(Box<Expr>, Vec<Expr>),
+    /// Structured table reference, e.g. `Table1[Col]`, `[@Col]`.
+    Table(crate::structref::StructRef),
 }
 
 impl Expr {
@@ -299,6 +301,11 @@ impl Expr {
             Expr::Array(rows) => rows.len() > 1 || rows.iter().any(|r| r.len() > 1),
             Expr::Ref(r) => !matches!(r.kind, RefKind::Cell(_)),
             Expr::Spill(_) | Expr::Invoke(..) => true,
+            Expr::Table(t) => {
+                !(t.areas == [crate::structref::TableArea::ThisRow]
+                    && t.col0.is_some()
+                    && t.col1.is_none())
+            }
             Expr::Paren(a) | Expr::Unary(_, a) => a.may_be_multi(),
             Expr::Binary(BinOp::Range | BinOp::Union | BinOp::Isect, ..) => true,
             Expr::Binary(_, a, b) => a.may_be_multi() || b.may_be_multi(),

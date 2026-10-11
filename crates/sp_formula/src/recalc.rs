@@ -330,6 +330,10 @@ impl Host for WbHost<'_> {
         self.wb.sheet(i).map(|s| s.name.clone())
     }
 
+    fn workbook(&self) -> Option<&Workbook> {
+        Some(self.wb)
+    }
+
     fn sheet_count(&self) -> usize {
         self.wb.sheets.len()
     }

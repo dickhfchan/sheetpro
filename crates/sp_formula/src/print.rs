@@ -77,6 +77,7 @@ fn write(e: &Expr, out: &mut String) {
         Expr::Error(err) => out.push_str(err.as_str()),
         Expr::Ref(r) => out.push_str(&ref_text(r)),
         Expr::Name(n) => out.push_str(n),
+        Expr::Table(t) => out.push_str(&crate::structref::print(t)),
         Expr::Array(rows) => {
             out.push('{');
             for (i, row) in rows.iter().enumerate() {
