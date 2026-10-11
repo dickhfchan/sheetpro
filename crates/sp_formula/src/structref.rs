@@ -258,6 +258,34 @@ pub fn print(r: &StructRef) -> String {
     s
 }
 
+/// File-format spelling: `#This Row` is written as a keyword item, never as `@`
+/// (`Table1[[#This Row],[Col]]`).
+pub fn print_file(r: &StructRef) -> String {
+    if !r.areas.contains(&TableArea::ThisRow) {
+        return print(r);
+    }
+    let mut s = r.table.clone().unwrap_or_default();
+    let col = |c: &str| format!("[{}]", escape(c));
+    let mut parts: Vec<String> = r
+        .areas
+        .iter()
+        .map(|a| format!("[{}]", a.keyword()))
+        .collect();
+    match (&r.col0, &r.col1) {
+        (Some(a), Some(b)) => parts.push(format!("{}:{}", col(a), col(b))),
+        (Some(a), None) => parts.push(col(a)),
+        _ => {}
+    }
+    s.push('[');
+    if parts.len() == 1 {
+        s.push_str(TableArea::ThisRow.keyword());
+    } else {
+        s.push_str(&parts.join(","));
+    }
+    s.push(']');
+    s
+}
+
 /// The table a reference names (or, unqualified, the table containing `cell`).
 pub fn find_table<'w>(
     wb: &'w Workbook,
@@ -382,6 +410,18 @@ mod tests {
         ] {
             assert_eq!(print(&p(t, b)), want);
         }
+    }
+
+    #[test]
+    fn file_spelling() {
+        assert_eq!(
+            print_file(&p(Some("T"), "@[Unit Price]")),
+            "T[[#This Row],[Unit Price]]"
+        );
+        assert_eq!(print_file(&p(Some("T"), "@")), "T[#This Row]");
+        assert_eq!(print_file(&p(Some("T"), "Col")), "T[Col]");
+        let back = crate::parse("T[[#This Row],[Unit Price]]").unwrap();
+        assert_eq!(crate::to_formula(&back), "T[@[Unit Price]]");
     }
 
     #[test]

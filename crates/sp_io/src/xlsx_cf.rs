@@ -1154,6 +1154,11 @@ mod tests {
             b.get(CellAddr::new(4, 2)).and_then(|c| c.formula_src()),
             Some("SUBTOTAL(109,Sales[Unit Price])")
         );
+        // `[@Qty]` is saved qualified (`Sales[[#This Row],[Qty]]`) and reads back as such.
+        assert_eq!(
+            b.get(CellAddr::new(1, 2)).and_then(|c| c.formula_src()),
+            Some("Sales[@Qty]*2")
+        );
         // Write again: identical package content for the CF/table parts.
         let mut buf2 = Cursor::new(Vec::new());
         crate::xlsx_write::write_xlsx(&back, &mut buf2).unwrap();
