@@ -325,7 +325,7 @@ fn rewritten(src: &str, f: &dyn Fn(&mut sp_formula::Expr)) -> Option<String> {
 }
 
 /// Rewrite every formula in the workbook with `f(expr, sheet the formula lives on)`: cells,
-/// data-validation rules and defined names (sheet-scoped names resolve unqualified refs on
+/// data-validation rules, in-workbook hyperlink targets and defined names (sheet-scoped names resolve unqualified refs on
 /// their own sheet).
 fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &str)) {
     let names: Vec<String> = wb.sheets.iter().map(|s| s.name.clone()).collect();
@@ -341,11 +341,20 @@ fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &st
                 }
             }
         }
-        for dv in &mut sheet.validations {
-            for src in [&mut dv.formula1, &mut dv.formula2] {
-                if let Some(new) = rewritten(src, &g) {
-                    *src = new;
-                }
+        let texts = sheet
+            .validations
+            .iter_mut()
+            .flat_map(|dv| [&mut dv.formula1, &mut dv.formula2])
+            .chain(
+                sheet
+                    .hyperlinks
+                    .iter_mut()
+                    .filter(|h| !h.location.is_empty())
+                    .map(|h| &mut h.location),
+            );
+        for src in texts {
+            if let Some(new) = rewritten(src, &g) {
+                *src = new;
             }
         }
     }
@@ -947,8 +956,16 @@ mod tests {
             formula1: "\"a,b,c\"".into(),
             ..Default::default()
         });
+        wb.sheets[1].hyperlinks.push(sp_model::Hyperlink {
+            range: r("C1"),
+            target: String::new(),
+            location: "Sheet1!B5".into(),
+            tooltip: String::new(),
+            display: String::new(),
+        });
         let mut tx = Tx::new(&mut wb);
         insert_delete(&mut tx, 0, Axis::Rows, 0, 1).unwrap();
+        assert_eq!(wb.sheets[1].hyperlinks[0].location, "Sheet1!B6");
         assert_eq!(wb.sheets[1].validations[0].formula1, "Sheet1!$H$2:$H$5");
         assert_eq!(wb.sheets[1].validations[1].formula1, "\"a,b,c\"");
     }
