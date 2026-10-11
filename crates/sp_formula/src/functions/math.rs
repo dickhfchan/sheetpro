@@ -2,7 +2,7 @@
 
 use super::{Agg, Registry, arg_array, collect_numbers, m1, m2, ret};
 use crate::ast::Expr;
-use crate::eval::{Array2, Ev, EvalValue, num_value, to_number};
+use crate::eval::{Array2, Ev, EvalValue, num_value};
 use sp_core::{ErrorKind, Value};
 
 fn nz(x: f64) -> Result<f64, ErrorKind> {
@@ -27,7 +27,13 @@ pub fn round_to(x: f64, digits: f64) -> f64 {
 fn round_dir(x: f64, digits: f64, up: bool) -> f64 {
     let d = digits.trunc().clamp(-308.0, 308.0) as i32;
     let m = 10f64.powi(d);
-    let s = ((x * m).abs() * 1e9).round() / 1e9;
+    let raw = (x * m).abs();
+    // Absorb binary noise only when the scaled value is large enough to carry it.
+    let s = if raw >= 1e-6 {
+        (raw * 1e9).round() / 1e9
+    } else {
+        raw
+    };
     let r = if up { s.ceil() } else { s.floor() };
     r * x.signum() / m
 }
@@ -232,8 +238,40 @@ fn randbetween(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     })
 }
 
+/// Numbers for GCD/LCM/MULTINOMIAL: logicals are `#VALUE!`; numeric text counts (in
+/// ranges only when `text_in_refs`); blanks skip, but only blank direct arguments is `#VALUE!`.
+fn strict_numbers(ev: &mut Ev<'_>, args: &[Expr], text_in_refs: bool) -> Result<Vec<f64>, ErrorKind> {
+    let mut out = Vec::new();
+    let mut direct_blank = false;
+    for a in args {
+        let v = ev.eval(a);
+        let single = match &v {
+            crate::eval::EvalValue::Ref(r) => r.range.is_single(),
+            crate::eval::EvalValue::Scalar(_) => true,
+            _ => false,
+        };
+        let arr = ev.to_array(v)?;
+        for x in &arr.data {
+            match x {
+                Value::Number(n) => out.push(*n),
+                Value::Error(e) => return Err(*e),
+                Value::Bool(_) => return Err(ErrorKind::Value),
+                Value::Empty => direct_blank |= single,
+                Value::Text(t) if single || text_in_refs => {
+                    out.push(crate::eval::text_to_number(t).ok_or(ErrorKind::Value)?)
+                }
+                Value::Text(_) => return Err(ErrorKind::Value),
+            }
+        }
+    }
+    if out.is_empty() && direct_blank {
+        return Err(ErrorKind::Value);
+    }
+    Ok(out)
+}
+
 fn gcd_lcm(ev: &mut Ev<'_>, args: &[Expr], lcm: bool) -> EvalValue {
-    let nums = match collect_numbers(ev, args, Agg::Numbers) {
+    let nums = match strict_numbers(ev, args, true) {
         Ok(v) => v,
         Err(e) => return EvalValue::err(e),
     };
@@ -242,6 +280,9 @@ fn gcd_lcm(ev: &mut Ev<'_>, args: &[Expr], lcm: bool) -> EvalValue {
         .any(|n| *n < 0.0 || *n >= 9.007_199_254_740_992e15)
     {
         return EvalValue::err(ErrorKind::Num);
+    }
+    if nums.is_empty() {
+        return EvalValue::num(0.0);
     }
     let mut acc = if lcm { 1.0 } else { 0.0 };
     for n in nums.iter().map(|n| n.trunc()) {
@@ -426,13 +467,9 @@ fn mmult(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         for j in 0..b.cols {
             let mut s = 0.0;
             for k in 0..a.cols {
-                match (to_number(a.get(i, k)), to_number(b.get(k, j))) {
-                    (Ok(x), Ok(y))
-                        if !matches!(a.get(i, k), Value::Text(_))
-                            && !matches!(b.get(k, j), Value::Text(_)) =>
-                    {
-                        s += x * y
-                    }
+                match (a.get(i, k), b.get(k, j)) {
+                    (Value::Number(x), Value::Number(y)) => s += x * y,
+                    (Value::Error(e), _) | (_, Value::Error(e)) => return EvalValue::err(*e),
                     _ => return EvalValue::err(ErrorKind::Value),
                 }
             }
@@ -460,7 +497,7 @@ fn sum_x_y(ev: &mut Ev<'_>, args: &[Expr], f: fn(f64, f64) -> f64) -> EvalValue 
 }
 
 fn multinomial(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
-    let nums = match collect_numbers(ev, args, Agg::Numbers) {
+    let nums = match strict_numbers(ev, args, false) {
         Ok(v) => v,
         Err(e) => return EvalValue::err(e),
     };
@@ -736,7 +773,7 @@ pub fn register(r: &mut Registry) {
         m2(ev, a, None, |n, k| {
             if n < 0.0 || k < 0.0 {
                 Err(ErrorKind::Num)
-            } else if n == 0.0 && k == 0.0 {
+            } else if n.trunc() == 0.0 && k.trunc() == 0.0 {
                 Ok(1.0)
             } else {
                 combin(n.trunc() + k.trunc() - 1.0, k)

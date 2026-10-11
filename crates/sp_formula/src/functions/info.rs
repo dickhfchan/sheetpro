@@ -75,7 +75,95 @@ fn sheets_fn(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     }
 }
 
+/// CELL(info_type, [reference]): facts about the top-left cell of a reference (the
+/// formula's own cell when omitted).
+fn cell_fn(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
+    let Some(t) = args.first() else {
+        return EvalValue::err(ErrorKind::Value);
+    };
+    let kind = match ev.eval_scalar(t) {
+        Value::Text(s) => s.to_ascii_lowercase(),
+        Value::Error(e) => return EvalValue::err(e),
+        _ => return EvalValue::err(ErrorKind::Value),
+    };
+    let (sheet, addr) = match args.get(1) {
+        None | Some(Expr::Missing) => (ev.sheet, ev.cell),
+        Some(e) => match ev.eval(e) {
+            crate::eval::EvalValue::Ref(r) => (r.sheet, r.range.start),
+            crate::eval::EvalValue::Refs(rs) => match rs.first() {
+                Some(r) => (r.sheet, r.range.start),
+                None => return EvalValue::err(ErrorKind::Value),
+            },
+            other => match other.as_error() {
+                Some(e) => return EvalValue::err(e),
+                None => return EvalValue::err(ErrorKind::Value),
+            },
+        },
+    };
+    let value = ev.host.cell_value(sheet, addr);
+    match kind.as_str() {
+        "address" => {
+            let a1 = addr.to_a1();
+            let col: String = a1.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+            let row: String = a1.chars().skip_while(|c| c.is_ascii_alphabetic()).collect();
+            let local = format!("${col}${row}");
+            if sheet == ev.sheet {
+                EvalValue::text(local)
+            } else {
+                let name = ev.host.sheet_name(sheet).unwrap_or_default();
+                EvalValue::text(format!("{name}!{local}"))
+            }
+        }
+        "col" => EvalValue::num(f64::from(addr.col) + 1.0),
+        "row" => EvalValue::num(f64::from(addr.row) + 1.0),
+        "contents" => EvalValue::Scalar(if value.is_empty() {
+            Value::Number(0.0)
+        } else {
+            value
+        }),
+        "type" => EvalValue::text(match value {
+            Value::Empty => "b",
+            Value::Text(_) => "l",
+            _ => "v",
+        }),
+        "filename" => EvalValue::text(""),
+        "format" => EvalValue::text("G"),
+        "prefix" => EvalValue::text(match value {
+            Value::Text(_) => "'",
+            _ => "",
+        }),
+        "protect" => EvalValue::num(1.0),
+        "parentheses" | "color" => EvalValue::num(0.0),
+        "width" => EvalValue::num(8.0),
+        _ => EvalValue::err(ErrorKind::Value),
+    }
+}
+
+/// INFO(type_text): environment facts.
+fn info_fn(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
+    let Some(t) = args.first() else {
+        return EvalValue::err(ErrorKind::Value);
+    };
+    let kind = match ev.eval_scalar(t) {
+        Value::Text(s) => s.to_ascii_lowercase(),
+        Value::Error(e) => return EvalValue::err(e),
+        _ => return EvalValue::err(ErrorKind::Value),
+    };
+    match kind.as_str() {
+        "directory" => EvalValue::text(""),
+        "numfile" => EvalValue::num(ev.host.sheet_count() as f64),
+        "origin" => EvalValue::text("$A:$A$1"),
+        "osversion" => EvalValue::text(std::env::consts::OS),
+        "recalc" => EvalValue::text("Automatic"),
+        "release" => EvalValue::text("16.0"),
+        "system" => EvalValue::text(if cfg!(target_os = "macos") { "mac" } else { "pcdos" }),
+        _ => EvalValue::err(ErrorKind::Value),
+    }
+}
+
 pub fn register(r: &mut Registry) {
+    r.add("CELL", 1, 2, cell_fn);
+    r.add("INFO", 1, 1, info_fn);
     r.add("ISBLANK", 1, 1, |ev, a| {
         is(ev, a, |v| matches!(v, Value::Empty))
     });

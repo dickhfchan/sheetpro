@@ -18,6 +18,16 @@ fn args_n(ev: &mut Ev<'_>, args: &[Expr], defaults: &[Option<f64>]) -> Result<Ve
     Ok(out)
 }
 
+/// Like `args_n`, but logicals are `#VALUE!` (analysis-style functions).
+fn args_strict(ev: &mut Ev<'_>, args: &[Expr], defaults: &[Option<f64>]) -> Result<Vec<f64>, ErrorKind> {
+    for e in args.iter().take(defaults.len()) {
+        if !matches!(e, Expr::Missing) && matches!(ev.eval_scalar(e), Value::Bool(_)) {
+            return Err(ErrorKind::Value);
+        }
+    }
+    args_n(ev, args, defaults)
+}
+
 fn fin(x: f64) -> Result<f64, ErrorKind> {
     if x.is_finite() {
         Ok(x)
@@ -27,6 +37,9 @@ fn fin(x: f64) -> Result<f64, ErrorKind> {
 }
 
 pub fn pmt(rate: f64, nper: f64, pv: f64, fv: f64, typ: f64) -> Result<f64, ErrorKind> {
+    if rate <= -1.0 {
+        return Err(ErrorKind::Num);
+    }
     if nper == 0.0 {
         return Err(ErrorKind::Num);
     }
@@ -39,6 +52,9 @@ pub fn pmt(rate: f64, nper: f64, pv: f64, fv: f64, typ: f64) -> Result<f64, Erro
 }
 
 pub fn fv(rate: f64, nper: f64, pmt: f64, pv: f64, typ: f64) -> Result<f64, ErrorKind> {
+    if rate == -1.0 && nper < 0.0 {
+        return Err(ErrorKind::Div0);
+    }
     if rate == 0.0 {
         return fin(-(pv + pmt * nper));
     }
@@ -74,7 +90,7 @@ fn nper(rate: f64, pmt: f64, pv: f64, fv: f64, typ: f64) -> Result<f64, ErrorKin
 }
 
 fn ipmt(rate: f64, per: f64, nper: f64, pv_: f64, fv_: f64, typ: f64) -> Result<f64, ErrorKind> {
-    if per < 1.0 || per > nper {
+    if per < 1.0 || per >= nper + 1.0 {
         return Err(ErrorKind::Num);
     }
     let p = pmt(rate, nper, pv_, fv_, typ)?;
@@ -132,6 +148,25 @@ fn irr(flows: &[f64], guess: f64) -> Result<f64, ErrorKind> {
     if !flows.iter().any(|c| *c > 0.0) || !flows.iter().any(|c| *c < 0.0) {
         return Err(ErrorKind::Num);
     }
+    if let Ok(r) = irr_newton(flows, guess) {
+        return Ok(r);
+    }
+    let f = |r: f64| -> Result<f64, ErrorKind> {
+        fin(flows
+            .iter()
+            .enumerate()
+            .map(|(i, c)| c / (1.0 + r).powi(i as i32))
+            .sum::<f64>())
+    };
+    let r = super::bonds::solve(&f, guess.clamp(-0.99, 10.0), -1.0 + 1e-9, 1e3)?;
+    let scale = flows.iter().map(|c| c.abs()).fold(0.0, f64::max).max(1.0);
+    if f(r)?.abs() > 1e-7 * scale {
+        return Err(ErrorKind::Num);
+    }
+    Ok(r)
+}
+
+fn irr_newton(flows: &[f64], guess: f64) -> Result<f64, ErrorKind> {
     let f = |r: f64| {
         flows
             .iter()
@@ -220,11 +255,11 @@ fn db(cost: f64, salvage: f64, life: f64, period: f64, month: f64) -> Result<f64
 }
 
 fn cum(ev: &mut Ev<'_>, args: &[Expr], principal: bool) -> Result<f64, ErrorKind> {
-    let v = args_n(ev, args, &[None, None, None, None, None, None])?;
+    let v = args_strict(ev, args, &[None, None, None, None, None, None])?;
     let [rate, n, pv_, start, end, typ] = v.as_slice() else {
         return Err(ErrorKind::Value);
     };
-    let (start, end, n) = (start.ceil(), end.trunc(), n.trunc());
+    let (start, end, n) = (start.ceil(), end.trunc(), *n);
     if *rate <= 0.0
         || n <= 0.0
         || *pv_ <= 0.0
@@ -368,7 +403,7 @@ fn xirr(ev: &mut Ev<'_>, args: &[Expr]) -> Result<f64, ErrorKind> {
 }
 
 fn dollar_conv(ev: &mut Ev<'_>, args: &[Expr], to_decimal: bool) -> Result<f64, ErrorKind> {
-    let v = args_n(ev, args, &[None, None])?;
+    let v = args_strict(ev, args, &[None, None])?;
     let [x, frac] = v.as_slice() else {
         return Err(ErrorKind::Value);
     };
@@ -488,6 +523,7 @@ pub fn register(r: &mut Registry) {
             Err(e) => return EvalValue::err(e),
         };
         let g = match ev.num_or(a, 1, 0.1) {
+            Ok(g) if g <= -1.0 => return EvalValue::err(ErrorKind::Value),
             Ok(g) => g,
             Err(e) => return EvalValue::err(e),
         };
@@ -516,8 +552,11 @@ pub fn register(r: &mut Registry) {
             .filter(|(_, c)| **c < 0.0)
             .map(|(i, c)| c / (1.0 + fr).powi(i as i32))
             .sum();
-        if pos == 0.0 || neg == 0.0 {
+        if neg == 0.0 {
             return EvalValue::err(ErrorKind::Div0);
+        }
+        if pos == 0.0 {
+            return EvalValue::num(-1.0);
         }
         ret(fin((-pos / neg).powf(1.0 / (n - 1.0)) - 1.0))
     });
@@ -559,7 +598,7 @@ pub fn register(r: &mut Registry) {
     });
     r.add("EFFECT", 2, 2, |ev, a| {
         ret(
-            args_n(ev, a, &[None, None]).and_then(|v| match v.as_slice() {
+            args_strict(ev, a, &[None, None]).and_then(|v| match v.as_slice() {
                 [r, n] if *r > 0.0 && n.trunc() >= 1.0 => {
                     fin((1.0 + r / n.trunc()).powf(n.trunc()) - 1.0)
                 }
@@ -570,7 +609,7 @@ pub fn register(r: &mut Registry) {
     });
     r.add("NOMINAL", 2, 2, |ev, a| {
         ret(
-            args_n(ev, a, &[None, None]).and_then(|v| match v.as_slice() {
+            args_strict(ev, a, &[None, None]).and_then(|v| match v.as_slice() {
                 [r, n] if *r > 0.0 && n.trunc() >= 1.0 => {
                     fin(((1.0 + r).powf(1.0 / n.trunc()) - 1.0) * n.trunc())
                 }

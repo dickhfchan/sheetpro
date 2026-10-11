@@ -22,6 +22,9 @@ const MAX_ITER: usize = 200;
 
 fn num(ev: &mut Ev<'_>, args: &[Expr], i: usize) -> R<f64> {
     let e = args.get(i).ok_or(ErrorKind::Value)?;
+    if !matches!(e, Expr::Missing) && matches!(ev.eval_scalar(e), Value::Bool(_)) {
+        return Err(ErrorKind::Value);
+    }
     let n = ev.num(e)?;
     if n.is_finite() {
         Ok(n)
@@ -251,10 +254,21 @@ fn period_len(a: f64, b: f64, freq: f64, basis: i32) -> f64 {
 /// Σ (days of `[from, to]` inside each quasi-coupon period) / (period length), with
 /// periods anchored at `anchor`. Negative when `to < from`.
 fn accrual_periods(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<f64> {
+    accrual_core(from, to, anchor, freq, basis, false)
+}
+
+/// Accrual as ACCRINT counts it: periods wholly covered before the one holding `to` count
+/// exactly 1, and actual/actual uses the length of the period ending at the anchor.
+fn accrual_accrint(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<f64> {
+    accrual_core(from, to, anchor, freq, basis, true)
+}
+
+fn accrual_core(from: f64, to: f64, anchor: f64, freq: f64, basis: i32, whole: bool) -> R<f64> {
     if to < from {
-        return accrual_periods(to, from, anchor, freq, basis).map(|x| -x);
+        return accrual_core(to, from, anchor, freq, basis, whole).map(|x| -x);
     }
     let s = Schedule::new(anchor, freq)?;
+    let nl1 = s.date(0)? - s.date(-1)?;
     let k0 = s.index_at_or_before(from)?;
     let mut total = 0.0;
     for k in (k0..).take(20_000) {
@@ -264,8 +278,15 @@ fn accrual_periods(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<
         }
         let lo = from.max(a);
         let hi = to.min(b);
-        if hi > lo {
-            total += day_diff(lo, hi, basis)? / period_len(a, b, freq, basis);
+        if whole && from <= a && b < to {
+            total += 1.0;
+        } else if hi > lo {
+            let nl = if whole && basis == 1 {
+                nl1
+            } else {
+                period_len(a, b, freq, basis)
+            };
+            total += day_diff(lo, hi, basis)? / nl;
         }
     }
     Err(ErrorKind::Num)
@@ -492,20 +513,32 @@ fn accrint(ev: &mut Ev<'_>, args: &[Expr]) -> R<f64> {
     if rate <= 0.0 || par <= 0.0 || issue >= settle {
         return Err(ErrorKind::Num);
     }
-    let mut periods = accrual_periods(issue, settle, first, freq, basis)?;
-    if !from_issue {
-        // Accrual restarts at the first quasi-coupon date on or after the issue date that
-        // begins a complete period before the first interest date.
-        let s = Schedule::new(first, freq)?;
-        let k_issue = s.index_at_or_before(issue)?;
-        let start = if s.date(k_issue)? == issue {
-            k_issue
+    // Quasi-coupon periods are anchored at the first interest date. Before the period
+    // that ends there, accrual counts the issue's partial period plus whole periods; the
+    // settlement's offset from the start of that last period is measured in plain days.
+    let sch = Schedule::new(first, freq)?;
+    let p = sch.date(-1)?;
+    let fwd = |a: f64, b: f64| -> R<f64> {
+        if from_issue {
+            accrual_accrint(a, b, first, freq, basis)
         } else {
-            k_issue + 1
+            accrual_periods(a, b, first, freq, basis)
+        }
+    };
+    let periods = if issue >= p {
+        fwd(issue, settle)?
+    } else {
+        let k = sch.index_at_or_before(issue)?;
+        let b = if sch.date(k)? == issue { k } else { k + 1 };
+        let issue_frac = accrual_periods(issue, sch.date(b)?, first, freq, basis)?;
+        let whole = (-1 - b).max(0) as f64;
+        let g = if settle >= p {
+            fwd(p, settle)?
+        } else {
+            -day_diff(settle, p, basis)? / period_len(p, first, freq, basis)
         };
-        let whole = (-1 - start).max(0);
-        periods -= whole as f64;
-    }
+        issue_frac + g + if from_issue { whole } else { 0.0 }
+    };
     fin(par * rate / freq * periods)
 }
 

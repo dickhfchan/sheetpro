@@ -14,10 +14,13 @@ pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod math_ext;
 pub mod special;
 pub mod stats;
 pub mod stats_ext;
+pub mod regex;
 pub mod text;
+pub mod text_ext;
 
 use crate::ast::Expr;
 use crate::eval::{Array2, Ev, EvalValue, num_value, to_number};
@@ -97,6 +100,9 @@ pub fn registry() -> &'static Registry {
         criteria::register(&mut r);
         database::register(&mut r);
         bonds::register(&mut r);
+        text_ext::register(&mut r);
+        regex::register(&mut r);
+        math_ext::register(&mut r);
         r
     })
 }
