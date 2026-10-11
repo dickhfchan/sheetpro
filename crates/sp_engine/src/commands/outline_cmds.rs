@@ -464,6 +464,11 @@ mod tests {
             sh.value(CellAddr::parse("B9").unwrap()),
             &Value::Number(24.0)
         );
+        // The grand total skips the nested group subtotals.
+        assert_eq!(
+            sh.value(CellAddr::parse("B10").unwrap()),
+            &Value::Number(31.0)
+        );
         assert_eq!(sh.outline.rows.get(&3), Some(&1));
         assert_eq!(sh.outline.rows.get(&1), Some(&2));
         // Re-running replaces the old subtotal rows instead of nesting them.
@@ -480,6 +485,10 @@ mod tests {
         };
         assert_eq!(text("A4"), "East Count");
         assert_eq!(text("B10"), "=SUBTOTAL(2,B2:B9)");
+        assert_eq!(
+            sh.value(CellAddr::parse("B10").unwrap()),
+            &Value::Number(5.0)
+        );
         assert_eq!(text("A11"), "");
         s.execute("edit.undo", &json!({})).unwrap();
         s.execute("edit.undo", &json!({})).unwrap();

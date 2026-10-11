@@ -51,6 +51,21 @@ fn rewrite_formulas(wb: &mut sp_model::Workbook, f: &dyn Fn(&mut sp_formula::Exp
                 }
             }
         }
+        // Data-validation sources and in-workbook hyperlink targets refer to sheets too.
+        let texts = sh
+            .validations
+            .iter_mut()
+            .flat_map(|dv| [&mut dv.formula1, &mut dv.formula2])
+            .chain(sh.hyperlinks.iter_mut().map(|h| &mut h.location));
+        for src in texts {
+            if let Ok(orig) = sp_formula::parse(src) {
+                let mut e = orig.clone();
+                f(&mut e);
+                if e != orig {
+                    *src = sp_formula::to_formula(&e);
+                }
+            }
+        }
     }
     for n in &mut wb.names {
         if let Ok(mut e) = sp_formula::parse(&n.formula) {
