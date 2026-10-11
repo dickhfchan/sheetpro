@@ -309,6 +309,11 @@ fn read_sheet(
                     if get("hidden").is_some_and(|v| v == "1" || v == "true") {
                         sheet.hidden_rows.insert(next_row);
                     }
+                    if let Some(l) = get("outlineLevel").and_then(|v| v.parse::<u8>().ok())
+                        && l > 0
+                    {
+                        sheet.outline.rows.insert(next_row, l.min(7));
+                    }
                     if is_empty {
                         next_row += 1;
                     }
@@ -360,6 +365,12 @@ fn read_sheet(
                             }
                             if hidden {
                                 sheet.hidden_cols.insert(col);
+                            }
+                            if let Some(l) =
+                                get("outlineLevel").and_then(|v| v.parse::<u8>().ok())
+                                && l > 0
+                            {
+                                sheet.outline.cols.insert(col, l.min(7));
                             }
                         }
                     }
@@ -533,6 +544,10 @@ fn normalize_formula(src: &str) -> String {
     }
 }
 
+pub fn resolve_target_pub(base_dir: &str, target: &str) -> String {
+    resolve_target(base_dir, target)
+}
+
 fn resolve_target(base_dir: &str, target: &str) -> String {
     if let Some(abs) = target.strip_prefix('/') {
         return abs.to_string();
@@ -548,6 +563,46 @@ fn resolve_target(base_dir: &str, target: &str) -> String {
         }
     }
     parts.join("/")
+}
+
+/// Sheet parts beyond cells (filters, protection, validations, links, notes, page setup).
+/// Problems are reported as warnings: the cells already loaded are kept.
+fn read_extras<R: Read + Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    path: &str,
+    xml: &str,
+    sheet: &mut Sheet,
+    report: &mut LoadReport,
+) -> Result<(), IoError> {
+    let (dir, file) = path.rsplit_once('/').unwrap_or(("", path));
+    let rels = match read_part(zip, &format!("{dir}/_rels/{file}.rels"))? {
+        Some(x) => crate::xlsx_extras::parse_rels(&x, dir).unwrap_or_default(),
+        None => Default::default(),
+    };
+    if let Err(e) = crate::xlsx_extras::read_sheet_extras(xml, sheet, &rels) {
+        report
+            .warnings
+            .push(format!("sheet '{}': extras skipped ({e})", sheet.name));
+    }
+    let find = |kind: &str| {
+        rels.values()
+            .find(|(t, ext)| !ext && t.contains(kind))
+            .map(|(t, _)| t.clone())
+    };
+    if let Some(cpath) = find("comments") {
+        let vml = match find("vmlDrawing") {
+            Some(v) => read_part(zip, &v)?,
+            None => None,
+        };
+        if let Some(cx) = read_part(zip, &cpath)?
+            && let Err(e) = crate::xlsx_extras::read_comments(&cx, vml.as_deref(), sheet)
+        {
+            report
+                .warnings
+                .push(format!("sheet '{}': comments skipped ({e})", sheet.name));
+        }
+    }
+    Ok(())
 }
 
 pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), IoError> {
@@ -599,7 +654,10 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
             .cloned()
             .unwrap_or_else(|| format!("xl/worksheets/sheet{}.xml", i + 1));
         match read_part(&mut zip, &path)? {
-            Some(x) => read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report)?,
+            Some(x) => {
+                read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report)?;
+                read_extras(&mut zip, &path, &x, &mut sheet, &mut report)?;
+            }
             None => report.warnings.push(format!(
                 "sheet '{name}': part {path} not found (chart sheet?)"
             )),
@@ -623,6 +681,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
             });
         }
     }
+    crate::xlsx_extras::read_workbook_protection(&wbdom, &mut wb);
     if let Some(v) = wbdom
         .child("bookViews")
         .and_then(|b| b.child("workbookView"))

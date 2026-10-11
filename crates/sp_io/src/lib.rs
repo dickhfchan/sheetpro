@@ -1,6 +1,7 @@
 //! L4 import/export: .xlsx and delimited text.
 
 pub mod csv_io;
+pub mod xlsx_extras;
 pub mod xlsx_read;
 pub mod xlsx_write;
 pub mod xml;

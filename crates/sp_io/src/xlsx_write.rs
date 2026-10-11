@@ -365,7 +365,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
 
     let mut ct = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>"#,
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>"#,
     );
     let mut wb_rels = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -398,13 +398,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">"#,
         );
-        if let Some(t) = sheet.tab_color {
-            let _ = write!(
-                x,
-                r#"<sheetPr><tabColor rgb="{}"/></sheetPr>"#,
-                t.to_argb_hex()
-            );
-        }
+        x.push_str(&crate::xlsx_extras::sheet_pr_xml(sheet));
         if let Some(u) = sheet.used_range() {
             let _ = write!(x, r#"<dimension ref="{}"/>"#, u.to_a1());
         }
@@ -452,6 +446,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             .col_widths
             .keys()
             .chain(sheet.hidden_cols.iter())
+            .chain(sheet.outline.cols.keys())
             .copied()
             .collect();
         cols.sort_unstable();
@@ -466,13 +461,14 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
                     .unwrap_or(sheet.default_col_width);
                 let _ = write!(
                     x,
-                    r#"<col min="{0}" max="{0}" width="{w}" customWidth="1"{1}/>"#,
+                    r#"<col min="{0}" max="{0}" width="{w}" customWidth="1"{1}{2}/>"#,
                     c + 1,
                     if sheet.hidden_cols.contains(&c) {
                         r#" hidden="1""#
                     } else {
                         ""
-                    }
+                    },
+                    crate::xlsx_extras::outline_attr(sheet, c, false)
                 );
             }
             x.push_str("</cols>");
@@ -483,6 +479,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             .keys()
             .chain(sheet.row_heights.keys())
             .chain(sheet.hidden_rows.iter())
+            .chain(sheet.outline.rows.keys())
             .copied()
             .collect();
         rows.sort_unstable();
@@ -495,6 +492,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             if sheet.hidden_rows.contains(&r) {
                 x.push_str(r#" hidden="1""#);
             }
+            x.push_str(&crate::xlsx_extras::outline_attr(sheet, r, true));
             x.push('>');
             if let Some(cells) = sheet.cells.get(&r) {
                 for (c, cell) in cells {
@@ -563,6 +561,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             x.push_str("</row>");
         }
         x.push_str("</sheetData>");
+        x.push_str(&crate::xlsx_extras::before_merges_xml(sheet));
         if !sheet.merges.is_empty() {
             let _ = write!(x, r#"<mergeCells count="{}">"#, sheet.merges.len());
             for m in &sheet.merges {
@@ -570,8 +569,25 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             }
             x.push_str("</mergeCells>");
         }
+        let mut rels = crate::xlsx_extras::SheetRels::default();
+        x.push_str(&crate::xlsx_extras::after_merges_xml(sheet, n, &mut rels));
         x.push_str("</worksheet>");
         put(&mut zip, &format!("xl/worksheets/sheet{n}.xml"), &x)?;
+        if !sheet.comments.is_empty() {
+            let _ = write!(
+                ct,
+                r#"<Override PartName="/xl/comments{n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>"#
+            );
+            put(&mut zip, &format!("xl/comments{n}.xml"), &crate::xlsx_extras::comments_xml(sheet))?;
+            put(
+                &mut zip,
+                &format!("xl/drawings/vmlDrawing{n}.vml"),
+                &crate::xlsx_extras::vml_xml(sheet, n),
+            )?;
+        }
+        if !rels.is_empty() {
+            put(&mut zip, &format!("xl/worksheets/_rels/sheet{n}.xml.rels"), &rels.xml())?;
+        }
     }
     let ns = wb.sheets.len();
     let _ = write!(
@@ -611,7 +627,8 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     };
     let workbook = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="{}"/></bookViews><sheets>{sheets_xml}</sheets>{names}{calc}</workbook>"#,
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">{}<bookViews><workbookView activeTab="{}"/></bookViews><sheets>{sheets_xml}</sheets>{names}{calc}</workbook>"#,
+        crate::xlsx_extras::workbook_protection_xml(wb),
         wb.active
     );
     let mut sst_xml = format!(
