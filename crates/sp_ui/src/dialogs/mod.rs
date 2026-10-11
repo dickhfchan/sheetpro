@@ -143,7 +143,8 @@ impl Dialog {
     /// Build a dialog by name, seeded from the session (active cell style, selection…).
     pub fn create(name: &str, app: &mut App) -> Result<Dialog, String> {
         use format_cells::{FcTab, FormatCells};
-        let fc = |app: &App, tab| Dialog::FormatCells(Box::new(FormatCells::new(&app.session, tab)));
+        let fc =
+            |app: &App, tab| Dialog::FormatCells(Box::new(FormatCells::new(&app.session, tab)));
         Ok(match name {
             "format_cells" | "number" => fc(app, FcTab::Number),
             "alignment" => fc(app, FcTab::Alignment),

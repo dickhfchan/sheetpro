@@ -158,7 +158,7 @@ impl Sort {
                     self.selected = self.selected.min(self.levels.len().saturating_sub(1));
                 }
                 if ui
-                    .add_enabled(self.selected > 0, egui::Button::new("▲"))
+                    .add_enabled(self.selected > 0, egui::Button::new("Move Up"))
                     .clicked()
                 {
                     self.levels.swap(self.selected, self.selected - 1);
@@ -167,7 +167,7 @@ impl Sort {
                 if ui
                     .add_enabled(
                         self.selected + 1 < self.levels.len(),
-                        egui::Button::new("▼"),
+                        egui::Button::new("Move Down"),
                     )
                     .clicked()
                 {
