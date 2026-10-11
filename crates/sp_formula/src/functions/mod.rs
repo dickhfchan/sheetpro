@@ -3,6 +3,7 @@
 //! Each category module exposes `register(&mut Registry)`. A function counts as live for
 //! parity (`fn.<NAME>`) as soon as it is registered here.
 
+pub mod analysis;
 pub mod arrays;
 pub mod bonds;
 pub mod criteria;
@@ -107,6 +108,7 @@ pub fn registry() -> &'static Registry {
         math_ext::register(&mut r);
         arrays::register(&mut r);
         lambda::register(&mut r);
+        analysis::register(&mut r);
         r
     })
 }

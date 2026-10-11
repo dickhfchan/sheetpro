@@ -597,9 +597,7 @@ fn hyperlink(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
 pub fn register(r: &mut Registry) {
     r.add("HYPERLINK", 1, 2, hyperlink);
     // No pivot tables or real-time data servers: the target's results for missing data.
-    r.add("GETPIVOTDATA", 2, 254, |_, _| {
-        EvalValue::err(ErrorKind::Ref)
-    });
+    r.add("GETPIVOTDATA", 2, 254, super::analysis::getpivotdata);
     r.add("RTD", 3, 255, |_, _| EvalValue::err(ErrorKind::NA));
     r.add("VLOOKUP", 3, 4, |ev, a| vhlookup(ev, a, true));
     r.add("HLOOKUP", 3, 4, |ev, a| vhlookup(ev, a, false));

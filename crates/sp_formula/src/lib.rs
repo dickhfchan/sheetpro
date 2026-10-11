@@ -5,10 +5,12 @@ pub mod deps;
 pub mod eval;
 pub mod functions;
 pub mod parser;
+pub mod pivot;
 pub mod print;
 pub mod recalc;
 pub mod shift;
 pub mod structref;
+pub mod whatif;
 
 pub use ast::Expr;
 pub use parser::{ParseError, parse};

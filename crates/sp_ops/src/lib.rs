@@ -3,6 +3,7 @@
 pub mod chart_shift;
 pub mod edit;
 pub mod history;
+pub mod pivot_shift;
 pub mod table_shift;
 
 pub use edit::{ClearWhat, ClipData, FillDir, OpError, PasteMode, SortKey};
