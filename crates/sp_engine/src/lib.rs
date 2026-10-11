@@ -168,6 +168,8 @@ pub struct ViewState {
     /// The shell is editing the active cell.
     pub editing: bool,
     pub ribbon_tab: String,
+    /// Tracer arrows, watches, validation circles, comment pane (Formulas/Review tabs).
+    pub review: commands::audit_cmds::ReviewState,
 }
 
 impl Default for ViewState {
@@ -184,6 +186,7 @@ impl Default for ViewState {
             page_cols: 10,
             editing: false,
             ribbon_tab: "Home".into(),
+            review: commands::audit_cmds::ReviewState::default(),
         }
     }
 }
@@ -204,6 +207,8 @@ pub struct Session {
     /// Ids of the last command run (for edit.repeat).
     pub last_command: Option<(String, Json)>,
     pub quit_requested: bool,
+    /// Set while a typing command runs: data validation applies to the cells it changes.
+    pub validate_entry: bool,
 }
 
 impl Default for Session {
@@ -236,6 +241,7 @@ impl Session {
             last_find: None,
             last_command: None,
             quit_requested: false,
+            validate_entry: false,
         };
         s.recalc();
         s
@@ -257,7 +263,9 @@ impl Session {
         if !(cmd.spec.enabled)(self) {
             return Err(CmdError::Disabled(id.to_string()));
         }
+        self.validate_entry = commands::validation_cmds::is_typing_command(id);
         let r = (cmd.spec.run)(self, params);
+        self.validate_entry = false;
         if r.is_ok()
             && id != "edit.repeat"
             && id != "edit.undo"
@@ -277,19 +285,42 @@ impl Session {
         f: impl FnOnce(&mut Tx<'_>, Selection) -> Result<T, CmdError>,
     ) -> Result<T, CmdError> {
         let sel = self.sel;
+        let guard = commands::protect_cmds::Guard::before(&self.wb);
         let mut tx = Tx::new(&mut self.wb);
         let r = f(&mut tx, sel);
         let txn = tx.commit(label);
         match r {
             Ok(v) => {
                 if let Some(t) = txn {
+                    // Protection: refuse edits to locked cells of protected sheets.
+                    if let Some(g) = &guard
+                        && let Err(e) = g.check(&mut self.wb, &self.view.review.unlocked, &t)
+                    {
+                        t.revert(&mut self.wb);
+                        return Err(e);
+                    }
                     let changed = t.changed_cells();
-                    self.history.push(t);
                     self.dirty = true;
-                    match changed {
-                        Some(cells) => self.after_cells_change(&cells),
+                    match &changed {
+                        Some(cells) => self.after_cells_change(cells),
                         None => self.after_change(),
                     }
+                    // Data validation on typed entries (after recalc: formulas validate
+                    // by result).
+                    if self.validate_entry
+                        && let Some(cells) = &changed
+                    {
+                        match commands::validation_cmds::check_entries(self, cells) {
+                            Err(e) => {
+                                t.revert(&mut self.wb);
+                                self.after_cells_change(cells);
+                                return Err(e);
+                            }
+                            Ok(Some(warning)) => self.status = warning,
+                            Ok(None) => {}
+                        }
+                    }
+                    self.history.push(t);
                 }
                 Ok(v)
             }

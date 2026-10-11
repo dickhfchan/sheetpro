@@ -1,11 +1,17 @@
 //! L1 data model: workbook, sheets, cells, styles, defined names. Pure data.
 
+pub mod features;
 pub mod style;
 
 use serde::{Deserialize, Serialize};
 use sp_core::{CellAddr, CellRange, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub use features::{
+    AllowEditRange, AutoFilter, Comment, CommentKind, CommentReply, DataValidation, ErrorStyle,
+    FilterColumn, FilterCond, FilterCriteria, Hyperlink, Margins, Orientation, Outline,
+    PageSetup, PasswordHash, SheetProtection, ValidationKind, ValidationOp, WorkbookProtection,
+};
 pub use style::{Border, BorderStyle, Color, HAlign, Style, StyleId, StyleTable, VAlign};
 
 /// What the user entered into a cell.
@@ -121,6 +127,24 @@ pub struct Sheet {
     pub show_gridlines: bool,
     pub default_col_width: f64,
     pub default_row_height: f64,
+    // --- features (see `features.rs`) ---
+    #[serde(default)]
+    pub auto_filter: Option<AutoFilter>,
+    #[serde(default)]
+    pub outline: Outline,
+    /// Notes and threaded comments, at most one per cell, sorted by address.
+    #[serde(default)]
+    pub comments: Vec<Comment>,
+    #[serde(default)]
+    pub hyperlinks: Vec<Hyperlink>,
+    #[serde(default)]
+    pub protection: Option<SheetProtection>,
+    #[serde(default)]
+    pub allow_edit_ranges: Vec<AllowEditRange>,
+    #[serde(default)]
+    pub validations: Vec<DataValidation>,
+    #[serde(default)]
+    pub page_setup: PageSetup,
 }
 
 pub const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -142,7 +166,28 @@ impl Sheet {
             show_gridlines: true,
             default_col_width: DEFAULT_COL_WIDTH,
             default_row_height: DEFAULT_ROW_HEIGHT,
+            auto_filter: None,
+            outline: Outline::default(),
+            comments: Vec::new(),
+            hyperlinks: Vec::new(),
+            protection: None,
+            allow_edit_ranges: Vec::new(),
+            validations: Vec::new(),
+            page_setup: PageSetup::default(),
         }
+    }
+
+    pub fn comment_at(&self, a: CellAddr) -> Option<&Comment> {
+        self.comments.iter().find(|c| c.addr == a)
+    }
+
+    pub fn hyperlink_at(&self, a: CellAddr) -> Option<&Hyperlink> {
+        self.hyperlinks.iter().find(|h| h.range.contains(a))
+    }
+
+    /// The validation rule governing `a`, if any (the last one added wins).
+    pub fn validation_at(&self, a: CellAddr) -> Option<&DataValidation> {
+        self.validations.iter().rev().find(|v| v.covers(a))
     }
 
     pub fn get(&self, a: CellAddr) -> Option<&Cell> {
@@ -262,6 +307,8 @@ pub struct Workbook {
     pub styles: StyleTable,
     pub calc_mode: CalcMode,
     pub props: DocProps,
+    #[serde(default)]
+    pub protection: Option<WorkbookProtection>,
 }
 
 impl Default for Workbook {
@@ -283,6 +330,7 @@ impl Workbook {
             styles: StyleTable::default(),
             calc_mode: CalcMode::Automatic,
             props: DocProps::default(),
+            protection: None,
         }
     }
 
