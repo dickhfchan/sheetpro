@@ -1,10 +1,12 @@
 //! L5 engine: `Session` (open workbook + selection + history + view state) and the command
 //! registry. Every user-visible action is a command dispatched by id.
 
+pub mod autosave;
 pub mod catalog;
 pub mod commands;
 pub mod control;
 pub mod params;
+pub mod settings;
 
 use serde::Serialize;
 use sp_core::{CellAddr, CellRange};
@@ -170,6 +172,8 @@ pub struct ViewState {
     pub ribbon_tab: String,
     /// Tracer arrows, watches, validation circles, comment pane (Formulas/Review tabs).
     pub review: commands::audit_cmds::ReviewState,
+    /// Extra windows and split panes (View › Window).
+    pub window: commands::app_cmds::WindowState,
 }
 
 impl Default for ViewState {
@@ -187,6 +191,7 @@ impl Default for ViewState {
             editing: false,
             ribbon_tab: "Home".into(),
             review: commands::audit_cmds::ReviewState::default(),
+            window: commands::app_cmds::WindowState::default(),
         }
     }
 }
