@@ -452,6 +452,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     let mut sheets_xml = String::new();
     let mut uses_dynamic = false;
 
+    let mut chart_no = 0;
     for (i, sheet) in wb.sheets.iter().enumerate() {
         let n = i + 1;
         let _ = write!(
@@ -676,6 +677,12 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         }
         let mut rels = crate::xlsx_extras::SheetRels::default();
         x.push_str(&crate::xlsx_extras::after_merges_xml(sheet, n, &mut rels));
+        let drawn =
+            crate::xlsx_charts::write_sheet_drawings(wb, i, n, &mut chart_no, &mut rels, &mut x);
+        ct.push_str(&drawn.content_types);
+        for (part, body) in &drawn.parts {
+            put(&mut zip, part, body)?;
+        }
         x.push_str("</worksheet>");
         put(&mut zip, &format!("xl/worksheets/sheet{n}.xml"), &x)?;
         if !sheet.comments.is_empty() {

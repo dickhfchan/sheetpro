@@ -1115,13 +1115,6 @@ fn axes_chart(c: &mut Ctx, d: &ChartData, area: (f32, f32, f32, f32)) {
                     }
                 }
             }
-            if d.markers {
-                c.out.push(Prim::Line {
-                    pts: pts.clone(),
-                    width: 1.5 * s,
-                    paint,
-                });
-            }
             for (x, y) in pts {
                 c.out.push(Prim::Circle {
                     x,

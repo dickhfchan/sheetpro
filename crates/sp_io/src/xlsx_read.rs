@@ -667,6 +667,13 @@ fn read_extras<R: Read + Seek>(
         Some(x) => crate::xlsx_extras::parse_rels(&x, dir).unwrap_or_default(),
         None => Default::default(),
     };
+    if let Err(e) =
+        crate::xlsx_charts::read_sheet_drawings(&mut |p| read_part(zip, p), &rels, xml, sheet)
+    {
+        report
+            .warnings
+            .push(format!("sheet '{}': charts skipped ({e})", sheet.name));
+    }
     if let Err(e) = crate::xlsx_extras::read_sheet_extras(xml, sheet, &rels) {
         report
             .warnings
