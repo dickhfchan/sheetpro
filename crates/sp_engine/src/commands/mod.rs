@@ -3,6 +3,7 @@
 
 pub mod audit_cmds;
 pub mod cell_cmds;
+pub mod cf_cmds;
 pub mod comment_cmds;
 pub mod data_cmds;
 pub mod dialog_cmds;
@@ -16,6 +17,7 @@ pub mod nav_cmds;
 pub mod outline_cmds;
 pub mod protect_cmds;
 pub mod sheet_cmds;
+pub mod table_cmds;
 pub mod validation_cmds;
 pub mod view_cmds;
 
@@ -40,5 +42,7 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(outline_cmds::specs());
     v.extend(protect_cmds::specs());
     v.extend(validation_cmds::specs());
+    v.extend(cf_cmds::specs());
+    v.extend(table_cmds::specs());
     v
 }

@@ -1,6 +1,7 @@
 //! L6 shell: a thin egui front end over `sp_engine::Session`. Every action goes through
 //! `Session::execute`; this crate owns only transient view state (edit buffer, hover…).
 
+pub mod cfdraw;
 pub mod dialogs;
 pub mod grid;
 mod menus;
@@ -461,6 +462,9 @@ impl App {
         for d in &view.cells {
             if let (Some(f), Some(r)) = (d.fill, cell_rect(d.addr)) {
                 painter.rect_filled(r, 0.0, color(f));
+            }
+            if let Some(r) = cell_rect(d.addr) {
+                cfdraw::draw(&painter, r, d, zoom);
             }
         }
         if sheet.show_gridlines && s.view.show_gridlines {

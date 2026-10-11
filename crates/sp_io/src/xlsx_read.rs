@@ -799,6 +799,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     };
     let xf_map: Vec<StyleId> = xf_styles.into_iter().map(|s| wb.styles.intern(s)).collect();
 
+    let dxfs = crate::xlsx_cf::read_dxfs(&mut zip);
     let wbdom = parse_dom(&wb_xml)?;
     let sheets_node = wbdom
         .child("sheets")
@@ -820,6 +821,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
             Some(x) => {
                 read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report, &rich)?;
                 read_extras(&mut zip, &path, &x, &mut sheet, &mut report)?;
+                crate::xlsx_cf::read_sheet(&mut zip, &path, &x, &mut sheet, &dxfs, &mut report);
             }
             None => report.warnings.push(format!(
                 "sheet '{name}': part {path} not found (chart sheet?)"

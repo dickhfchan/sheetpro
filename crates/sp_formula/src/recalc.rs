@@ -839,6 +839,14 @@ pub fn eval_formula(wb: &Workbook, sheet: usize, at: CellAddr, src: &str) -> Val
     }
 }
 
+/// Evaluate a parsed expression as if entered in `at` (cached values; no recalculation).
+pub fn eval_expr(wb: &Workbook, sheet: usize, at: CellAddr, expr: &Expr) -> Value {
+    let host = WbHost::new(wb, true, None, RecalcOptions::default());
+    let mut ev = Ev::new(&host, sheet, at);
+    let r = ev.eval(expr);
+    finalize(&ev, r)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

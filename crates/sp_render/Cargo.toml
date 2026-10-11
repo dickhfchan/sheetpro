@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 sp_core.workspace = true
 sp_model.workspace = true
+sp_formula.workspace = true
 
 [lints]
 workspace = true

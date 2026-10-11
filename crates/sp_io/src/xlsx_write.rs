@@ -451,6 +451,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     );
     let mut sheets_xml = String::new();
     let mut uses_dynamic = false;
+    let mut cfw = crate::xlsx_cf::CfWriter::new();
 
     for (i, sheet) in wb.sheets.iter().enumerate() {
         let n = i + 1;
@@ -674,8 +675,10 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             }
             x.push_str("</mergeCells>");
         }
+        x.push_str(&cfw.sheet_cf_xml(sheet));
         let mut rels = crate::xlsx_extras::SheetRels::default();
         x.push_str(&crate::xlsx_extras::after_merges_xml(sheet, n, &mut rels));
+        x.push_str(&cfw.sheet_tail_xml(sheet, &mut rels));
         x.push_str("</worksheet>");
         put(&mut zip, &format!("xl/worksheets/sheet{n}.xml"), &x)?;
         if !sheet.comments.is_empty() {
@@ -703,6 +706,12 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         }
     }
     let ns = wb.sheets.len();
+    let styles_out = cfw.styles_xml(&styles.xml);
+    let (cf_ct, cf_parts) = cfw.finish();
+    ct.push_str(&cf_ct);
+    for (path, data) in &cf_parts {
+        put(&mut zip, path, data)?;
+    }
     let _ = write!(
         wb_rels,
         r#"<Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>"#,
@@ -782,7 +791,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     put(&mut zip, "_rels/.rels", root_rels)?;
     put(&mut zip, "xl/workbook.xml", &workbook)?;
     put(&mut zip, "xl/_rels/workbook.xml.rels", &wb_rels)?;
-    put(&mut zip, "xl/styles.xml", &styles.xml)?;
+    put(&mut zip, "xl/styles.xml", &styles_out)?;
     put(&mut zip, "xl/sharedStrings.xml", &sst_xml)?;
     put(&mut zip, "docProps/core.xml", &core)?;
     put(&mut zip, "docProps/app.xml", app)?;
