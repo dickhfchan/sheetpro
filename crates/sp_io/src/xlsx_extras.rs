@@ -419,6 +419,7 @@ pub fn after_merges_xml(sheet: &Sheet, n: usize, rels: &mut SheetRels) -> String
         || ps.orientation != default.orientation
         || ps.fit_width.is_some()
         || ps.fit_height.is_some()
+        || ps.over_then_down
     {
         let _ = write!(
             x,
@@ -436,8 +437,12 @@ pub fn after_merges_xml(sheet: &Sheet, n: usize, rels: &mut SheetRels) -> String
         } else {
             x.push_str(r#" orientation="portrait""#);
         }
+        if ps.over_then_down {
+            x.push_str(r#" pageOrder="overThenDown""#);
+        }
         x.push_str("/>");
     }
+    x.push_str(&crate::xlsx_print::header_footer_xml(&ps.header_footer));
     for (tag, set, max) in [
         ("rowBreaks", &ps.row_breaks, sp_core::MAX_COLS - 1),
         ("colBreaks", &ps.col_breaks, sp_core::MAX_ROWS - 1),
@@ -665,11 +670,15 @@ pub fn read_sheet_extras(xml: &str, sheet: &mut Sheet, rels: &Rels) -> Result<()
                 if n.attr("orientation") == Some("landscape") {
                     ps.orientation = Orientation::Landscape;
                 }
+                ps.over_then_down = n.attr("pageOrder") == Some("overThenDown");
                 // Only meaningful when sheetPr/pageSetUpPr fitToPage is set (read first).
                 if ps.fit_width.is_some() {
                     ps.fit_width = Some(num("fitToWidth").unwrap_or(1));
                     ps.fit_height = Some(num("fitToHeight").unwrap_or(1));
                 }
+            }
+            "headerFooter" => {
+                sheet.page_setup.header_footer = crate::xlsx_print::read_header_footer(n);
             }
             "rowBreaks" | "colBreaks" => {
                 let set = if n.name == "rowBreaks" {
@@ -1036,6 +1045,9 @@ mod tests {
         ps.print_gridlines = true;
         ps.row_breaks.insert(19);
         ps.col_breaks.insert(4);
+        ps.over_then_down = true;
+        ps.header_footer.odd_header = "&L&A&RPage &P of &N".into();
+        ps.header_footer.different_first = true;
         sh.outline.rows.insert(2, 1);
         sh.outline.rows.insert(3, 2);
         sh.outline.cols.insert(5, 1);

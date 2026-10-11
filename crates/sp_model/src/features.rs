@@ -416,6 +416,64 @@ pub struct PageSetup {
     /// Manual page breaks: a row break sits above the row, a column break left of the col.
     pub row_breaks: BTreeSet<u32>,
     pub col_breaks: BTreeSet<u32>,
+    /// Page order: `false` = down, then over (file default); `true` = over, then down.
+    #[serde(default)]
+    pub over_then_down: bool,
+    /// Header and footer texts (format codes such as `&C&P of &N`).
+    #[serde(default)]
+    pub header_footer: HeaderFooter,
+}
+
+/// Print header/footer definitions. Each text uses the file format's codes: `&L`/`&C`/`&R`
+/// start the left/centre/right section; `&P` page, `&N` pages, `&D` date, `&T` time, `&F`
+/// file, `&Z` path, `&A` sheet, `&B`/`&I`/`&U`/`&S` toggle bold/italic/underline/strike,
+/// `&nn` font size, `&"Font,Style"` font, `&K` colour, `&&` a literal ampersand.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HeaderFooter {
+    pub odd_header: String,
+    pub odd_footer: String,
+    pub even_header: String,
+    pub even_footer: String,
+    pub first_header: String,
+    pub first_footer: String,
+    pub different_odd_even: bool,
+    pub different_first: bool,
+    pub scale_with_doc: bool,
+    pub align_with_margins: bool,
+}
+
+impl Default for HeaderFooter {
+    fn default() -> Self {
+        HeaderFooter {
+            odd_header: String::new(),
+            odd_footer: String::new(),
+            even_header: String::new(),
+            even_footer: String::new(),
+            first_header: String::new(),
+            first_footer: String::new(),
+            different_odd_even: false,
+            different_first: false,
+            scale_with_doc: true,
+            align_with_margins: true,
+        }
+    }
+}
+
+impl HeaderFooter {
+    pub fn is_empty(&self) -> bool {
+        *self == HeaderFooter::default()
+    }
+
+    /// Header and footer texts for 1-based page `page`.
+    pub fn for_page(&self, page: usize) -> (&str, &str) {
+        if self.different_first && page == 1 {
+            (&self.first_header, &self.first_footer)
+        } else if self.different_odd_even && page % 2 == 0 {
+            (&self.even_header, &self.even_footer)
+        } else {
+            (&self.odd_header, &self.odd_footer)
+        }
+    }
 }
 
 impl Default for PageSetup {
@@ -431,6 +489,8 @@ impl Default for PageSetup {
             print_headings: false,
             row_breaks: BTreeSet::new(),
             col_breaks: BTreeSet::new(),
+            over_then_down: false,
+            header_footer: HeaderFooter::default(),
         }
     }
 }

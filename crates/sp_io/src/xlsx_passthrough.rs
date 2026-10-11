@@ -123,6 +123,7 @@ pub const HANDLED_SHEET_ELEMENTS: &[&str] = &[
     "printOptions",
     "pageMargins",
     "pageSetup",
+    "headerFooter",
     "rowBreaks",
     "colBreaks",
     "tableParts",
