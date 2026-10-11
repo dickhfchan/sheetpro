@@ -132,6 +132,27 @@ fn write(e: &Expr, out: &mut String) {
             write(a, out);
             out.push(')');
         }
+        Expr::Implicit(a) => {
+            out.push('@');
+            if matches!(**a, Expr::Binary(..) | Expr::Unary(..)) {
+                out.push('(');
+                write(a, out);
+                out.push(')');
+            } else {
+                write(a, out);
+            }
+        }
+        Expr::Invoke(callee, args) => {
+            write(callee, out);
+            out.push('(');
+            for (i, a) in args.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write(a, out);
+            }
+            out.push(')');
+        }
     }
 }
 

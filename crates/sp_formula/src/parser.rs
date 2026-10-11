@@ -56,7 +56,7 @@ fn strip_prefixes(s: &str) -> String {
     let mut out = s;
     loop {
         let lower = out.to_ascii_lowercase();
-        if let Some(p) = ["_xlfn.", "_xlws.", "_xlpm."]
+        if let Some(p) = ["_xlfn.", "_xlws.", "_xlpm.", "_xlop."]
             .iter()
             .find(|p| lower.starts_with(**p))
         {
@@ -502,9 +502,12 @@ impl Parser {
                 Ok(Expr::Unary(UnOp::Plus, Box::new(e)))
             }
             Some(Tok::Op("@")) => {
-                // Implicit-intersection operator: treated as a no-op wrapper.
+                // Implicit-intersection operator.
                 self.pos += 1;
-                self.unary()
+                self.enter()?;
+                let e = self.unary()?;
+                self.depth -= 1;
+                Ok(Expr::Implicit(Box::new(e)))
             }
             _ => {
                 let p = self.primary()?;
@@ -536,7 +539,7 @@ impl Parser {
                 let e = self.expr(0, false)?;
                 self.depth -= 1;
                 match self.next().map(|t| t.tok) {
-                    Some(Tok::RParen) => Ok(Expr::Paren(Box::new(e))),
+                    Some(Tok::RParen) => self.invocations(Expr::Paren(Box::new(e))),
                     _ => Err(ParseError("expected )".into())),
                 }
             }
@@ -545,7 +548,8 @@ impl Parser {
             Tok::Ident { sheet, text } => {
                 if matches!(self.peek().map(|t| &t.tok), Some(Tok::LParen)) && sheet.is_none() {
                     self.pos += 1;
-                    return self.call(text.to_ascii_uppercase());
+                    let c = self.call(text.to_ascii_uppercase())?;
+                    return self.invocations(c);
                 }
                 if sheet.is_none() {
                     if text.eq_ignore_ascii_case("TRUE") {
@@ -569,13 +573,38 @@ impl Parser {
         }
     }
 
+    /// `f(args)(more)`: calls of a function-valued result (a `LAMBDA`).
+    fn invocations(&mut self, mut e: Expr) -> Result<Expr, ParseError> {
+        while matches!(self.peek(), Some(t) if t.tok == Tok::LParen && !t.space_before) {
+            self.pos += 1;
+            let args = self.arg_list("lambda call")?;
+            e = Expr::Invoke(Box::new(e), args);
+        }
+        Ok(e)
+    }
+
     fn call(&mut self, name: String) -> Result<Expr, ParseError> {
+        let mut args = self.arg_list(&name)?;
+        // File-format spellings of the `@` and `#` operators.
+        if args.len() == 1 && (name == "SINGLE" || name == "ANCHORARRAY") {
+            let a = Box::new(args.remove(0));
+            return Ok(if name == "SINGLE" {
+                Expr::Implicit(a)
+            } else {
+                Expr::Spill(a)
+            });
+        }
+        Ok(Expr::Call(name, args))
+    }
+
+    /// Arguments after `(` up to and including the closing `)`.
+    fn arg_list(&mut self, name: &str) -> Result<Vec<Expr>, ParseError> {
         self.enter()?;
         let mut args = Vec::new();
         if matches!(self.peek().map(|t| &t.tok), Some(Tok::RParen)) {
             self.pos += 1;
             self.depth -= 1;
-            return Ok(Expr::Call(name, args));
+            return Ok(args);
         }
         loop {
             let arg = match self.peek().map(|t| &t.tok) {
@@ -593,7 +622,7 @@ impl Parser {
             }
         }
         self.depth -= 1;
-        Ok(Expr::Call(name, args))
+        Ok(args)
     }
 
     fn array(&mut self) -> Result<Expr, ParseError> {
@@ -735,6 +764,12 @@ mod tests {
             "SUM((A1,B1))",
             "A1#",
             "TRUE",
+            "@A1:A3*2",
+            "SUM(@B:B)",
+            "@(A1:A3 A2:C2)",
+            "LAMBDA(x,x+1)(5)",
+            "LET(f,LAMBDA(a,b,a*b),F(2,3))",
+            "SUM(A1#)",
         ] {
             assert_eq!(rt(s), s, "roundtrip {s}");
         }
@@ -760,6 +795,9 @@ mod tests {
     #[test]
     fn prefixes_and_errors() {
         assert_eq!(rt("_xlfn.CONCAT(A1)"), "CONCAT(A1)");
+        assert_eq!(rt("_xlfn.SINGLE(F:F)"), "@F:F");
+        assert_eq!(rt("SUM(_xlfn.ANCHORARRAY(A2))"), "SUM(A2#)");
+        assert_eq!(rt("LAMBDA(_xlpm.a,_xlop.b,_xlpm.a)(1)"), "LAMBDA(a,b,a)(1)");
         assert!(parse("SUM(").is_err());
         assert!(parse("1+").is_err());
         assert!(parse("\"abc").is_err());

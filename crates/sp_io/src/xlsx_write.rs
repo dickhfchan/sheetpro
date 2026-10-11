@@ -125,20 +125,98 @@ fn needs_prefix(name: &str) -> Option<&'static str> {
 /// Formula text as stored in the file (prefixes added; no leading `=`).
 pub fn file_formula(src: &str) -> String {
     match parse(src) {
-        Ok(mut e) => {
-            e.walk_mut(&mut |n| {
-                if let Expr::Call(name, _) = n
-                    && let Some(p) = needs_prefix(name)
-                {
-                    *name = format!("{p}{name}");
-                }
-            });
-            to_formula(&e)
-        }
+        Ok(e) => file_expr(e),
         // Keep unparseable text untouched so nothing is lost.
         Err(_) => src.to_string(),
     }
 }
+
+/// How a formula cell is saved: plain text (legacy semantics), or as an array formula over
+/// `ref` (dynamic when `dynamic`).
+struct FileFormula {
+    text: String,
+    array: Option<(String, bool)>,
+}
+
+fn formula_for_cell(src: &str, sheet: &sp_model::Sheet, at: sp_core::CellAddr) -> FileFormula {
+    let area = sheet.spill_at_anchor(at);
+    let Ok(e) = parse(src) else {
+        return FileFormula {
+            text: src.to_string(),
+            array: None,
+        };
+    };
+    if let Some(a) = area {
+        let r = if a.blocked {
+            sp_core::CellRange::single(at)
+        } else {
+            a.range
+        };
+        return FileFormula {
+            text: file_expr(e),
+            array: Some((r.to_a1(), !a.fixed)),
+        };
+    }
+    match e.clone().from_legacy() {
+        Some(plain) => FileFormula {
+            text: file_expr(plain),
+            array: None,
+        },
+        None => FileFormula {
+            text: file_expr(e),
+            array: Some((at.to_a1(), true)),
+        },
+    }
+}
+
+fn file_expr(mut e: Expr) -> String {
+    // LET / LAMBDA parameter names carry the `_xlpm.` prefix in files.
+    let mut params: Vec<String> = Vec::new();
+    e.walk(&mut |n| {
+        if let Expr::Call(name, args) = n {
+            let names: Vec<&Expr> = match name.as_str() {
+                "LAMBDA" => args.iter().rev().skip(1).collect(),
+                "LET" => args.iter().step_by(2).take(args.len() / 2).collect(),
+                _ => Vec::new(),
+            };
+            for a in names {
+                if let Expr::Name(p) = a {
+                    params.push(p.to_ascii_lowercase());
+                }
+            }
+        }
+    });
+    e.walk_mut(&mut |n| match n {
+        Expr::Call(name, _) => {
+            if let Some(p) = needs_prefix(name) {
+                *name = format!("{p}{name}");
+            }
+        }
+        Expr::Name(x) if params.contains(&x.to_ascii_lowercase()) => {
+            *x = format!("_xlpm.{x}");
+        }
+        _ => {}
+    });
+    // `@x` and `x#` are spelled as functions in files.
+    e.walk_mut(&mut |n| {
+        let wrap = match n {
+            Expr::Implicit(a) => Some(("_xlfn.SINGLE", std::mem::replace(&mut **a, Expr::Missing))),
+            Expr::Spill(a) => Some((
+                "_xlfn.ANCHORARRAY",
+                std::mem::replace(&mut **a, Expr::Missing),
+            )),
+            _ => None,
+        };
+        if let Some((f, inner)) = wrap {
+            *n = Expr::Call(f.to_string(), vec![inner]);
+        }
+    });
+    to_formula(&e)
+}
+
+/// Cell metadata marking `cm="1"` formulas as dynamic arrays.
+const DYNAMIC_ARRAY_METADATA: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<metadata xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:xda="http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray"><metadataTypes count="1"><metadataType name="XLDAPR" minSupportedVersion="120000" copy="1" pasteAll="1" pasteValues="1" merge="1" splitFirst="1" rowColShift="1" clearFormats="1" clearComments="1" assign="1" coerce="1" cellMeta="1"/></metadataTypes><futureMetadata name="XLDAPR" count="1"><bk><extLst><ext uri="{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}"><xda:dynamicArrayProperties fDynamic="1" fCollapsed="0"/></ext></extLst></bk></futureMetadata><cellMetadata count="1"><bk><rc t="1" v="0"/></bk></cellMetadata></metadata>"#;
 
 struct StylesXml {
     xml: String,
@@ -372,6 +450,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">"#,
     );
     let mut sheets_xml = String::new();
+    let mut uses_dynamic = false;
 
     for (i, sheet) in wb.sheets.iter().enumerate() {
         let n = i + 1;
@@ -509,10 +588,24 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
                     } else {
                         format!(r#" s="{s}""#)
                     };
+                    let mut cm = "";
                     let f_xml = match &cell.content {
-                        Content::Formula(f) => format!("<f>{}</f>", esc(&file_formula(f))),
+                        Content::Formula(f) => {
+                            let ff = formula_for_cell(f, sheet, sp_core::CellAddr::new(r, *c));
+                            match ff.array {
+                                Some((rf, dynamic)) => {
+                                    if dynamic {
+                                        cm = r#" cm="1""#;
+                                        uses_dynamic = true;
+                                    }
+                                    format!(r#"<f t="array" ref="{rf}">{}</f>"#, esc(&ff.text))
+                                }
+                                None => format!("<f>{}</f>", esc(&ff.text)),
+                            }
+                        }
                         Content::Value(_) => String::new(),
                     };
+                    let s_attr = format!("{s_attr}{cm}");
                     let is_formula = !f_xml.is_empty();
                     match &cell.value {
                         Value::Empty if !is_formula => {
@@ -539,7 +632,19 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
                             let _ = write!(
                                 x,
                                 r#"<c r="{addr}"{s_attr} t="e">{f_xml}<v>{}</v></c>"#,
-                                e.as_str()
+                                // Newer error kinds need rich-value metadata; a formula's
+                                // cached result is saved as the classic equivalent.
+                                match e {
+                                    sp_core::ErrorKind::Spill
+                                    | sp_core::ErrorKind::Calc
+                                    | sp_core::ErrorKind::Circ
+                                    | sp_core::ErrorKind::GettingData
+                                        if is_formula =>
+                                    {
+                                        "#VALUE!"
+                                    }
+                                    other => other.as_str(),
+                                }
                             );
                         }
                         Value::Text(t) if is_formula => {
@@ -584,6 +689,15 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         r#"<Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>"#,
         ns + 2
     );
+    if uses_dynamic {
+        let _ = write!(
+            wb_rels,
+            r#"<Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata" Target="metadata.xml"/>"#,
+            ns + 3
+        );
+        ct.push_str(r#"<Override PartName="/xl/metadata.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml"/>"#);
+        put(&mut zip, "xl/metadata.xml", DYNAMIC_ARRAY_METADATA)?;
+    }
     wb_rels.push_str("</Relationships>");
     ct.push_str("</Types>");
 
@@ -654,6 +768,56 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dynamic_arrays_round_trip() {
+        use sp_core::CellAddr;
+        use sp_model::Cell;
+        let mut wb = Workbook::new();
+        let s = &mut wb.sheets[0];
+        let at = |a: &str| CellAddr::parse(a).unwrap();
+        s.set(at("A1"), Cell::formula("SEQUENCE(3)"));
+        s.set(at("B2"), Cell::formula("@A1:A3*2"));
+        s.set(at("C1"), Cell::formula("SUM(A1#)"));
+        s.set(at("D1"), Cell::formula("LET(x,2,LAMBDA(y,x*y)(3))"));
+        s.set(at("E1"), Cell::formula("SEQUENCE(2)"));
+        s.set(at("E2"), Cell::constant(Value::Number(1.0)));
+        sp_formula::recalc(
+            &mut wb,
+            &mut sp_formula::AstCache::default(),
+            Default::default(),
+        );
+        assert_eq!(wb.sheets[0].value(at("B2")), &Value::Number(4.0));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        write_xlsx(&wb, &mut buf).unwrap();
+        buf.set_position(0);
+        let mut zip = zip::ZipArchive::new(buf.clone()).unwrap();
+        let mut x = String::new();
+        std::io::Read::read_to_string(
+            &mut zip.by_name("xl/worksheets/sheet1.xml").unwrap(),
+            &mut x,
+        )
+        .unwrap();
+        assert!(
+            x.contains(r#"<c r="A1" cm="1"><f t="array" ref="A1:A3">_xlfn.SEQUENCE(3)</f>"#),
+            "{x}"
+        );
+        assert!(x.contains("<f>A1:A3*2</f>"), "{x}");
+        assert!(x.contains("_xlfn.ANCHORARRAY(A1)"), "{x}");
+        assert!(x.contains("_xlpm.x"), "{x}");
+        assert!(zip.by_name("xl/metadata.xml").is_ok());
+        let (back, _) = crate::xlsx_read::read_xlsx(buf).unwrap();
+        let b = &back.sheets[0];
+        assert_eq!(b.get(at("B2")).unwrap().formula_src(), Some("@A1:A3*2"));
+        assert_eq!(
+            b.get(at("D1")).unwrap().formula_src(),
+            Some("LET(x,2,LAMBDA(y,x*y)(3))")
+        );
+        assert!(b.get(at("A2")).unwrap().is_spilled());
+        assert_eq!(b.spills.first(), wb.sheets[0].spills.first());
+        // A blocked spill's #SPILL! is saved as the classic #VALUE! (recalc restores it).
+        assert_eq!(b.value(at("E1")), &Value::Error(sp_core::ErrorKind::Value));
+    }
 
     #[test]
     fn prefixes() {

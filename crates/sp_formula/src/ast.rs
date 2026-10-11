@@ -114,9 +114,13 @@ pub enum Expr {
     Call(String, Vec<Expr>),
     /// Omitted argument, e.g. the middle of `IF(A1,,2)`.
     Missing,
-    /// `A1#` spilled-range reference.
+    /// `A1#` spilled-range reference (`ANCHORARRAY` in files).
     Spill(Box<Expr>),
     Paren(Box<Expr>),
+    /// `@x` implicit intersection (`SINGLE` in files).
+    Implicit(Box<Expr>),
+    /// Call of a computed function value, e.g. `LAMBDA(x,x+1)(5)`.
+    Invoke(Box<Expr>, Vec<Expr>),
 }
 
 impl Expr {
@@ -124,7 +128,11 @@ impl Expr {
     pub fn walk(&self, f: &mut impl FnMut(&Expr)) {
         f(self);
         match self {
-            Expr::Unary(_, a) | Expr::Spill(a) | Expr::Paren(a) => a.walk(f),
+            Expr::Unary(_, a) | Expr::Spill(a) | Expr::Paren(a) | Expr::Implicit(a) => a.walk(f),
+            Expr::Invoke(c, args) => {
+                c.walk(f);
+                args.iter().for_each(|a| a.walk(f));
+            }
             Expr::Binary(_, a, b) => {
                 a.walk(f);
                 b.walk(f);
@@ -138,7 +146,13 @@ impl Expr {
     pub fn walk_mut(&mut self, f: &mut impl FnMut(&mut Expr)) {
         f(self);
         match self {
-            Expr::Unary(_, a) | Expr::Spill(a) | Expr::Paren(a) => a.walk_mut(f),
+            Expr::Unary(_, a) | Expr::Spill(a) | Expr::Paren(a) | Expr::Implicit(a) => {
+                a.walk_mut(f)
+            }
+            Expr::Invoke(c, args) => {
+                c.walk_mut(f);
+                args.iter_mut().for_each(|a| a.walk_mut(f));
+            }
             Expr::Binary(_, a, b) => {
                 a.walk_mut(f);
                 b.walk_mut(f);
@@ -169,5 +183,164 @@ impl Expr {
             }
         });
         v
+    }
+}
+
+/// Functions whose result is always a single value, whatever their arguments.
+const SCALAR_RESULT: &[&str] = &[
+    "AND",
+    "AREAS",
+    "AVEDEV",
+    "AVERAGE",
+    "AVERAGEA",
+    "AVERAGEIF",
+    "AVERAGEIFS",
+    "CONCAT",
+    "CONCATENATE",
+    "CORREL",
+    "COUNT",
+    "COUNTA",
+    "COUNTBLANK",
+    "COUNTIF",
+    "COUNTIFS",
+    "COVAR",
+    "COVARIANCE.P",
+    "COVARIANCE.S",
+    "DAVERAGE",
+    "DCOUNT",
+    "DCOUNTA",
+    "DEVSQ",
+    "DGET",
+    "DMAX",
+    "DMIN",
+    "DPRODUCT",
+    "DSTDEV",
+    "DSTDEVP",
+    "DSUM",
+    "DVAR",
+    "DVARP",
+    "GEOMEAN",
+    "HARMEAN",
+    "IRR",
+    "ISREF",
+    "KURT",
+    "MAX",
+    "MAXA",
+    "MAXIFS",
+    "MDETERM",
+    "MEDIAN",
+    "MIN",
+    "MINA",
+    "MINIFS",
+    "MIRR",
+    "NPV",
+    "OR",
+    "PEARSON",
+    "PRODUCT",
+    "ROWS",
+    "COLUMNS",
+    "RSQ",
+    "SKEW",
+    "SLOPE",
+    "INTERCEPT",
+    "STDEV",
+    "STDEV.P",
+    "STDEV.S",
+    "STDEVA",
+    "STDEVP",
+    "STDEVPA",
+    "STEYX",
+    "SUBTOTAL",
+    "SUM",
+    "SUMIF",
+    "SUMIFS",
+    "SUMPRODUCT",
+    "SUMSQ",
+    "SUMX2MY2",
+    "SUMX2PY2",
+    "SUMXMY2",
+    "TEXTJOIN",
+    "VAR",
+    "VAR.P",
+    "VAR.S",
+    "VARA",
+    "VARP",
+    "VARPA",
+    "XIRR",
+    "XNPV",
+    "XOR",
+    "ARRAYTOTEXT",
+    "ISOMITTED",
+    "SHEETS",
+    "NOW",
+    "TODAY",
+    "RAND",
+    "PI",
+    "TRUE",
+    "FALSE",
+    "NA",
+    "FORMULATEXT",
+    "CELL",
+    "SHEET",
+];
+
+impl Expr {
+    /// Could this expression yield more than one value (a multi-cell reference or array)?
+    /// Conservative: unknown function calls are multi-valued when any argument is.
+    pub fn may_be_multi(&self) -> bool {
+        match self {
+            Expr::Number(_)
+            | Expr::Text(_)
+            | Expr::Bool(_)
+            | Expr::Error(_)
+            | Expr::Missing
+            | Expr::Name(_)
+            | Expr::Implicit(_) => false,
+            Expr::Array(rows) => rows.len() > 1 || rows.iter().any(|r| r.len() > 1),
+            Expr::Ref(r) => !matches!(r.kind, RefKind::Cell(_)),
+            Expr::Spill(_) | Expr::Invoke(..) => true,
+            Expr::Paren(a) | Expr::Unary(_, a) => a.may_be_multi(),
+            Expr::Binary(BinOp::Range | BinOp::Union | BinOp::Isect, ..) => true,
+            Expr::Binary(_, a, b) => a.may_be_multi() || b.may_be_multi(),
+            Expr::Call(name, args) => {
+                if SCALAR_RESULT.contains(&name.as_str()) {
+                    return false;
+                }
+                matches!(name.as_str(), "INDEX" | "OFFSET" | "INDIRECT")
+                    || crate::functions::arrays::ARRAY_RESULT.contains(&name.as_str())
+                    || args.iter().any(Expr::may_be_multi)
+            }
+        }
+    }
+
+    /// Rewrite a formula saved with pre-dynamic-array semantics so it evaluates the same way
+    /// now: every operand that could be multi-valued at the top level (outside function
+    /// arguments) gets the `@` implicit-intersection operator, as the target app shows it.
+    pub fn into_legacy(self) -> Expr {
+        match self {
+            Expr::Paren(a) => Expr::Paren(Box::new(a.into_legacy())),
+            Expr::Unary(op, a) => Expr::Unary(op, Box::new(a.into_legacy())),
+            Expr::Binary(op, a, b) if !matches!(op, BinOp::Range | BinOp::Union | BinOp::Isect) => {
+                Expr::Binary(op, Box::new(a.into_legacy()), Box::new(b.into_legacy()))
+            }
+            e if e.may_be_multi() => Expr::Implicit(Box::new(e)),
+            e => e,
+        }
+    }
+
+    /// Inverse of `into_legacy`: drop top-level `@` operators (where a legacy formula has
+    /// them implicitly). `None` if the formula needs dynamic-array semantics, i.e. it has a
+    /// top-level operand that could spill.
+    pub fn from_legacy(self) -> Option<Expr> {
+        Some(match self {
+            Expr::Paren(a) => Expr::Paren(Box::new(a.from_legacy()?)),
+            Expr::Unary(op, a) => Expr::Unary(op, Box::new(a.from_legacy()?)),
+            Expr::Binary(op, a, b) if !matches!(op, BinOp::Range | BinOp::Union | BinOp::Isect) => {
+                Expr::Binary(op, Box::new(a.from_legacy()?), Box::new(b.from_legacy()?))
+            }
+            Expr::Implicit(a) if a.may_be_multi() => *a,
+            e if e.may_be_multi() => return None,
+            e => e,
+        })
     }
 }
