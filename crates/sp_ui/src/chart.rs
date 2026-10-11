@@ -156,7 +156,22 @@ pub fn paint_objects(
             );
         }
     }
-    // Charts: anchors are measured from the top-left of the scrollable pane.
+    for (i, r) in chart_rects(s, cells_origin) {
+        if !r.intersects(cell_area) || r.width() < 2.0 || r.height() < 2.0 {
+            continue;
+        }
+        let Some(c) = sheet.drawings.charts.get(i) else {
+            continue;
+        };
+        let data = chart_data(&s.wb, si, c);
+        let prims = chart_scene(&data, r.width(), r.height(), zoom);
+        draw_prims(&p, r.min, &prims);
+    }
+}
+
+/// Top-left cell of the scrollable pane and the frozen panes' size in px (at `zoom`).
+fn pane_origin(s: &Session, sheet: &sp_model::Sheet) -> (CellAddr, Vec2) {
+    let zoom = s.view.zoom.clamp(0.1, 4.0);
     let freeze = sheet.freeze.unwrap_or_default();
     let origin = CellAddr::new(
         s.view.scroll.row.max(freeze.row),
@@ -166,17 +181,63 @@ pub fn paint_objects(
         col_offset_px(sheet, 0, freeze.col),
         row_offset_px(sheet, 0, freeze.row),
     ) * zoom;
-    for c in &sheet.drawings.charts {
-        let (x, y, w, h) = anchor_rect(sheet, origin, &c.anchor);
-        let r = Rect::from_min_size(
-            cells_origin + frozen + Vec2::new(x, y) * zoom,
-            Vec2::new(w, h) * zoom,
-        );
-        if !r.intersects(cell_area) || w < 2.0 || h < 2.0 {
-            continue;
-        }
-        let data = chart_data(&s.wb, si, c);
-        let prims = chart_scene(&data, r.width(), r.height(), zoom);
-        draw_prims(&p, r.min, &prims);
-    }
+    (origin, frozen)
+}
+
+/// Screen rectangles of the active sheet's charts, in drawing order (index = chart number).
+/// Anchors are measured from the top-left of the scrollable pane.
+pub fn chart_rects(s: &Session, cells_origin: Pos2) -> Vec<(usize, Rect)> {
+    let Some(sheet) = s.wb.sheet(s.sheet_index()) else {
+        return Vec::new();
+    };
+    let zoom = s.view.zoom.clamp(0.1, 4.0);
+    let (origin, frozen) = pane_origin(s, sheet);
+    sheet
+        .drawings
+        .charts
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let (x, y, w, h) = anchor_rect(sheet, origin, &c.anchor);
+            (
+                i,
+                Rect::from_min_size(
+                    cells_origin + frozen + Vec2::new(x, y) * zoom,
+                    Vec2::new(w, h) * zoom,
+                ),
+            )
+        })
+        .collect()
+}
+
+/// The cell range (as a chart `anchor` param) whose grid lines are nearest to `r`.
+pub fn rect_to_anchor(s: &Session, cells_origin: Pos2, r: Rect) -> Option<String> {
+    let sheet = s.wb.sheet(s.sheet_index())?;
+    let zoom = s.view.zoom.clamp(0.1, 4.0);
+    let (origin, frozen) = pane_origin(s, sheet);
+    let base = cells_origin + frozen;
+    let to_px = |v: f32| f64::from(v / zoom);
+    // Nearest grid line at or after a pixel offset (`col_at_px` gives the cell and the
+    // offset inside it).
+    let snap_col = |px: f64| {
+        let (c, off) = sp_render::chart::col_at_px(sheet, origin.col, px);
+        let w = f64::from(sp_render::col_width_px(sheet.col_width(c)));
+        if off > w / 2.0 { c.saturating_add(1) } else { c }
+    };
+    let snap_row = |px: f64| {
+        let (r, off) = sp_render::chart::row_at_px(sheet, origin.row, px);
+        let h = f64::from(sp_render::row_height_px(sheet.row_height(r)));
+        if off > h / 2.0 { r.saturating_add(1) } else { r }
+    };
+    let c0 = snap_col(to_px(r.min.x - base.x));
+    let r0 = snap_row(to_px(r.min.y - base.y));
+    let c1 = snap_col(to_px(r.max.x - base.x)).max(c0.saturating_add(1));
+    let r1 = snap_row(to_px(r.max.y - base.y)).max(r0.saturating_add(1));
+    let max_c = sp_core::MAX_COLS - 1;
+    let max_r = sp_core::MAX_ROWS - 1;
+    let range = sp_core::CellRange::new(
+        CellAddr::new(r0.min(max_r - 1), c0.min(max_c - 1)),
+        CellAddr::new(r1.saturating_sub(1).min(max_r - 1), c1.saturating_sub(1).min(max_c - 1)),
+    );
+    Some(range.to_a1())
 }

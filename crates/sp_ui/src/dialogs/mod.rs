@@ -5,8 +5,10 @@
 //! screenshot script (or a test) can open any dialog by name with pre-filled fields:
 //! `App::open_dialog("find {\"what\":\"total\"}")`.
 
+pub mod chart_format;
 pub mod find;
 pub mod format_cells;
+pub mod grid_popups;
 pub mod misc;
 pub mod sort;
 pub mod widgets;
@@ -22,6 +24,8 @@ use sp_engine::{Json, registry};
 #[serde(default)]
 pub struct UiState {
     pub dialog: Option<Dialog>,
+    /// Selected chart / drag in progress over the grid.
+    pub grid: crate::overlays::GridUi,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,10 +44,20 @@ pub enum Dialog {
     UnhideSheet(misc::UnhideSheet),
     TabColor(misc::TabColor),
     Params(misc::Params),
+    Filter(Box<grid_popups::FilterDropdown>),
+    ValidationList(grid_popups::ValidationList),
+    Comment(grid_popups::CommentCard),
+    ValidationAlert(grid_popups::ValidationAlert),
+    ChartFormat(chart_format::ChartFormat),
 }
 
 /// Names accepted by [`App::open_dialog`] (and `sp screenshot --dialog`).
-pub const DIALOG_NAMES: [&str; 24] = [
+pub const DIALOG_NAMES: [&str; 29] = [
+    "filter",
+    "validation_list",
+    "comment",
+    "validation_alert",
+    "chart_format",
     "format_cells",
     "number",
     "alignment",
@@ -139,6 +153,20 @@ pub fn required_params(doc: &str) -> Vec<String> {
     out
 }
 
+/// The AutoFilter range (or table, by name) whose header row holds the active column.
+fn filter_at_active(s: &sp_engine::Session) -> Option<(sp_core::CellRange, Option<String>)> {
+    let sh = s.wb.sheet(s.sheet_index())?;
+    let a = s.sel.active;
+    let in_cols = |r: &sp_core::CellRange| a.col >= r.start.col && a.col <= r.end.col;
+    if let Some(af) = sh.auto_filter.as_ref().filter(|af| in_cols(&af.range)) {
+        return Some((af.range, None));
+    }
+    sh.tables
+        .iter()
+        .find(|t| t.range.contains(a) && t.header_row)
+        .map(|t| (t.range, Some(t.name.clone())))
+}
+
 impl Dialog {
     /// Build a dialog by name, seeded from the session (active cell style, selection…).
     pub fn create(name: &str, app: &mut App) -> Result<Dialog, String> {
@@ -169,6 +197,46 @@ impl Dialog {
             "zoom" => Dialog::Zoom(misc::Zoom::new(&app.session)),
             "unhide_sheet" => Dialog::UnhideSheet(misc::UnhideSheet::new(&app.session)),
             "tab_color" => Dialog::TabColor(misc::TabColor::new(&app.session, None)),
+            "filter" => {
+                let (range, table) = filter_at_active(&app.session)
+                    .ok_or("no AutoFilter or table header at the active column")?;
+                let col = app.session.sel.active.col;
+                Dialog::Filter(Box::new(grid_popups::FilterDropdown::new(
+                    &app.session,
+                    range,
+                    col,
+                    table,
+                )))
+            }
+            "validation_list" => Dialog::ValidationList(grid_popups::ValidationList::new(
+                &app.session,
+                app.session.sel.active,
+            )),
+            "comment" => Dialog::Comment(grid_popups::CommentCard::new(
+                &app.session,
+                app.session.sel.active,
+            )),
+            "validation_alert" => {
+                let s = &app.session;
+                let (si, at) = (s.sheet_index(), s.sel.active);
+                let msg = s
+                    .wb
+                    .sheet(si)
+                    .and_then(|sh| sh.validation_at(at))
+                    .map(|r| r.error.clone())
+                    .filter(|m| !m.is_empty())
+                    .unwrap_or_else(|| {
+                        "This value doesn't match the data validation restrictions defined for this cell.".into()
+                    });
+                Dialog::ValidationAlert(grid_popups::ValidationAlert::new(s, si, at, "", &msg))
+            }
+            "chart_format" => {
+                let idx = app.ui.grid.chart.unwrap_or(0);
+                Dialog::ChartFormat(
+                    chart_format::ChartFormat::new(&app.session, idx)
+                        .ok_or("no chart on this sheet")?,
+                )
+            }
             other => match other.strip_prefix("params:") {
                 Some(id) => Dialog::Params(misc::Params::new(id)?),
                 None => return Err(format!("unknown dialog '{other}'")),
@@ -191,6 +259,11 @@ impl Dialog {
             Dialog::UnhideSheet(d) => d.ui(ctx, app),
             Dialog::TabColor(d) => d.ui(ctx, app),
             Dialog::Params(d) => d.ui(ctx, app),
+            Dialog::Filter(d) => d.ui(ctx, app),
+            Dialog::ValidationList(d) => d.ui(ctx, app),
+            Dialog::Comment(d) => d.ui(ctx, app),
+            Dialog::ValidationAlert(d) => d.ui(ctx, app),
+            Dialog::ChartFormat(d) => d.ui(ctx, app),
         }
     }
 
@@ -397,7 +470,9 @@ mod tests {
     fn every_dialog_name_builds() {
         let mut app = App::new(sp_engine::Session::new());
         for n in DIALOG_NAMES {
-            assert!(Dialog::create(n, &mut app).is_ok(), "{n}");
+            // These need an object at the active cell (filter header, chart).
+            let needs_context = matches!(n, "filter" | "chart_format");
+            assert_eq!(Dialog::create(n, &mut app).is_ok(), !needs_context, "{n}");
         }
         assert!(Dialog::create("params:view.zoom", &mut app).is_ok());
         assert!(Dialog::create("nope", &mut app).is_err());
