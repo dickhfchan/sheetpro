@@ -531,6 +531,8 @@ pub struct CfWriter {
     ext_id: u32,
     /// x14 extension of the sheet being written (from `sheet_cf_xml`).
     pending_ext: String,
+    /// Lower-cased table names written so far.
+    table_names: std::collections::HashSet<String>,
 }
 
 impl CfWriter {
@@ -768,42 +770,78 @@ impl CfWriter {
         x
     }
 
-    /// `<tableParts>` and the x14 extension list: write right before `</worksheet>`.
-    pub fn sheet_tail_xml(
+    /// `<tableParts>` and the sheet's `extLst` as (local name, XML) elements for the
+    /// worksheet merge. A captured `extLst` keeps its other `<ext>` children; its
+    /// conditional-formatting ext is replaced by ours (the rules it held were read into the
+    /// model), so the URI never appears twice.
+    pub fn sheet_tail(
         &mut self,
         sheet: &Sheet,
         rels: &mut crate::xlsx_extras::SheetRels,
-    ) -> String {
-        let mut x = String::new();
-        if !sheet.tables.is_empty() {
-            let mut ids = Vec::new();
-            for t in &sheet.tables {
-                let n = self.tables.len() + 1;
-                let rid = format!("rId{}", rels.rels.len() + 1);
-                rels.rels.push((
-                    rid.clone(),
-                    "table".into(),
-                    format!("../tables/table{n}.xml"),
-                    false,
-                ));
-                self.tables
-                    .push((format!("xl/tables/table{n}.xml"), table_xml(t, n)));
-                ids.push(rid);
+        pt: &sp_model::passthrough::Passthrough,
+    ) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        let mut ids = Vec::new();
+        for t in &sheet.tables {
+            if !self.table_names.insert(t.name.to_ascii_lowercase()) {
+                continue; // table names are workbook-unique; a duplicate is not written
             }
-            let _ = write!(x, r#"<tableParts count="{}">"#, ids.len());
+            let n = self.tables.len() + 1;
+            let rid = rels.add("table", &format!("../tables/table{n}.xml"), false);
+            self.tables
+                .push((format!("xl/tables/table{n}.xml"), table_xml(t, n)));
+            ids.push(rid);
+        }
+        if !ids.is_empty() {
+            let mut x = format!(r#"<tableParts count="{}">"#, ids.len());
             for id in ids {
                 let _ = write!(x, r#"<tablePart r:id="{id}"/>"#);
             }
             x.push_str("</tableParts>");
+            out.push(("tableParts".to_string(), x));
         }
         let ext = std::mem::take(&mut self.pending_ext);
-        if !ext.is_empty() {
-            let _ = write!(
-                x,
-                r#"<extLst><ext uri="{CF_EXT}" xmlns:x14="{X14_NS}"><x14:conditionalFormattings>{ext}</x14:conditionalFormattings></ext></extLst>"#
-            );
+        let captured = pt
+            .elements
+            .iter()
+            .find(|e| crate::xml::local(&e.name) == "extLst");
+        let mut kept: Vec<&str> = Vec::new();
+        let mut had_cf = false;
+        if let Some(c) = captured
+            && let Ok((_, children)) = crate::xlsx_passthrough::scan_children(&c.xml, true)
+        {
+            for ch in children {
+                if ch
+                    .xml
+                    .to_ascii_uppercase()
+                    .contains(&CF_EXT.to_ascii_uppercase())
+                {
+                    had_cf = true;
+                } else {
+                    kept.push(ch.xml);
+                }
+            }
         }
-        x
+        if ext.is_empty() && !had_cf {
+            return out; // the captured extLst (if any) passes through unchanged
+        }
+        let mut x = String::new();
+        if !ext.is_empty() || !kept.is_empty() {
+            x.push_str("<extLst>");
+            if !ext.is_empty() {
+                let _ = write!(
+                    x,
+                    r#"<ext uri="{CF_EXT}" xmlns:x14="{X14_NS}"><x14:conditionalFormattings>{ext}</x14:conditionalFormattings></ext>"#
+                );
+            }
+            for k in kept {
+                x.push_str(k);
+            }
+            x.push_str("</extLst>");
+        }
+        // Even when empty, naming `extLst` as generated suppresses the captured one.
+        out.push(("extLst".to_string(), x));
+        out
     }
 
     /// `styles.xml` with the collected `<dxfs>` inserted (replacing an empty one).
@@ -836,17 +874,16 @@ impl CfWriter {
         s
     }
 
-    /// Table parts to write and their content-type overrides.
-    pub fn finish(self) -> (String, Vec<(String, String)>) {
-        let mut ct = String::new();
-        for (path, _) in &self.tables {
-            let _ = write!(
-                ct,
-                r#"<Override PartName="/{path}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>"#
-            );
-        }
-        (ct, self.tables)
+    /// Table parts to write (path, XML); content type `TABLE_CONTENT_TYPE`.
+    pub fn finish(self) -> Vec<(String, String)> {
+        self.tables
     }
+}
+
+/// Every table part name the writer may produce (reserved before pass-through placement).
+pub fn table_part_names(wb: &sp_model::Workbook) -> Vec<String> {
+    let n: usize = wb.sheets.iter().map(|s| s.tables.len()).sum();
+    (1..=n).map(|k| format!("xl/tables/table{k}.xml")).collect()
 }
 
 fn table_xml(t: &Table, n: usize) -> String {
@@ -1160,5 +1197,77 @@ mod tests {
         let w = zip::ZipWriter::new(&mut buf);
         w.finish().unwrap();
         buf.into_inner()
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+    use sp_model::Workbook;
+    use sp_model::passthrough::RawElement;
+    use std::io::{Cursor, Read};
+
+    #[test]
+    fn captured_extlst_merges_without_duplicate_cf_ext() {
+        let mut wb = Workbook::new();
+        let s = &mut wb.sheets[0];
+        s.passthrough.root_attrs.push((
+            "xmlns:x14".into(),
+            "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main".into(),
+        ));
+        s.passthrough.elements.push(RawElement {
+            name: "extLst".into(),
+            after: "pageMargins".into(),
+            xml: format!(
+                r#"<extLst><ext uri="{CF_EXT}"><x14:conditionalFormattings/></ext><ext uri="{{OTHER}}"><x14:keep/></ext></extLst>"#
+            ),
+        });
+        let with_bar = |s: &mut Sheet| {
+            s.cond_formats.push(CondFormat {
+                ranges: vec![CellRange::parse("A1:A3").unwrap()],
+                rules: vec![CfRule {
+                    kind: CfKind::DataBar {
+                        min: Cfvo::new(CfvoKind::Min, ""),
+                        max: Cfvo::new(CfvoKind::Max, ""),
+                        color: DEFAULT_BAR,
+                        gradient: false,
+                        show_value: true,
+                    },
+                    style: DiffStyle::default(),
+                    priority: 1,
+                    stop_if_true: false,
+                }],
+            })
+        };
+        let sheet_xml = |wb: &Workbook| {
+            let mut buf = Cursor::new(Vec::new());
+            crate::xlsx_write::write_xlsx(wb, &mut buf).unwrap();
+            let bytes = buf.into_inner();
+            assert!(crate::xlsx_passthrough::validate_package(&bytes).is_empty());
+            let mut z = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+            let mut x = String::new();
+            z.by_name("xl/worksheets/sheet1.xml")
+                .unwrap()
+                .read_to_string(&mut x)
+                .unwrap();
+            x
+        };
+        // No rules: the stale CF ext is dropped, the other ext kept.
+        let x = sheet_xml(&wb);
+        assert_eq!(x.matches(CF_EXT).count(), 0, "{x}");
+        assert_eq!(x.matches("<extLst>").count(), 1);
+        assert!(x.contains("x14:keep"));
+        with_bar(&mut wb.sheets[0]);
+        let x = sheet_xml(&wb);
+        assert_eq!(x.matches(&format!(r#"uri="{CF_EXT}""#)).count(), 1, "{x}");
+        // One extLst on the data bar rule, one on the sheet.
+        assert_eq!(x.matches("<extLst>").count(), 2);
+        assert_eq!(x.matches("x14:keep").count(), 1);
+        assert!(x.contains("x14:keep") && x.contains("x14:dataBar"));
+        // No captured extLst at all.
+        let mut plain = Workbook::new();
+        with_bar(&mut plain.sheets[0]);
+        let x = sheet_xml(&plain);
+        assert_eq!(x.matches("<extLst>").count(), 2);
     }
 }

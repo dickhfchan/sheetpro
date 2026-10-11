@@ -2,6 +2,7 @@
 
 pub mod condfmt;
 pub mod features;
+pub mod passthrough;
 pub mod style;
 pub mod table;
 
@@ -178,6 +179,9 @@ pub struct Sheet {
     /// Structured tables (see `table.rs`).
     #[serde(default)]
     pub tables: Vec<Table>,
+    /// File content we don't model, re-emitted on save (see `passthrough.rs`).
+    #[serde(default)]
+    pub passthrough: passthrough::Passthrough,
 }
 
 pub const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -210,6 +214,7 @@ impl Sheet {
             spills: Vec::new(),
             cond_formats: Vec::new(),
             tables: Vec::new(),
+            passthrough: Default::default(),
         }
     }
 
@@ -357,6 +362,9 @@ pub struct Workbook {
     pub props: DocProps,
     #[serde(default)]
     pub protection: Option<WorkbookProtection>,
+    /// File content we don't model, re-emitted on save (see `passthrough.rs`).
+    #[serde(default)]
+    pub passthrough: passthrough::Passthrough,
 }
 
 impl Default for Workbook {
@@ -379,6 +387,7 @@ impl Workbook {
             calc_mode: CalcMode::Automatic,
             props: DocProps::default(),
             protection: None,
+            passthrough: Default::default(),
         }
     }
 
