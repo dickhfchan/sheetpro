@@ -28,3 +28,4 @@ Contributors and AI agents: read [`AGENTS.md`](AGENTS.md) first.
 ## License
 
 MIT OR Apache-2.0.
+# sheetpro
