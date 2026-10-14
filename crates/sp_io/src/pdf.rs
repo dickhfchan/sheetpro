@@ -217,25 +217,26 @@ impl Content<'_> {
 /// Serialize `pages` as a PDF document titled `title`. With no pages a single blank Letter
 /// page is written so the file still opens.
 pub fn write_pdf(pages: &[PageScene], title: &str) -> Vec<u8> {
-    let blank = [PageScene {
-        width: 612.0,
-        height: 792.0,
-        items: Vec::new(),
-    }];
-    let pages = if pages.is_empty() { &blank[..] } else { pages };
+    write_pdf_pages(pages.iter().cloned(), title)
+}
+
+/// Like [`write_pdf`], but pages are produced one at a time (each scene is dropped once its
+/// content stream is written, so long jobs don't hold every scene in memory).
+pub fn write_pdf_pages(pages: impl IntoIterator<Item = PageScene>, title: &str) -> Vec<u8> {
     let mut fonts = BTreeSet::new();
-    let streams: Vec<(f32, f32, String)> = pages
-        .iter()
-        .map(|p| {
-            let mut c = Content {
-                out: String::new(),
-                height: p.height,
-                fonts: &mut fonts,
-            };
-            c.items(&p.items, 0);
-            (p.width, p.height, c.out)
-        })
-        .collect();
+    let mut streams: Vec<(f32, f32, String)> = Vec::new();
+    for p in pages {
+        let mut c = Content {
+            out: String::new(),
+            height: p.height,
+            fonts: &mut fonts,
+        };
+        c.items(&p.items, 0);
+        streams.push((p.width, p.height, c.out));
+    }
+    if streams.is_empty() {
+        streams.push((612.0, 792.0, String::new()));
+    }
     // Object numbers: 1 catalog, 2 page tree, 3 info, 4 resources, then fonts, then a
     // (page, content) pair per page.
     let faces: Vec<Face> = Face::all()
@@ -314,7 +315,7 @@ pub fn write_pdf(pages: &[PageScene], title: &str) -> Vec<u8> {
     let xref = out.len();
     let mut x = format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1);
     for o in &offsets {
-        let _ = write!(x, "{o:010} 00000 n \n");
+        let _ = writeln!(x, "{o:010} 00000 n ");
     }
     let _ = write!(
         x,
@@ -332,6 +333,60 @@ pub struct PdfSummary {
     pub pages: usize,
 }
 
+/// Balanced dictionaries/arrays (outside literal strings) and in-range `n 0 R` references.
+fn check_syntax(obj: &[u8], count: usize) -> Result<(), String> {
+    let mut stack: Vec<u8> = Vec::new();
+    let mut paren = 0usize;
+    let mut i = 0usize;
+    while let Some(&c) = obj.get(i) {
+        if paren > 0 {
+            match c {
+                b'\\' => i += 1,
+                b'(' => paren += 1,
+                b')' => paren -= 1,
+                _ => {}
+            }
+        } else {
+            match c {
+                b'(' => paren = 1,
+                b'[' => stack.push(b']'),
+                b'<' if obj.get(i + 1) == Some(&b'<') => {
+                    stack.push(b'>');
+                    i += 1;
+                }
+                b'>' if obj.get(i + 1) == Some(&b'>') => {
+                    if stack.pop() != Some(b'>') {
+                        return Err("unbalanced >>".into());
+                    }
+                    i += 1;
+                }
+                b']' => {
+                    if stack.pop() != Some(b']') {
+                        return Err("unbalanced ]".into());
+                    }
+                }
+                b'R' if i >= 4 && obj.get(i - 3..i) == Some(&b" 0 "[..]) => {
+                    let digits_end = i - 3;
+                    let start = obj
+                        .get(..digits_end)
+                        .and_then(|h| h.iter().rposition(|b| !b.is_ascii_digit()))
+                        .map_or(0, |p| p + 1);
+                    let n = obj.get(start..digits_end).and_then(ascii_num);
+                    if !n.is_some_and(|n| n >= 1 && n < count) {
+                        return Err(format!("reference {n:?} 0 R out of range"));
+                    }
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    if paren != 0 || !stack.is_empty() {
+        return Err("unterminated string, dictionary or array".into());
+    }
+    Ok(())
+}
+
 fn find(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
     hay.get(from..)?
         .windows(needle.len())
@@ -344,8 +399,9 @@ fn ascii_num(bytes: &[u8]) -> Option<usize> {
 }
 
 /// Structural check of a PDF this module wrote: header, `startxref` → `xref`, every
-/// in-use xref entry pointing at `N 0 obj`, each stream's `/Length` matching, and the page
-/// tree `/Count` equal to the number of page objects.
+/// in-use xref entry pointing at `N 0 obj`, every object parsing (balanced dictionaries,
+/// arrays and strings; `n 0 R` references in range), each stream's `/Length` matching, and
+/// the page tree `/Count` equal to the number of page objects.
 pub fn validate(bytes: &[u8]) -> Result<PdfSummary, String> {
     if !bytes.starts_with(b"%PDF-1.") {
         return Err("missing %PDF header".into());
@@ -399,6 +455,10 @@ pub fn validate(bytes: &[u8]) -> Result<PdfSummary, String> {
         let body_start = off + head.len();
         let end = find(bytes, b"\nendobj\n", body_start).ok_or("unterminated object")?;
         let body = bytes.get(body_start..end).ok_or("bad object")?;
+        // The object (or a stream's dictionary) must parse: balanced `<< >>` / `[ ]` outside
+        // strings, and every `n 0 R` reference must name an object in the table.
+        let dict = find(body, b"\nstream\n", 0).map_or(body, |sp| body.get(..sp).unwrap_or(body));
+        check_syntax(dict, count).map_err(|e| format!("object {i}: {e}"))?;
         if body.starts_with(b"<< /Type /Page ") {
             pages += 1;
         }
@@ -413,7 +473,9 @@ pub fn validate(bytes: &[u8]) -> Result<PdfSummary, String> {
             let len = body.get(l..le).and_then(ascii_num).ok_or("bad /Length")?;
             let data = sp + b">>\nstream\n".len();
             if body.get(data + len..) != Some(&b"\nendstream"[..]) {
-                return Err(format!("object {i}: /Length {len} does not match its stream"));
+                return Err(format!(
+                    "object {i}: /Length {len} does not match its stream"
+                ));
             }
         }
     }
@@ -515,6 +577,64 @@ mod tests {
         assert!(validate(&pdf).is_err());
         assert!(validate(b"not a pdf").is_err());
         assert!(validate(b"%PDF-1.7\nstartxref\n999999\n%%EOF\n").is_err());
+        // Same-length edits that break object syntax or references.
+        let good = write_pdf(&[scene()], "t");
+        let swap = |from: &[u8], to: &[u8]| {
+            let mut b = good.clone();
+            let at = find(&b, from, 0).unwrap();
+            b.splice(at..at + from.len(), to.iter().copied());
+            b
+        };
+        let bad = swap(b"/Pages 2 0 R", b"/Pages 9 0 R");
+        assert!(validate(&bad).unwrap_err().contains("out of range"));
+        let bad = swap(b"/Pages 2 0 R >>", b"/Pages 2 0 R ]>");
+        assert!(validate(&bad).is_err());
+    }
+
+    #[test]
+    fn syntax_checker() {
+        assert!(check_syntax(b"<< /A [1 2 (x]) ] /B << >> /C 3 0 R >>", 4).is_ok());
+        assert!(check_syntax(b"<< /A (unterminated >>", 4).is_err());
+        assert!(check_syntax(b"<< /A [ >>", 4).is_err());
+        assert!(check_syntax(b"<< /A 4 0 R >>", 4).is_err());
+        assert!(check_syntax(b"<< /A (esc \\) still) >>", 4).is_ok());
+        assert!(check_syntax(b"", 1).is_ok());
+    }
+
+    /// If `qpdf` or `pdfinfo` is installed, it must accept our output; skipped otherwise.
+    #[test]
+    fn external_checkers_accept_output() {
+        let pages: Vec<PageScene> = (0..3).map(|_| scene()).collect();
+        let pdf = write_pdf(&pages, "Report (draft) \u{e9}");
+        let dir = std::env::temp_dir().join(format!("sp_pdf_ext_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("check.pdf");
+        std::fs::write(&path, &pdf).unwrap();
+        let run = |tool: &str, args: &[&str]| {
+            std::process::Command::new(tool)
+                .args(args)
+                .arg(&path)
+                .output()
+                .ok()
+        };
+        if let Some(out) = run("qpdf", &["--check"]) {
+            let log = String::from_utf8_lossy(&out.stdout);
+            assert!(out.status.success(), "qpdf --check failed: {log}");
+            assert!(!log.contains("WARNING"), "qpdf warnings: {log}");
+        } else {
+            eprintln!("qpdf not installed; skipped");
+        }
+        if let Some(out) = run("pdfinfo", &[]) {
+            let log = String::from_utf8_lossy(&out.stdout);
+            assert!(out.status.success(), "pdfinfo failed: {log}");
+            assert!(
+                log.lines()
+                    .any(|l| l.starts_with("Pages:") && l.trim_end().ends_with('3'))
+            );
+        } else {
+            eprintln!("pdfinfo not installed; skipped");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

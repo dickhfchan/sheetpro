@@ -56,6 +56,9 @@ pub fn paper_size(code: u32) -> (f32, f32) {
     }
 }
 
+/// An inclusive run of rows or columns.
+pub type Span = (u32, u32);
+
 /// What to print instead of the sheet's print area.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PrintOptions {
@@ -96,7 +99,64 @@ pub struct Pagination {
     pub heading_h_px: f32,
 }
 
+/// How a page edge is drawn in page break preview.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EdgeKind {
+    /// Outer edge of a print area (solid).
+    Area,
+    /// A manual page break (solid).
+    Manual,
+    /// An automatic page break (dashed).
+    Auto,
+}
+
+/// A page's body rectangle in cell coordinates, with the kind of each edge, for the shell's
+/// page break preview and page layout views.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageBound {
+    /// 1-based page number within this sheet.
+    pub number: usize,
+    pub rows: (u32, u32),
+    pub cols: (u32, u32),
+    pub top: EdgeKind,
+    pub bottom: EdgeKind,
+    pub left: EdgeKind,
+    pub right: EdgeKind,
+}
+
 impl Pagination {
+    /// Page bodies with edge kinds (an edge between two pages is `Manual` when a manual
+    /// break starts the following page; fit-to-page ignores manual breaks).
+    pub fn bounds(&self) -> Vec<PageBound> {
+        let fit = self.setup.fit_width.is_some() || self.setup.fit_height.is_some();
+        let kind = |at_edge: bool, breaks: &BTreeSet<u32>, line: Option<u32>| {
+            if at_edge {
+                EdgeKind::Area
+            } else if !fit && line.is_some_and(|l| breaks.contains(&l)) {
+                EdgeKind::Manual
+            } else {
+                EdgeKind::Auto
+            }
+        };
+        let (rb, cb) = (&self.setup.row_breaks, &self.setup.col_breaks);
+        self.pages
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| {
+                let a = self.areas.get(p.area)?;
+                Some(PageBound {
+                    number: i + 1,
+                    rows: p.rows,
+                    cols: p.cols,
+                    top: kind(p.rows.0 <= a.start.row, rb, Some(p.rows.0)),
+                    bottom: kind(p.rows.1 >= a.end.row, rb, p.rows.1.checked_add(1)),
+                    left: kind(p.cols.0 <= a.start.col, cb, Some(p.cols.0)),
+                    right: kind(p.cols.1 >= a.end.col, cb, p.cols.1.checked_add(1)),
+                })
+            })
+            .collect()
+    }
+
     /// Index of the page whose body shows `a`.
     pub fn page_of(&self, a: CellAddr) -> Option<usize> {
         self.pages.iter().position(|p| {
@@ -191,7 +251,7 @@ pub fn print_area(wb: &Workbook, sheet: usize) -> Vec<CellRange> {
 }
 
 /// Repeated title rows and columns from `_xlnm.Print_Titles`.
-pub fn print_titles(wb: &Workbook, sheet: usize) -> (Option<(u32, u32)>, Option<(u32, u32)>) {
+pub fn print_titles(wb: &Workbook, sheet: usize) -> (Option<Span>, Option<Span>) {
     let mut rows = None;
     let mut cols = None;
     if let Some(f) = builtin(wb, sheet, PRINT_TITLES) {
@@ -296,7 +356,11 @@ pub fn paginate(wb: &Workbook, sheet_idx: usize, opts: &PrintOptions) -> Paginat
     };
     let content = content_range(sheet);
     let areas: Vec<CellRange> = match &opts.ranges {
-        Some(r) => r.clone(),
+        // Explicit ranges (a selection) print only where there is content.
+        Some(r) => r
+            .iter()
+            .filter_map(|x| content.and_then(|c| x.intersect(&c)))
+            .collect(),
         None => {
             let pa = if opts.ignore_print_area {
                 Vec::new()
@@ -395,26 +459,33 @@ pub fn paginate(wb: &Workbook, sheet_idx: usize, opts: &PrintOptions) -> Paginat
             cb,
         );
         let mut push = |r: (u32, u32), c: (u32, u32)| {
-            if out.pages.len() < MAX_PAGES {
-                out.pages.push(Page {
-                    area: ai,
-                    rows: r,
-                    cols: c,
-                    title_rows: title_rows.filter(|t| r.0 > t.1),
-                    title_cols: title_cols.filter(|t| c.0 > t.1),
-                });
+            if out.pages.len() >= MAX_PAGES {
+                return false;
             }
+            out.pages.push(Page {
+                area: ai,
+                rows: r,
+                cols: c,
+                title_rows: title_rows.filter(|t| r.0 > t.1),
+                title_cols: title_cols.filter(|t| c.0 > t.1),
+            });
+            true
         };
+        // Stop as soon as the page cap is reached (rows × cols can be huge).
         if setup.over_then_down {
-            for r in &rows {
+            'outer: for r in &rows {
                 for c in &cols {
-                    push(*r, *c);
+                    if !push(*r, *c) {
+                        break 'outer;
+                    }
                 }
             }
         } else {
-            for c in &cols {
+            'outer2: for c in &cols {
                 for r in &rows {
-                    push(*r, *c);
+                    if !push(*r, *c) {
+                        break 'outer2;
+                    }
                 }
             }
         }
@@ -825,14 +896,7 @@ pub fn page_scene(
             if rows.is_empty() || cols.is_empty() {
                 continue;
             }
-            draw_quadrant(
-                &cx,
-                &mut items,
-                rows,
-                cols,
-                (*x0, *y0),
-                *rbody && *cbody,
-            );
+            draw_quadrant(&cx, &mut items, rows, cols, (*x0, *y0), *rbody && *cbody);
         }
     }
     if pg.heading_w_px > 0.0 {
@@ -848,7 +912,14 @@ pub fn page_scene(
     };
     if !head.is_empty() {
         let top = (m.header * 72.0) as f32;
-        draw_hf(&mut items, &hf_sections(head, hf), (l, r), top, None, hf_scale);
+        draw_hf(
+            &mut items,
+            &hf_sections(head, hf),
+            (l, r),
+            top,
+            None,
+            hf_scale,
+        );
     }
     if !foot.is_empty() {
         let bottom = pg.height - (m.footer * 72.0) as f32;
@@ -1285,8 +1356,7 @@ fn cell_text(
                 Align::Right => x + w - pad - indent - tw,
                 Align::Center => x + (w - tw) / 2.0,
             };
-            let base =
-                top + i as f32 * line_h + (line_h - (asc + desc) * size) / 2.0 + asc * size;
+            let base = top + i as f32 * line_h + (line_h - (asc + desc) * size) / 2.0 + asc * size;
             items.push(Item::Text {
                 x: tx,
                 y: base,
@@ -1588,6 +1658,29 @@ mod tests {
     }
 
     #[test]
+    fn page_bounds_edge_kinds() {
+        let mut wb = sheet_with(60, 3);
+        ps(&mut wb).row_breaks.insert(10);
+        let pg = paginate(&wb, 0, &PrintOptions::default());
+        let b = pg.bounds();
+        assert_eq!(b.len(), pg.pages.len());
+        assert_eq!(b[0].number, 1);
+        assert_eq!(b[0].top, EdgeKind::Area);
+        assert_eq!(b[0].bottom, EdgeKind::Manual);
+        assert_eq!(b[1].top, EdgeKind::Manual);
+        assert_eq!(b[1].bottom, EdgeKind::Auto);
+        assert_eq!(b[2].top, EdgeKind::Auto);
+        assert_eq!(b[2].bottom, EdgeKind::Area);
+        assert_eq!((b[0].left, b[0].right), (EdgeKind::Area, EdgeKind::Area));
+        // Fit-to ignores manual breaks.
+        ps(&mut wb).fit_height = Some(1);
+        ps(&mut wb).fit_width = Some(1);
+        let b = paginate(&wb, 0, &PrintOptions::default()).bounds();
+        assert_eq!(b.len(), 1);
+        assert_eq!(b[0].bottom, EdgeKind::Area);
+    }
+
+    #[test]
     fn fit_to_pages() {
         let mut wb = sheet_with(200, 30);
         ps(&mut wb).fit_width = Some(1);
@@ -1634,7 +1727,10 @@ mod tests {
         assert_eq!(pg.title_cols, Some((0, 0)));
         // Title rows (40px) and column A (64px) reduce the space: 43 body rows per page.
         assert_eq!(pg.pages[0].rows, (0, 42));
-        assert_eq!(pg.pages[0].title_rows, None, "first page shows them in place");
+        assert_eq!(
+            pg.pages[0].title_rows, None,
+            "first page shows them in place"
+        );
         assert_eq!(pg.pages[1].title_rows, Some((0, 1)));
         assert_eq!(pg.pages[1].title_cols, None, "column A is in the body");
         let sc = page_scene(
@@ -1661,8 +1757,16 @@ mod tests {
         assert_eq!(pg.pages[0].cols, (1, 1));
         // Empty sheet / missing sheet: nothing to print.
         let empty = Workbook::new();
-        assert!(paginate(&empty, 0, &PrintOptions::default()).pages.is_empty());
-        assert!(paginate(&empty, 7, &PrintOptions::default()).pages.is_empty());
+        assert!(
+            paginate(&empty, 0, &PrintOptions::default())
+                .pages
+                .is_empty()
+        );
+        assert!(
+            paginate(&empty, 7, &PrintOptions::default())
+                .pages
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1685,7 +1789,10 @@ mod tests {
                 "Book.xlsx 1/2/2026 10:00".into()
             ]
         );
-        assert_eq!(hf_plain("Plain && simple &P+10", &ctx)[1], "Plain & simple 13");
+        assert_eq!(
+            hf_plain("Plain && simple &P+10", &ctx)[1],
+            "Plain & simple 13"
+        );
         let s = hf_sections("&\"Arial,Bold Italic\"&14Big&B &KFF0000x", &ctx);
         assert_eq!(s[1][0].text, "Big");
         assert!(s[1][0].bold && s[1][0].italic);
@@ -1693,7 +1800,15 @@ mod tests {
         assert!(!s[1][1].bold);
         assert_eq!(s[1][2].color, Some(Color(255, 0, 0)));
         // Hostile input doesn't panic.
-        for code in ["&", "&\"", "&K", "&P+", "&999999999", "&Z&Q&L&&&", "&P-99999999999"] {
+        for code in [
+            "&",
+            "&\"",
+            "&K",
+            "&P+",
+            "&999999999",
+            "&Z&Q&L&&&",
+            "&P-99999999999",
+        ] {
             let _ = hf_sections(code, &ctx);
         }
     }
@@ -1727,7 +1842,10 @@ mod tests {
         for want in ["A", "B", "1", "3", "Report 1", "Page 1 of 1"] {
             assert!(t.iter().any(|s| s == want), "{want} in {t:?}");
         }
-        assert!(t.iter().filter(|s| s.contains("long")).count() == 1, "{t:?}");
+        assert!(
+            t.iter().filter(|s| s.contains("long")).count() == 1,
+            "{t:?}"
+        );
         assert!(t.iter().any(|s| s.contains("lines")), "wrapped: {t:?}");
         fn has_fill(items: &[Item]) -> bool {
             items.iter().any(|i| match i {

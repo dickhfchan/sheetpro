@@ -15,7 +15,12 @@ fn flag(v: Option<&str>, default: bool) -> bool {
 pub fn read_header_footer(n: &Node) -> HeaderFooter {
     let text = |name: &str| {
         n.child(name)
-            .map(|c| unescape_ooxml(&c.all_text()).chars().take(MAX_LEN).collect())
+            .map(|c| {
+                unescape_ooxml(&c.all_text())
+                    .chars()
+                    .take(MAX_LEN)
+                    .collect()
+            })
             .unwrap_or_default()
     };
     HeaderFooter {

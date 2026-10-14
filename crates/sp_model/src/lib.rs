@@ -16,8 +16,9 @@ pub use condfmt::{
 };
 pub use features::{
     AllowEditRange, AutoFilter, Comment, CommentKind, CommentReply, DataValidation, ErrorStyle,
-    FilterColumn, FilterCond, FilterCriteria, HeaderFooter, Hyperlink, Margins, Orientation, Outline, PageSetup,
-    PasswordHash, SheetProtection, ValidationKind, ValidationOp, WorkbookProtection,
+    FilterColumn, FilterCond, FilterCriteria, HeaderFooter, Hyperlink, Margins, Orientation,
+    Outline, PageSetup, PasswordHash, SheetProtection, ValidationKind, ValidationOp,
+    WorkbookProtection,
 };
 pub use style::{Border, BorderStyle, Color, HAlign, Style, StyleId, StyleTable, VAlign};
 pub use table::{Table, TableColumn};

@@ -468,7 +468,7 @@ impl HeaderFooter {
     pub fn for_page(&self, page: usize) -> (&str, &str) {
         if self.different_first && page == 1 {
             (&self.first_header, &self.first_footer)
-        } else if self.different_odd_even && page % 2 == 0 {
+        } else if self.different_odd_even && page.is_multiple_of(2) {
             (&self.even_header, &self.even_footer)
         } else {
             (&self.odd_header, &self.odd_footer)
