@@ -29,3 +29,7 @@ description = "Lay out one 1600x1000 screen at row 50k (must fit in a frame)"
 [bench.sort_rows]
 ms = 2000.0
 description = "Sort 100k rows x 4 cols descending by column A"
+
+[bench.pdf_export]
+ms = 600.0
+description = "Export a 10k-row x 10-col report to PDF (paginate, lay out pages, write file)"
