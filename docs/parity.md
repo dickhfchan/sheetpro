@@ -6,27 +6,27 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 
 | Surface | Live | Total | % |
 |---|---|---|---|
-| Commands (ribbon + keyboard) | 267 | 304 | 87.8% |
-| Worksheet functions | 496 | 514 | 96.5% |
-| **All** | **763** | **818** | **93.3%** |
+| Commands (ribbon + keyboard) | 294 | 304 | 96.7% |
+| Worksheet functions | 502 | 514 | 97.7% |
+| **All** | **796** | **818** | **97.3%** |
 
 ## Commands by tab
 
 | Tab | Live | Total | Missing |
 |---|---|---|---|
-| Data | 17 | 23 | `data.refresh_all` `data.consolidate` `data.what_if.scenario` `data.what_if.goal_seek` `data.what_if.data_table` `data.forecast_sheet` |
-| File | 13 | 15 | `file.export.pdf` `file.print` |
+| Data | 23 | 23 | — |
+| File | 15 | 15 | — |
 | Format Cells | 1 | 1 | — |
-| Formulas | 15 | 23 | `formulas.library.financial` `formulas.library.logical` `formulas.library.text` `formulas.library.datetime` `formulas.library.lookup` `formulas.library.math` `formulas.library.more` `formulas.use_in_formula` |
-| Home | 110 | 112 | `home.styles.cell_styles` `home.editing.flash_fill` |
-| Insert | 15 | 24 | `insert.pivot_table` `insert.picture` `insert.shapes` `insert.slicer` `insert.text_box` `insert.header_footer` `insert.symbol` `insert.equation` `insert.checkbox` |
+| Formulas | 23 | 23 | — |
+| Home | 111 | 112 | `home.editing.flash_fill` |
+| Insert | 19 | 24 | `insert.picture` `insert.shapes` `insert.text_box` `insert.equation` `insert.checkbox` |
 | Name Box | 1 | 1 | — |
 | Page Layout | 14 | 16 | `layout.themes` `layout.background` |
 | Quick Access | 2 | 2 | — |
 | Review | 11 | 12 | `review.spelling` |
 | Sheet tabs | 3 | 3 | — |
-| View | 16 | 20 | `view.page_break_preview` `view.page_layout` `view.ruler` `view.macros` |
-| keyboard | 47 | 50 | `cell.newline` `cell.toggle_absolute` `cell.array_enter` |
+| View | 19 | 20 | `view.macros` |
+| keyboard | 50 | 50 | — |
 | mouse | 2 | 2 | — |
 
 ## Functions by category
@@ -37,9 +37,9 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 | Logical | 19 | 19 | — |
 | Text | 47 | 47 | — |
 | Date & Time | 25 | 25 | — |
-| Lookup & Reference | 37 | 40 | GROUPBY IMAGE PIVOTBY |
+| Lookup & Reference | 39 | 40 | IMAGE |
 | Information | 21 | 21 | — |
-| Statistical | 107 | 111 | FORECAST.ETS FORECAST.ETS.CONFINT FORECAST.ETS.SEASONALITY FORECAST.ETS.STAT |
+| Statistical | 111 | 111 | — |
 | Financial | 55 | 56 | STOCKHISTORY |
 | Engineering | 54 | 54 | — |
 | Database | 12 | 12 | — |
@@ -53,3 +53,4 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 - command `edit.find_all`
 - command `table.design`
 - command `app.report_problem`
+- function `TABLE`

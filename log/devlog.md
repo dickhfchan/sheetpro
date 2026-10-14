@@ -139,3 +139,50 @@ Still open:
 - Ribbon groups overflow/overlap text when a tab has many commands (seen on Home in charts.png).
 - Missing commands (45): pivot tables, slicers, pictures/shapes, print/PDF, windows/split, themes.
 - Re-baseline perf on an idle machine.
+
+## 2026-10-14 — Wave 4 (4 parallel arcs, resumed)
+
+The wave was launched 2026-10-12 and interrupted; each arc's agent was relaunched in its existing
+worktree (`../sheetpro-wave4/<arc>`) to finish its predecessor's partial commits and uncommitted
+work (desktop had been left with a broken build).
+
+Landed:
+- pivots: `sp_model::pivot`, `sp_formula::{pivot,whatif}`, `pivot_cmds`/`whatif_cmds`:
+  insert.pivot_table, data.refresh_all, insert.slicer (model only), goal seek, data tables
+  (`<f t="dataTable">` round-trip), scenarios, consolidate, forecast sheet; GETPIVOTDATA, GROUPBY,
+  PIVOTBY, FORECAST.ETS family; `sp_io::xlsx_pivots` adopts pivots only when every pivot in the
+  workbook is modelled, else passes all through; unchanged pivots written back verbatim.
+- print: `sp_render::{paginate,std14}`, `sp_io::pdf` (+ structural validator), `print_cmds`,
+  `sp_ui::page_view` (page break preview, page layout, print preview); `pdf_export` benchmark;
+  fixed a duplicate `view.normal` registration that never left page break preview.
+- desktop: settings + Options (every setting read; scorecard now scans app settings too),
+  background autosave + recovery, recent files, rfd dialogs, real split panes and extra windows,
+  local Report a Problem bundle, `cargo xtask package` (macOS .app + zip, ad-hoc signed).
+- gridui: `ui_cmds` (function library menus, F4, array enter, symbols, cell styles), in-grid
+  overlays (filter dropdown, comment/note cards, validation list, chart select/move/resize),
+  CF new-rule/manager and table dialogs, ribbon overflow (`sp_ui::ribbon`), egui_kittest tests.
+
+Integration: conflicts only in registration lines (`commands/mod.rs`, `sp_io/lib.rs`,
+`sp_ui/lib.rs`, `ViewState`) and architecture.md; kept both sides. Grid paint order is page
+lines, then overlays. Dropped two imports made unused by the ribbon move. Checked split view with
+filter/comment/chart overlays and with page break preview by screenshot.
+
+Numbers (before → after):
+- Commands 259 → 294/304; functions 496 → 502/514 (796/818, 97.3%). Floors raised.
+- Oracles unchanged: files 175/218, cells 68,359/73,244 (93.3%); round-trip and package
+  validity 259/259. Workflow tests 11 → 14.
+- Perf @100k (load avg ~43): edit 1.9 ms, xlsx_load 161 ms, xlsx_save 359 ms, pdf_export
+  (223 pages) 186 ms; all within budget.
+
+Still open:
+- In split + page break preview, the "Page N" watermark is drawn per pane and overlaps cell text
+  in a short pane; the bottom pane repeats column headings; no four-way split or draggable bar.
+- Pivots: slicer drawing and slicer/scenario .xlsx parts; grouping, calculated fields,
+  value/label filters, manual item order; open a regenerated pivot file in the target app;
+  FORECAST.ETS has no oracle cases; table renames don't update pivot sources.
+- PDF: no font embedding (non-WinAnsi prints `?`), &D/&T in UTC, page views repaginate per frame.
+- CF manager applies each action as its own undo step; no contextual Table Design tab.
+- R1C1 affects headings/Name Box only, not formula text; Finder open-file events; notarization.
+- `Sheet.analysis` (pivots/slicers) has no in-grid reader yet (scorecard dead settings).
+- Missing commands (10): picture, shapes, text box, checkbox, equation, themes, background,
+  spelling, flash fill, macros. Missing functions (12): IMAGE, STOCKHISTORY, Web & Cube (10).

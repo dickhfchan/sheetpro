@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-11",
+  "date": "2026-10-14",
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
@@ -2441,11 +2441,11 @@
       "skipped_volatile": 4,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!B28 =B27-1 → expected 46158, got 46305",
-        "Sheet1!B29 =B27-1.2 → expected 46157.8, got 46304.8",
-        "Sheet1!B30 =B27-0.8 → expected 46158.2, got 46305.2",
-        "Sheet1!B31 =B30+10 → expected 46168.2, got 46315.2",
-        "TimePeriod!A3 =A2+10 → expected 46169, got 46316"
+        "Sheet1!B28 =B27-1 → expected 46158, got 46308",
+        "Sheet1!B29 =B27-1.2 → expected 46157.8, got 46307.8",
+        "Sheet1!B30 =B27-0.8 → expected 46158.2, got 46308.2",
+        "Sheet1!B31 =B30+10 → expected 46168.2, got 46318.2",
+        "TimePeriod!A3 =A2+10 → expected 46169, got 46319"
       ]
     },
     {
@@ -2756,11 +2756,11 @@
       "skipped_volatile": 3,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Plan!I2 =I3 → expected 46226, got 46306",
+        "Plan!I2 =I3 → expected 46226, got 46309",
         "Plan!R2 =IF(DAY(R3)=1,R3,\"\") → expected 46235, got ",
-        "Plan!AD2 =IF(DAY(AD3)=1,AD3,\"\") → expected , got 46327",
+        "Plan!AA2 =IF(DAY(AA3)=1,AA3,\"\") → expected , got 46327",
         "Plan!AW2 =IF(DAY(AW3)=1,AW3,\"\") → expected 46266, got ",
-        "Plan!BH2 =IF(DAY(BH3)=1,BH3,\"\") → expected , got 46357"
+        "Plan!BE2 =IF(DAY(BE3)=1,BE3,\"\") → expected , got 46357"
       ]
     },
     {
@@ -2772,7 +2772,7 @@
       "skipped_volatile": 2,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Invoice!H5 =WORKDAY(H4,PaymentTermsDays) → expected 46275, got 46346"
+        "Invoice!H5 =WORKDAY(H4,PaymentTermsDays) → expected 46275, got 46351"
       ]
     },
     {
@@ -2794,11 +2794,11 @@
       "skipped_volatile": 2,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Timesheet!A3 =F1+SEQUENCE(DAY(EOMONTH(F1,0)))-1 → expected 46226, got 46306",
-        "Timesheet!B3 =TEXT(A3#,\"ddd\") → expected Thu, got Sun",
-        "Overview!A3 =ISOWEEKNUM(Timesheet!F1) → expected 30, got 41",
-        "Overview!A4 =A3+1 → expected 31, got 42",
-        "Overview!A5 =A4+1 → expected 32, got 43"
+        "Timesheet!A3 =F1+SEQUENCE(DAY(EOMONTH(F1,0)))-1 → expected 46226, got 46309",
+        "Timesheet!B3 =TEXT(A3#,\"ddd\") → expected Thu, got Wed",
+        "Overview!A3 =ISOWEEKNUM(Timesheet!F1) → expected 30, got 42",
+        "Overview!A4 =A3+1 → expected 31, got 43",
+        "Overview!A5 =A4+1 → expected 32, got 44"
       ]
     },
     {
