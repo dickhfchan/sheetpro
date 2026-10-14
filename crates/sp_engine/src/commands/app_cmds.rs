@@ -34,10 +34,15 @@ pub struct WindowState {
     /// All windows; empty means just the one implicit window. `current` indexes this.
     pub windows: Vec<WindowView>,
     pub current: usize,
-    /// Split pane origin (first row/column of the second pane) of the current view.
+    /// Split pane origin: the cell the split was made at (its row starts the bottom pane,
+    /// or its column the right pane when it is in row 1).
     pub split: Option<CellAddr>,
-    /// Scroll position of the second pane.
+    /// Scroll position of the first (top/left) pane, which scrolls independently. The
+    /// second pane is the main one: it uses `ViewState::scroll`, gets keyboard navigation
+    /// and Page Up/Down.
     pub split_scroll: CellAddr,
+    /// Rows (top/bottom split) or columns (left/right split) shown in the first pane.
+    pub split_size: u32,
     /// Set when the last visible window was hidden: the shell minimizes and clears it.
     pub minimize_requested: bool,
 }
@@ -192,18 +197,58 @@ fn split(s: &mut Session, p: &Json) -> CmdResult {
         None => at.is_some() || s.view.window.split.is_none(),
     };
     if !on {
-        s.view.window.split = None;
+        // One pane again, continuing from the first pane's position.
+        if s.view.window.split.take().is_some() {
+            s.view.scroll = s.view.window.split_scroll;
+        }
         return Ok(Json::Null);
     }
-    // Default: split at the active cell; at A1, through the middle of the visible page.
-    let a = at.unwrap_or(s.sel.active);
+    // Split and freeze are exclusive: splitting a frozen sheet unfreezes it and splits at
+    // the freeze position (the shell also ignores a split while the sheet is frozen).
+    let frozen = s.wb.sheet(s.sheet_index()).and_then(|sh| sh.freeze);
+    if frozen.is_some() {
+        s.execute("view.unfreeze_panes", &json!({}))?;
+    }
+    // Default: split at the active cell (or the old freeze position); at A1, through the
+    // middle of the visible page.
+    let a = at.or(frozen).unwrap_or(s.sel.active);
+    let scroll = s.view.scroll;
     let origin = if a.row == 0 && a.col == 0 {
-        CellAddr::new(s.view.scroll.row + s.view.page_rows / 2, 0)
+        CellAddr::new(
+            scroll
+                .row
+                .saturating_add((s.view.page_rows / 2).max(1))
+                .min(sp_core::MAX_ROWS - 1),
+            0,
+        )
     } else {
         a
     };
-    s.view.window.split = Some(origin);
-    s.view.window.split_scroll = s.view.scroll;
+    // As in the target app the panes continue each other: the first pane keeps showing the
+    // rows (columns) above (left of) the split, the second starts at the split. If the
+    // split cell is off screen, the first pane gets half a page.
+    let by_rows = origin.row > 0;
+    let (start, at_line, page) = if by_rows {
+        (scroll.row, origin.row, s.view.page_rows)
+    } else {
+        (scroll.col, origin.col, s.view.page_cols)
+    };
+    let size = if at_line > start && at_line - start < page.max(2) {
+        at_line - start
+    } else {
+        (page / 2).max(1)
+    };
+    let first_start = at_line.saturating_sub(size);
+    let w = &mut s.view.window;
+    w.split = Some(origin);
+    w.split_size = size;
+    if by_rows {
+        w.split_scroll = CellAddr::new(first_start, scroll.col);
+        s.view.scroll = CellAddr::new(at_line, scroll.col);
+    } else {
+        w.split_scroll = CellAddr::new(scroll.row, first_start);
+        s.view.scroll = CellAddr::new(scroll.row, at_line);
+    }
     Ok(json!(origin.to_a1()))
 }
 
@@ -749,7 +794,9 @@ fn unique_dir(base: &Path, prefix: &str) -> Result<PathBuf, String> {
     Err("could not create a report directory".into())
 }
 
-/// Write a problem-report bundle into `<app dir>/reports/report-<time>-<n>/`.
+/// Write a problem-report bundle into `<app dir>/reports/report-<time>-<n>/`:
+/// `report.txt` (version, OS, note, session summary), `settings.toml`, `commands.txt`
+/// (recent command ids, no params), `log-tail.txt`, optionally `workbook.xlsx`.
 pub fn write_report(
     app_dir: &Path,
     s: &Session,
@@ -769,6 +816,18 @@ pub fn write_report(
     settings::write_atomic(&dir.join("report.txt"), text.as_bytes())?;
     let log = settings::log_tail(app_dir, 64 * 1024);
     settings::write_atomic(&dir.join("log-tail.txt"), log.as_bytes())?;
+    // Settings minus the recent-files list (file paths are personal).
+    let mut prefs = Settings::load(app_dir);
+    let recent = prefs.recent_files.len();
+    prefs.recent_files.clear();
+    let prefs_text = format!(
+        "# recent_files: {recent} entries (paths omitted)\n{}",
+        toml::to_string(&prefs).unwrap_or_default()
+    );
+    settings::write_atomic(&dir.join("settings.toml"), prefs_text.as_bytes())?;
+    let mut cmds = settings::command_log().join("\n");
+    cmds.push('\n');
+    settings::write_atomic(&dir.join("commands.txt"), cmds.as_bytes())?;
     if include_workbook {
         sp_io::save(&s.wb, &dir.join("workbook.xlsx")).map_err(|e| e.to_string())?;
     }
@@ -1174,6 +1233,42 @@ mod tests {
     }
 
     #[test]
+    fn split_replaces_freeze_and_keeps_independent_scroll() {
+        let mut s = Session::new();
+        s.execute("view.freeze_panes", &json!({"cell": "C4"}))
+            .unwrap();
+        assert_eq!(s.execute("view.split", &json!({})).unwrap(), json!("C4"));
+        assert!(s.wb.sheets[0].freeze.is_none());
+        assert_eq!(s.view.window.split, Some(CellAddr::new(3, 2)));
+        // Top pane: rows 1-3; bottom (main) pane continues at row 4.
+        assert_eq!(s.view.window.split_size, 3);
+        assert_eq!(s.view.window.split_scroll, CellAddr::new(0, 0));
+        assert_eq!(s.view.scroll, CellAddr::new(3, 0));
+        // The panes scroll independently.
+        s.view.window.split_scroll = CellAddr::new(500, 0);
+        s.execute("nav.goto_cell", &json!({"reference": "A900"}))
+            .unwrap();
+        assert_eq!(s.view.window.split_scroll, CellAddr::new(500, 0));
+        assert!(s.view.scroll.row > 800);
+        // A split cell off screen gives the first pane half a page.
+        s.execute("view.split", &json!({"on": false})).unwrap();
+        assert_eq!(s.view.scroll, CellAddr::new(500, 0));
+        s.view.scroll = CellAddr::new(0, 0);
+        s.execute("view.split", &json!({"cell": "A200"})).unwrap();
+        assert_eq!(s.view.window.split_size, s.view.page_rows / 2);
+        assert_eq!(s.view.scroll.row, 199);
+        // Column split when the cell is in row 1.
+        s.execute("view.split", &json!({"on": false})).unwrap();
+        s.view.scroll = CellAddr::new(0, 0);
+        s.execute("view.split", &json!({"cell": "D1"})).unwrap();
+        assert_eq!((s.view.window.split_size, s.view.scroll.col), (3, 3));
+        // Unsplitting leaves no freeze behind and continues from the first pane.
+        s.execute("view.split", &json!({})).unwrap();
+        assert_eq!(s.view.scroll, CellAddr::new(0, 0));
+        assert!(s.view.window.split.is_none() && s.wb.sheets[0].freeze.is_none());
+    }
+
+    #[test]
     fn report_bundle_written_locally() {
         let d = AppDir::new("report");
         settings::log_line("something happened");
@@ -1196,6 +1291,11 @@ mod tests {
                 .contains("something happened")
         );
         assert!(dir.join("workbook.xlsx").exists());
+        let prefs = std::fs::read_to_string(dir.join("settings.toml")).unwrap();
+        assert!(prefs.contains("autosave_interval_secs") && prefs.contains("calc_mode"));
+        let cmds = std::fs::read_to_string(dir.join("commands.txt")).unwrap();
+        assert!(cmds.contains("cell.set"));
+        assert!(!cmds.contains("\"input\""), "params are never logged");
         let crash = write_crash_report(&d.0, "boom at x.rs:1").unwrap();
         assert!(
             std::fs::read_to_string(crash.join("crash.txt"))

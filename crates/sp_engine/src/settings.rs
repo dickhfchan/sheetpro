@@ -12,6 +12,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+/// Default gridline colour (the light theme's).
+pub const DEFAULT_GRIDLINE: &str = "#DADCE0";
 /// Most-recently-used list length cap.
 pub const MAX_RECENT: usize = 25;
 /// Largest settings file we read (anything bigger is treated as corrupt).
@@ -31,9 +33,10 @@ pub struct Settings {
     pub default_font_size: f64,
     /// "automatic" or "manual": applied to new workbooks (and to the current one when set).
     pub calc_mode: String,
-    /// R1C1 reference display (stored; display not implemented yet).
+    /// R1C1 reference style: numbered column headings and R1C1 cell names in the Name Box
+    /// (formula text is still shown in A1 style).
     pub r1c1: bool,
-    /// Gridline colour as `#RRGGBB` (stored; the grid does not read it yet).
+    /// Gridline colour as `#RRGGBB`.
     pub gridline_color: String,
     /// Recent-files list length.
     pub recent_count: usize,
@@ -48,7 +51,7 @@ impl Default for Settings {
             default_font_size: 11.0,
             calc_mode: "automatic".into(),
             r1c1: false,
-            gridline_color: "#D4D4D4".into(),
+            gridline_color: DEFAULT_GRIDLINE.into(),
             recent_count: 10,
         }
     }
@@ -63,8 +66,11 @@ pub const KEYS: [(&str, &str); 7] = [
     ("default_font", "font name for new workbooks"),
     ("default_font_size", "font size for new workbooks (1-409)"),
     ("calc_mode", "\"automatic\" | \"manual\""),
-    ("r1c1", "R1C1 reference style (stub: stored only)"),
-    ("gridline_color", "#RRGGBB (stub: stored only)"),
+    (
+        "r1c1",
+        "R1C1 reference style: numbered column headings, R1C1 Name Box (formulas stay A1)",
+    ),
+    ("gridline_color", "gridline colour, #RRGGBB"),
     ("recent_count", "recent-files list length (0-25)"),
 ];
 
@@ -114,12 +120,8 @@ impl Settings {
             }
             "r1c1" => self.r1c1 = v.as_bool().ok_or_else(bad)?,
             "gridline_color" => {
-                let s = v.as_str().ok_or_else(bad)?;
-                let hex = s.strip_prefix('#').unwrap_or(s);
-                if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
-                    return Err(bad());
-                }
-                self.gridline_color = format!("#{}", hex.to_ascii_uppercase());
+                let [r, g, b] = v.as_str().and_then(parse_hex_rgb).ok_or_else(bad)?;
+                self.gridline_color = format!("#{r:02X}{g:02X}{b:02X}");
             }
             "recent_count" => {
                 let n = v
@@ -143,6 +145,11 @@ impl Settings {
             .truncate(self.recent_count.min(MAX_RECENT));
     }
 
+    /// The gridline colour as RGB, if it parses.
+    pub fn gridline_rgb(&self) -> Option<[u8; 3]> {
+        parse_hex_rgb(&self.gridline_color)
+    }
+
     /// Clamp values a hand-edited file may have broken.
     fn sanitize(mut self) -> Self {
         let d = Settings::default();
@@ -158,6 +165,9 @@ impl Settings {
         }
         if self.calc_mode != "automatic" && self.calc_mode != "manual" {
             self.calc_mode = d.calc_mode;
+        }
+        if parse_hex_rgb(&self.gridline_color).is_none() {
+            self.gridline_color = d.gridline_color;
         }
         self.recent_count = self.recent_count.min(MAX_RECENT);
         self.recent_files.truncate(self.recent_count);
@@ -206,6 +216,19 @@ impl Settings {
             sp_model::CalcMode::Automatic
         };
     }
+}
+
+/// `#RRGGBB` (or `RRGGBB`) as RGB.
+pub fn parse_hex_rgb(s: &str) -> Option<[u8; 3]> {
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let byte = |i: usize| {
+        hex.get(i..i + 2)
+            .and_then(|b| u8::from_str_radix(b, 16).ok())
+    };
+    Some([byte(0)?, byte(2)?, byte(4)?])
 }
 
 /// Write `bytes` to `path` via a sibling temp file and a rename (creating parent dirs).
@@ -294,6 +317,14 @@ pub fn current() -> Settings {
     app_dir().map(|d| Settings::load(&d)).unwrap_or_default()
 }
 
+/// Settings from the app dir, or `fallback` when no app dir is configured (so in-memory
+/// preferences survive in sessions without persistence).
+pub fn current_or(fallback: &Settings) -> Settings {
+    app_dir()
+        .map(|d| Settings::load(&d))
+        .unwrap_or_else(|| fallback.clone())
+}
+
 /// Load, change, save.
 pub fn update(
     f: impl FnOnce(&mut Settings) -> Result<(), String>,
@@ -303,6 +334,38 @@ pub fn update(
     f(&mut s).map_err(crate::CmdError::Param)?;
     s.save(&dir).map_err(crate::CmdError::Failed)?;
     Ok(s)
+}
+
+// ---------------------------------------------------------------------------------------
+// Recent command log (for problem reports): command ids and outcomes, never params or
+// cell contents. Per thread, bounded.
+
+const MAX_COMMAND_LOG: usize = 200;
+
+thread_local! {
+    static COMMAND_LOG: RefCell<std::collections::VecDeque<String>> =
+        const { RefCell::new(std::collections::VecDeque::new()) };
+}
+
+/// Record that command `id` ran (`Session::execute` calls this). Navigation and selection
+/// commands are skipped: they would push everything else out.
+pub fn record_command(id: &str, ok: bool) {
+    if id.starts_with("nav.") || id.starts_with("select.") {
+        return;
+    }
+    let line = format!("{} {id}{}", unix_now(), if ok { "" } else { " (failed)" });
+    COMMAND_LOG.with(|l| {
+        let mut l = l.borrow_mut();
+        while l.len() >= MAX_COMMAND_LOG {
+            l.pop_front();
+        }
+        l.push_back(line);
+    });
+}
+
+/// The recent command log of this thread, oldest first, one command per line.
+pub fn command_log() -> Vec<String> {
+    COMMAND_LOG.with(|l| l.borrow().iter().cloned().collect())
 }
 
 pub fn log_path(dir: &Path) -> PathBuf {
@@ -439,6 +502,36 @@ mod tests {
         assert_eq!(d.font_size_tenths, 140);
         assert_eq!(s.wb.calc_mode, sp_model::CalcMode::Manual);
         assert!(!s.dirty);
+    }
+
+    #[test]
+    fn command_log_is_bounded_and_skips_navigation() {
+        for i in 0..(MAX_COMMAND_LOG + 5) {
+            record_command(&format!("cmd.{i}"), i % 2 == 0);
+        }
+        record_command("nav.down", true);
+        let log = command_log();
+        assert_eq!(log.len(), MAX_COMMAND_LOG);
+        assert!(
+            log.last()
+                .unwrap()
+                .ends_with(&format!("cmd.{}", MAX_COMMAND_LOG + 4))
+        );
+        assert!(log.iter().any(|l| l.ends_with("(failed)")));
+        assert!(!log.iter().any(|l| l.contains("nav.")));
+    }
+
+    #[test]
+    fn gridline_colour_parses_and_sanitizes() {
+        assert_eq!(parse_hex_rgb("#DADCE0"), Some([0xDA, 0xDC, 0xE0]));
+        assert_eq!(parse_hex_rgb("zzzzzz"), None);
+        assert_eq!(parse_hex_rgb("#ÄÄÄ"), None);
+        assert_eq!(Settings::default().gridline_rgb(), Some([0xDA, 0xDC, 0xE0]));
+        let dir = temp_dir("grid");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("settings.toml"), "gridline_color = \"blue\"\n").unwrap();
+        assert_eq!(Settings::load(&dir).gridline_color, DEFAULT_GRIDLINE);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

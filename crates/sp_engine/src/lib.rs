@@ -271,6 +271,7 @@ impl Session {
         self.validate_entry = commands::validation_cmds::is_typing_command(id);
         let r = (cmd.spec.run)(self, params);
         self.validate_entry = false;
+        settings::record_command(id, r.is_ok());
         if r.is_ok()
             && id != "edit.repeat"
             && id != "edit.undo"
