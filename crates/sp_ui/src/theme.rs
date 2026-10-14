@@ -44,6 +44,36 @@ pub struct Theme {
     pub chart_grid: Color32,
     pub chart_text: Color32,
     pub chart_subtext: Color32,
+    /// AutoFilter / validation drop-down buttons drawn in cells.
+    pub dropdown_bg: Color32,
+    pub dropdown_border: Color32,
+    pub dropdown_glyph: Color32,
+    /// Funnel glyph of a column with an active filter.
+    pub filter_active: Color32,
+    /// Corner marks: notes (triangle) and threaded comments.
+    pub note_mark: Color32,
+    pub comment_mark: Color32,
+    pub note_bg: Color32,
+    pub note_border: Color32,
+    pub note_text: Color32,
+    pub comment_bg: Color32,
+    pub comment_author: Color32,
+    /// Data-validation input message box.
+    pub tip_bg: Color32,
+    pub tip_border: Color32,
+    /// Selected chart frame and its resize handles.
+    pub handle_fill: Color32,
+    pub handle_border: Color32,
+    pub drag_ghost: Color32,
+    /// Alert dialog icons (stop / warning / information).
+    pub alert_stop: Color32,
+    pub alert_warning: Color32,
+    pub alert_info: Color32,
+    /// Ribbon: tab strip text and the line between groups.
+    pub ribbon_tab_text: Color32,
+    pub ribbon_separator: Color32,
+    /// Text on accent-filled buttons.
+    pub accent_text: Color32,
 }
 
 pub const LIGHT: Theme = Theme {
@@ -86,6 +116,28 @@ pub const LIGHT: Theme = Theme {
     chart_grid: Color32::from_rgb(228, 228, 228),
     chart_text: Color32::from_rgb(64, 64, 64),
     chart_subtext: Color32::from_rgb(96, 96, 96),
+    dropdown_bg: Color32::from_rgb(246, 246, 246),
+    dropdown_border: Color32::from_rgb(160, 160, 160),
+    dropdown_glyph: Color32::from_rgb(70, 70, 70),
+    filter_active: Color32::from_rgb(33, 115, 70),
+    note_mark: Color32::from_rgb(210, 40, 40),
+    comment_mark: Color32::from_rgb(120, 70, 170),
+    note_bg: Color32::from_rgb(255, 253, 214),
+    note_border: Color32::from_rgb(150, 150, 120),
+    note_text: Color32::from_rgb(30, 30, 30),
+    comment_bg: Color32::WHITE,
+    comment_author: Color32::from_rgb(33, 115, 70),
+    tip_bg: Color32::from_rgb(255, 255, 238),
+    tip_border: Color32::from_rgb(120, 120, 120),
+    handle_fill: Color32::WHITE,
+    handle_border: Color32::from_rgb(90, 90, 90),
+    drag_ghost: Color32::from_rgb(33, 115, 70),
+    alert_stop: Color32::from_rgb(200, 40, 40),
+    alert_warning: Color32::from_rgb(220, 160, 20),
+    alert_info: Color32::from_rgb(40, 110, 200),
+    ribbon_tab_text: Color32::WHITE,
+    ribbon_separator: Color32::from_rgb(208, 208, 208),
+    accent_text: Color32::WHITE,
 };
 
 /// Default colours for chart series and sparklines, in order (cycled past the end).

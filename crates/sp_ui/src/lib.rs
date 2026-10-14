@@ -8,15 +8,17 @@ pub mod grid;
 mod menus;
 pub mod page_view;
 pub mod shell_hook;
+pub mod overlays;
+pub mod ribbon;
 pub mod theme;
 
 #[cfg(feature = "screenshot")]
 pub mod screenshot;
 
-use egui::{Align2, Color32, FontId, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
+use egui::{Align2, FontId, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 use serde_json::json;
 use sp_core::{CellAddr, CellRange, Value};
-use sp_engine::{Json, Session, catalog, registry};
+use sp_engine::{Json, Session, registry};
 use sp_render::{Align, layout};
 
 use theme::{LIGHT as T, color};
@@ -111,9 +113,58 @@ impl App {
             );
             let input = self.edit_buf.clone();
             self.exec("cell.set", json!({ "cell": cell, "input": input }));
-            if self.last_error.is_some() {
+            if let Some(e) = self.last_error.clone() {
+                let refused = self.validation_rule_at(sheet, at).is_some_and(|r| {
+                    r.error_style == sp_model::ErrorStyle::Stop
+                        && (e == r.error || (r.error.is_empty() && e.contains("data validation")))
+                });
+                if refused {
+                    // A Stop rule refused the entry: alert, then Retry / Cancel.
+                    self.last_error = None;
+                    self.session.view.editing = false;
+                    self.ui.dialog = Some(dialogs::Dialog::ValidationAlert(
+                        dialogs::grid_popups::ValidationAlert::new(
+                            &self.session,
+                            sheet,
+                            at,
+                            &input,
+                            &e,
+                        ),
+                    ));
+                    return;
+                }
                 // Keep the editor open so the user can fix the formula.
                 self.editing_cell = Some((sheet, at));
+                return;
+            }
+            // Warning / Information rules accept the entry and ask whether to keep it.
+            if let Some(rule) = self.validation_rule_at(sheet, at)
+                && rule.error_style != sp_model::ErrorStyle::Stop
+                && rule.show_error
+                && !sp_engine::commands::validation_cmds::is_valid(
+                    &self.session.wb,
+                    sheet,
+                    &rule,
+                    at,
+                )
+            {
+                let msg = if rule.error.is_empty() {
+                    "This value doesn't match the data validation restrictions defined for this cell."
+                        .to_string()
+                } else {
+                    rule.error.clone()
+                };
+                self.session.view.editing = false;
+                self.ui.dialog = Some(dialogs::Dialog::ValidationAlert(
+                    dialogs::grid_popups::ValidationAlert::new(
+                        &self.session,
+                        sheet,
+                        at,
+                        &input,
+                        &msg,
+                    ),
+                ));
+                self.sync_buffer();
                 return;
             }
         }
@@ -122,6 +173,15 @@ impl App {
             self.exec(next, json!({}));
         }
         self.sync_buffer();
+    }
+
+    /// The validation rule covering a cell (a copy), if any.
+    fn validation_rule_at(&self, sheet: usize, at: CellAddr) -> Option<sp_model::DataValidation> {
+        self.session
+            .wb
+            .sheet(sheet)
+            .and_then(|sh| sh.validation_at(at))
+            .cloned()
     }
 
     fn cancel_edit(&mut self) {
@@ -170,83 +230,6 @@ impl App {
         self.show_dialog(&ctx);
     }
 
-    fn ribbon(&mut self, ui: &mut egui::Ui) {
-        // Tab strip.
-        egui::Frame::NONE
-            .fill(T.ribbon_tab_bg)
-            .inner_margin(egui::Margin::symmetric(8, 2))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("SheetPro")
-                            .color(Color32::WHITE)
-                            .strong(),
-                    );
-                    ui.add_space(12.0);
-                    for tab in RIBBON_TABS {
-                        let active = self.session.view.ribbon_tab == tab;
-                        let text = egui::RichText::new(tab)
-                            .color(if active { T.accent } else { Color32::WHITE })
-                            .size(12.5);
-                        let b = egui::Button::new(text)
-                            .fill(if active {
-                                T.ribbon_tab_active
-                            } else {
-                                T.ribbon_tab_bg
-                            })
-                            .stroke(Stroke::NONE);
-                        if ui.add(b).clicked() {
-                            self.session.view.ribbon_tab = tab.to_string();
-                        }
-                    }
-                });
-            });
-        // Groups for the active tab, generated from the catalog.
-        let tab = self.session.view.ribbon_tab.clone();
-        let mut groups: Vec<(String, Vec<&'static catalog::CatalogItem>)> = Vec::new();
-        for item in catalog::commands() {
-            let mut parts = item.loc.split(" › ");
-            let (Some(t), g) = (parts.next(), parts.next()) else {
-                continue;
-            };
-            if t != tab {
-                continue;
-            }
-            let g = g.unwrap_or(t).to_string();
-            match groups.iter_mut().find(|(name, _)| *name == g) {
-                Some((_, v)) => v.push(item),
-                None => groups.push((g, vec![item])),
-            }
-        }
-        egui::Frame::NONE
-            .inner_margin(egui::Margin::symmetric(6, 4))
-            .show(ui, |ui| {
-                egui::ScrollArea::horizontal().show(ui, |ui| {
-                    ui.horizontal_top(|ui| {
-                        for (gname, items) in &groups {
-                            ui.vertical(|ui| {
-                                ui.set_max_height(84.0);
-                                egui::Grid::new(format!("grp-{gname}"))
-                                    .spacing([2.0, 1.0])
-                                    .show(ui, |ui| {
-                                        for (i, item) in items.iter().enumerate() {
-                                            self.ribbon_item(ui, item);
-                                            if i % 3 == 2 {
-                                                ui.end_row();
-                                            }
-                                        }
-                                    });
-                                ui.label(
-                                    egui::RichText::new(gname).size(10.0).color(T.group_label),
-                                );
-                            });
-                            ui.separator();
-                        }
-                    });
-                });
-            });
-    }
-
     fn formula_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let r = self.session.sel.range();
@@ -267,6 +250,9 @@ impl App {
             }
             ui.label(egui::RichText::new("fx").italics().color(T.group_label));
             let id = egui::Id::new("formula_editor");
+            if ui.memory(|m| m.has_focus(id)) {
+                self.editor_keys(ui, id);
+            }
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.edit_buf)
                     .id(id)
@@ -300,6 +286,83 @@ impl App {
                 }
             }
         });
+    }
+
+    /// Editor-only keys, handled before the text field sees them: Alt+Enter (line break),
+    /// F4 (cycle `$` on the reference at the caret), Ctrl+Shift+Enter (array formula).
+    fn editor_keys(&mut self, ui: &mut egui::Ui, id: egui::Id) {
+        let (cse, newline, f4) = ui.input_mut(|i| {
+            let cse = i.consume_key(
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                Key::Enter,
+            );
+            let nl = !cse && i.consume_key(egui::Modifiers::ALT, Key::Enter);
+            let f4 = i.consume_key(egui::Modifiers::NONE, Key::F4);
+            (cse, nl, f4)
+        });
+        if cse {
+            self.array_enter();
+            ui.memory_mut(|m| m.surrender_focus(id));
+            return;
+        }
+        if !(newline || f4) {
+            return;
+        }
+        let len = self.edit_buf.chars().count();
+        let caret = egui::TextEdit::load_state(ui.ctx(), id)
+            .and_then(|st| st.cursor.char_range())
+            .map_or(len, |r| r.primary.index.into());
+        let cmd = if newline {
+            "cell.newline"
+        } else {
+            "cell.toggle_absolute"
+        };
+        if let Ok(out) = self.query(cmd, json!({ "text": self.edit_buf, "caret": caret })) {
+            if let Some(t) = out.get("text").and_then(|v| v.as_str()) {
+                self.edit_buf = t.to_string();
+            }
+            let c = out
+                .get("caret")
+                .and_then(serde_json::Value::as_u64)
+                .map_or(caret, |c| c as usize);
+            if let Some(mut st) = egui::TextEdit::load_state(ui.ctx(), id) {
+                let cc = egui::text::CCursor::new(c);
+                st.cursor
+                    .set_char_range(Some(egui::text::CCursorRange::one(cc)));
+                st.store(ui.ctx(), id);
+            }
+        }
+    }
+
+    /// Ctrl+Shift+Enter: enter the edit buffer as a legacy array formula over the selection
+    /// (or just the edited cell when it is outside the selection).
+    pub fn array_enter(&mut self) {
+        let Some((sheet, at)) = self.editing_cell else {
+            return;
+        };
+        let sel = self.session.sel.range();
+        let range = if sel.contains(at) && sheet == self.session.sheet_index() {
+            sel
+        } else {
+            CellRange::single(at)
+        };
+        let name = self
+            .session
+            .wb
+            .sheets
+            .get(sheet)
+            .map(|s| sp_core::addr::quote_sheet_name(&s.name))
+            .unwrap_or_default();
+        let formula = self.edit_buf.clone();
+        self.exec(
+            "cell.array_enter",
+            json!({ "range": format!("{name}!{}", range.to_a1()), "formula": formula }),
+        );
+        if self.last_error.is_none() {
+            self.editing_cell = None;
+            self.session.view.editing = false;
+            self.sync_buffer();
+        }
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -617,6 +680,12 @@ impl App {
         }
         chart::paint_objects(&painter, s, &view, cells_origin, cell_area);
         page_view::break_preview(&painter, s, &view, cells_origin, cell_area);
+        let geo = overlays::Geo {
+            view: &view,
+            origin: cells_origin,
+            area: cell_area,
+        };
+        let hots = self.paint_overlays(ui, &painter, &geo);
         // Headings.
         if s.view.show_headings {
             let top = Rect::from_min_max(rect.min, Pos2::new(rect.max.x, rect.min.y + hh));
@@ -684,7 +753,11 @@ impl App {
             Some(CellAddr::new(r, c))
         };
         let shift = ui.input(|i| i.modifiers.shift);
-        if resp.drag_started() || resp.clicked() {
+        self.place_popups(&geo);
+        let consumed = self.overlay_input(&resp, &hots, &geo);
+        if consumed {
+            // A filter button, comment mark, list arrow or chart took the pointer.
+        } else if resp.drag_started() || resp.clicked() {
             if let Some(a) = resp.interact_pointer_pos().and_then(hit) {
                 if self.editing_cell.is_some() {
                     self.commit_edit(None);
@@ -712,7 +785,7 @@ impl App {
                 cursor: a,
             };
         }
-        if resp.double_clicked() {
+        if resp.double_clicked() && !consumed {
             self.begin_edit(None);
         }
         // Right-click outside the selection selects the cell under the pointer first.
@@ -789,8 +862,13 @@ impl App {
     }
 
     pub fn on_shortcut(&mut self, sc: &str) {
+        if self.chart_key(sc) {
+            return;
+        }
         match sc {
             "F2" => return self.begin_edit(None),
+            // Editor-only keys do nothing on the grid.
+            "Alt+Enter" | "Ctrl+Shift+Enter" => return,
             "Delete" | "Backspace" => return self.exec("home.editing.clear_contents", json!({})),
             "Enter" => return self.exec("nav.enter_next", json!({})),
             _ => {}
