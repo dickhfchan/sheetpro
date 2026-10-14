@@ -170,6 +170,8 @@ pub struct ViewState {
     pub ribbon_tab: String,
     /// Tracer arrows, watches, validation circles, comment pane (Formulas/Review tabs).
     pub review: commands::audit_cmds::ReviewState,
+    /// Page views, rulers and the print preview (`print_cmds`).
+    pub print: commands::print_cmds::PrintView,
 }
 
 impl Default for ViewState {
@@ -187,6 +189,7 @@ impl Default for ViewState {
             editing: false,
             ribbon_tab: "Home".into(),
             review: commands::audit_cmds::ReviewState::default(),
+            print: commands::print_cmds::PrintView::default(),
         }
     }
 }
