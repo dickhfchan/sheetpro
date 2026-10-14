@@ -3,9 +3,12 @@
 //! writer uses for them. Printing measures text with these so wrap, alignment and overflow on
 //! paper match what a PDF viewer draws.
 //!
-//! Widths are in 1/1000 em. The printable-ASCII tables hold each face's published metrics;
-//! other WinAnsi characters reuse the width of the closest ASCII glyph (accented letters take
-//! their base letter), which is within a few percent. Times bold-italic reuses Times bold.
+//! Widths are in 1/1000 em. The printable-ASCII tables are extracted from Adobe's Core 14 AFM
+//! files (see `std14_LICENSE.txt` beside this file and `ATTRIBUTION.md`). **Modified**: only
+//! the `WX` advance widths of codes 0x20..0x7E are kept, re-ordered to WinAnsi (0x27 is
+//! `quotesingle` and 0x60 is `grave`, not the AFM StandardEncoding quotes). Other WinAnsi
+//! characters reuse the width of the closest ASCII glyph (accented letters take their base
+//! letter), which is within a few percent.
 //!
 //! **Fallback for characters outside WinAnsi** (CJK, Greek, Cyrillic, emoji…): they are
 //! written as `?` (see [`to_winansi`]) because the standard faces carry no such glyphs and
@@ -43,7 +46,13 @@ const SERIF_HINTS: [&str; 8] = [
 ];
 /// Font names printed with Courier.
 const MONO_HINTS: [&str; 7] = [
-    "courier", "consolas", "mono", "menlo", "monaco", "console", "typewriter",
+    "courier",
+    "consolas",
+    "mono",
+    "menlo",
+    "monaco",
+    "console",
+    "typewriter",
 ];
 
 impl Face {
@@ -166,6 +175,16 @@ const TIMES_ITALIC: [u16; 95] = [
     500, 500, 389, 389, 278, 500, 444, 667, 444, 444, 389, 400, 275, 400, 541,
 ];
 
+#[rustfmt::skip]
+const TIMES_BOLD_ITALIC: [u16; 95] = [
+    250, 389, 555, 500, 500, 833, 778, 278, 333, 333, 500, 570, 250, 333, 250, 278,
+    500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 333, 333, 570, 570, 570, 500,
+    832, 667, 667, 667, 722, 667, 667, 722, 778, 389, 500, 667, 611, 889, 722, 722,
+    611, 722, 667, 556, 611, 722, 667, 889, 667, 611, 611, 333, 278, 333, 570, 500,
+    333, 500, 500, 444, 500, 444, 333, 500, 556, 278, 278, 500, 278, 778, 556, 500,
+    500, 500, 389, 389, 278, 556, 444, 667, 500, 444, 389, 348, 220, 348, 570,
+];
+
 /// WinAnsi code for `c` (`None` when the encoding has no such character).
 pub fn winansi(c: char) -> Option<u8> {
     let u = u32::from(c);
@@ -217,9 +236,7 @@ pub fn printable(c: char) -> char {
 
 /// Encode text for a standard face (one byte per character, see [`printable`]).
 pub fn to_winansi(text: &str) -> Vec<u8> {
-    text.chars()
-        .filter_map(|c| winansi(printable(c)))
-        .collect()
+    text.chars().filter_map(|c| winansi(printable(c))).collect()
 }
 
 /// The ASCII glyph whose width stands in for a non-ASCII WinAnsi character.
@@ -281,7 +298,8 @@ pub fn char_width(face: Face, c: char) -> u16 {
         (Family::Helvetica, true, _) => &HELVETICA_BOLD,
         (Family::Times, false, false) => &TIMES,
         (Family::Times, false, true) => &TIMES_ITALIC,
-        (Family::Times, true, _) | (Family::Courier, _, _) => &TIMES_BOLD,
+        (Family::Times, true, false) | (Family::Courier, _, _) => &TIMES_BOLD,
+        (Family::Times, true, true) => &TIMES_BOLD_ITALIC,
     };
     let i = (u32::from(c).saturating_sub(0x20)) as usize;
     table.get(i).copied().unwrap_or(556)
@@ -306,9 +324,18 @@ mod tests {
         let c = Face::for_font("Courier New", false, false);
         assert_eq!(c.family, Family::Courier);
         assert!((text_width(c, "abcd", 10.0) - 24.0).abs() < 1e-4);
-        assert_eq!(Face::for_font("Times New Roman", true, false).base_font(), "Times-Bold");
-        assert_eq!(Face::for_font("Calibri", false, true).base_font(), "Helvetica-Oblique");
-        assert_eq!(Face::for_font("Calibri", false, true).family, Family::Helvetica);
+        assert_eq!(
+            Face::for_font("Times New Roman", true, false).base_font(),
+            "Times-Bold"
+        );
+        assert_eq!(
+            Face::for_font("Calibri", false, true).base_font(),
+            "Helvetica-Oblique"
+        );
+        assert_eq!(
+            Face::for_font("Calibri", false, true).family,
+            Family::Helvetica
+        );
         let all = Face::all();
         for (i, f) in all.iter().enumerate() {
             assert_eq!(f.index(), i);
@@ -322,6 +349,9 @@ mod tests {
         assert_eq!(winansi('中'), None);
         assert_eq!(to_winansi("a中€"), vec![b'a', b'?', 0x80]);
         // Fallback glyphs measure like '?'.
-        assert_eq!(char_width(Face::default(), '中'), char_width(Face::default(), '?'));
+        assert_eq!(
+            char_width(Face::default(), '中'),
+            char_width(Face::default(), '?')
+        );
     }
 }
