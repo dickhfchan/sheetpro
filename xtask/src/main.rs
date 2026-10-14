@@ -2,6 +2,7 @@
 
 mod corpus;
 mod layers;
+mod package;
 mod parity;
 mod perf;
 mod scorecard;
@@ -38,6 +39,7 @@ fn main() -> Result<()> {
         Some("test-corpus") => corpus::test(flag("--verbose")),
         Some("perf") => perf::run(flag("--quick")),
         Some("scorecard") => scorecard::run(flag("--check")),
+        Some("package") => package::run_package(),
         Some("panic-hunt") => cargo(&[
             "test",
             "--release",
@@ -73,7 +75,7 @@ fn main() -> Result<()> {
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] | perf [--quick] | scorecard [--check] | panic-hunt | check>"
+                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] | perf [--quick] | scorecard [--check] | panic-hunt | package | check>"
             );
             bail!("unknown task")
         }

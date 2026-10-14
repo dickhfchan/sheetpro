@@ -33,7 +33,40 @@ cargo run -p sp -- screenshot --out shot.png [--open book.xlsx] [--script steps.
 | `cargo xtask panic-hunt` | Every command × adversarial params × odd states; must not panic |
 | `cargo xtask perf [--quick]` | Benchmarks vs `perf/budgets.toml` |
 | `cargo xtask scorecard` | Regenerates `docs/scorecard.md` (`--check` fails if stale) |
+| `cargo xtask package` | Release build bundled for trial users → `dist/` (see Trial builds) |
 | `cargo xtask check` | Everything above that runs offline, in CI order |
+
+## Trial builds
+
+```sh
+cargo xtask package
+```
+
+Builds `sheetpro` in release mode and lays it out in `dist/` (gitignored):
+
+- **macOS**: `dist/SheetPro.app` (Info.plist, `Contents/MacOS/sheetpro`, an `.icns` drawn by
+  `sheetpro --write-icon` and packed with `iconutil`, README/ATTRIBUTION in `Resources`), plus
+  `dist/SheetPro-<version>-macos-<arch>.zip` made with `ditto`. The bundle is ad-hoc signed
+  (`codesign -s -`), not Developer ID signed or notarized: after downloading, testers
+  right-click › Open (or `xattr -dr com.apple.quarantine SheetPro.app`) the first time.
+- **Linux/Windows**: `dist/sheetpro-<version>-<os>-<arch>/` with the binary and docs.
+
+What a trial user gets:
+
+- Settings in the app data folder (macOS `~/Library/Application Support/SheetPro`, Windows
+  `%APPDATA%\SheetPro`, Linux `$XDG_CONFIG_HOME/sheetpro`; override with `SHEETPRO_HOME`):
+  `settings.toml` (File › Options, or `file.options`), recent files (File › Open Recent).
+- Autosave every `autosave_interval_secs` (default 60) into `autosave/` on a background
+  thread; never written over the user's file. A session that ends without saving is offered
+  for recovery at the next launch.
+- `logs/sheetpro.log` (rotated at 2 MB). Help › Report a Problem writes
+  `reports/report-<time>-<n>/` (version, OS, settings without file paths, recent command
+  ids, log tail, optionally the workbook); nothing is sent over the network. A panic writes
+  `reports/crash-<time>-<n>/crash.txt`.
+- `sheetpro --version`; `sheetpro --write-icon icon.png [--icon-size 1024]`.
+
+`sp screenshot` uses the settings in `SHEETPRO_HOME` when it is set (gridline colour, R1C1
+headings), so drawing preferences can be checked headlessly.
 
 ## Debugging
 

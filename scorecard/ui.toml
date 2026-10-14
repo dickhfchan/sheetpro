@@ -29,3 +29,18 @@ note = "Format Cells, Find/Replace, Go To, Sort, Paste Special, Insert Function,
 name = "Headless screenshots + JSON control channel"
 status = "done"
 note = "sp screenshot / sp control / --control-port"
+
+[[item]]
+name = "Desktop integration: native open/save dialogs, unsaved-changes prompt, recent files, Options, window icon"
+status = "done"
+note = "rfd dialogs; settings.toml in the app data folder; Options edits every setting"
+
+[[item]]
+name = "Windows: New Window, Split, Switch/Hide Window"
+status = "partial"
+note = "Extra windows are native viewports on one session; split is one direction (no four-way split), divider not draggable; R1C1 shows headings/Name Box only"
+
+[[item]]
+name = "Trial builds (cargo xtask package)"
+status = "partial"
+note = "macOS .app + zip, ad-hoc signed, not notarized; Linux/Windows plain folder, no installer"
