@@ -6,6 +6,7 @@ pub mod chart;
 pub mod dialogs;
 pub mod grid;
 mod menus;
+pub mod page_view;
 pub mod theme;
 
 #[cfg(feature = "screenshot")]
@@ -401,6 +402,9 @@ impl App {
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, T.grid_bg);
+        if page_view::paper(&painter, rect, &self.session) {
+            return;
+        }
         let s = &self.session;
         let Some(sheet) = s.wb.sheet(s.sheet_index()) else {
             return;
@@ -610,6 +614,7 @@ impl App {
             );
         }
         chart::paint_objects(&painter, s, &view, cells_origin, cell_area);
+        page_view::break_preview(&painter, s, &view, cells_origin, cell_area);
         // Headings.
         if s.view.show_headings {
             let top = Rect::from_min_max(rect.min, Pos2::new(rect.max.x, rect.min.y + hh));
