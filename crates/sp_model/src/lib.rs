@@ -4,6 +4,7 @@ pub mod chart;
 pub mod condfmt;
 pub mod features;
 pub mod passthrough;
+pub mod pivot;
 pub mod style;
 pub mod table;
 
@@ -186,6 +187,9 @@ pub struct Sheet {
     /// File content we don't model, re-emitted on save (see `passthrough.rs`).
     #[serde(default)]
     pub passthrough: passthrough::Passthrough,
+    /// Pivot tables, slicers, scenarios and data tables (see `pivot.rs`).
+    #[serde(default)]
+    pub analysis: pivot::Analysis,
 }
 
 pub const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -220,6 +224,7 @@ impl Sheet {
             cond_formats: Vec::new(),
             tables: Vec::new(),
             passthrough: Default::default(),
+            analysis: Default::default(),
         }
     }
 

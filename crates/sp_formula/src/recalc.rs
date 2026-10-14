@@ -864,6 +864,12 @@ pub fn eval_expr(wb: &Workbook, sheet: usize, at: CellAddr, expr: &Expr) -> Valu
     finalize(&ev, r)
 }
 
+/// Run `f` with a host reading the workbook's cached values (what-if evaluation).
+pub fn with_cached_host<T>(wb: &Workbook, f: impl FnOnce(&dyn Host) -> T) -> T {
+    let host = WbHost::new(wb, true, None, RecalcOptions::default());
+    f(&host)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

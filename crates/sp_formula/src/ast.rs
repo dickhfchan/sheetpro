@@ -181,6 +181,7 @@ impl Expr {
                         | "INDIRECT"
                         | "INFO"
                         | "CELL"
+                        | "TABLE"
                 );
             }
         });

@@ -299,6 +299,8 @@ struct SheetCtx<'a> {
     rich: &'a [Option<ErrorKind>],
     /// Array-formula areas: (range, fixed legacy array, blocked spill).
     areas: Vec<(CellRange, bool, bool)>,
+    /// `<f t="dataTable">` attributes (see `xlsx_pivots::apply_data_tables`).
+    data_tables: Vec<Vec<(String, String)>>,
 }
 
 fn read_sheet(
@@ -312,8 +314,10 @@ fn read_sheet(
     let mut ctx = SheetCtx {
         rich,
         areas: Vec::new(),
+        data_tables: Vec::new(),
     };
     read_sheet_cells(xml, sheet, sst, xf_map, report, &mut ctx)?;
+    crate::xlsx_pivots::apply_data_tables(sheet, &ctx.data_tables);
     // Cells inside an array area hold spilled values, not constants of their own.
     for (range, fixed, blocked) in ctx.areas {
         if !blocked {
@@ -446,11 +450,16 @@ fn read_sheet_cells(
                     field = Some("f");
                     c.f = Some(String::new());
                     let mut t = None;
+                    let mut fa: Vec<(String, String)> = Vec::new();
                     for at in e.attributes().with_checks(false).flatten() {
                         let v = at
                             .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                             .unwrap_or_default()
                             .into_owned();
+                        let key = at.key.local_name();
+                        if matches!(key.as_ref(), "dt2D" | "dtr" | "r1" | "r2") {
+                            fa.push((key.into_inner().to_string(), v.clone()));
+                        }
                         match at.key.local_name().as_ref() {
                             "t" => t = Some(v),
                             "si" => c.f_shared_si = Some(v),
@@ -463,6 +472,15 @@ fn read_sheet_cells(
                         Some("array") => {
                             c.f_array = true;
                             c.f_shared_si = None;
+                        }
+                        Some("dataTable") => {
+                            if let Some(r) = c.f_ref.take() {
+                                fa.push(("ref".to_string(), r));
+                            }
+                            ctx.data_tables.push(fa);
+                            c.f = None;
+                            c.f_shared_si = None;
+                            c.f_ref = None;
                         }
                         _ => {
                             c.f_shared_si = None;
@@ -1047,6 +1065,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     wb.passthrough = wb_pass;
     capture.finish(&mut wb);
     crate::xlsx_charts::adopt_captured_charts(&mut wb);
+    crate::xlsx_pivots::adopt_captured_pivots(&mut wb);
     if let Some(dn) = wbdom.child("definedNames") {
         for d in dn.children_named("definedName") {
             let Some(name) = d.attr("name") else { continue };

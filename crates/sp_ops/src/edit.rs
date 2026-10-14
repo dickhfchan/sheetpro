@@ -359,6 +359,7 @@ fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &st
         }
         crate::table_shift::rewrite_formulas(sheet, &|src| rewritten(src, &g));
         crate::chart_shift::rewrite_formulas(sheet, &|src| rewritten(src, &g));
+        crate::pivot_shift::rewrite_formulas(sheet, &|src| rewritten(src, &g));
     }
     for n in &mut wb.names {
         let home = n

@@ -66,6 +66,7 @@ fn rewrite_formulas(wb: &mut sp_model::Workbook, f: &dyn Fn(&mut sp_formula::Exp
                 }
             }
         }
+        sp_ops::pivot_shift::rewrite_exprs(sh, f);
     }
     for n in &mut wb.names {
         if let Ok(mut e) = sp_formula::parse(&n.formula) {
