@@ -7,6 +7,7 @@ pub mod dialogs;
 pub mod grid;
 mod menus;
 pub mod page_view;
+pub mod shell_hook;
 pub mod theme;
 
 #[cfg(feature = "screenshot")]
@@ -14,7 +15,7 @@ pub mod screenshot;
 
 use egui::{Align2, Color32, FontId, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 use serde_json::json;
-use sp_core::{CellAddr, CellRange, Value, col_to_letters};
+use sp_core::{CellAddr, CellRange, Value};
 use sp_engine::{Json, Session, catalog, registry};
 use sp_render::{Align, layout};
 
@@ -163,7 +164,7 @@ impl App {
                     .inner_margin(egui::Margin::symmetric(4, 2)),
             )
             .show(ui, |ui| self.sheet_tabs(ui));
-        egui::CentralPanel::no_frame().show(ui, |ui| self.grid(ui));
+        egui::CentralPanel::no_frame().show(ui, |ui| self.grid_area(ui));
         self.keyboard(ui);
         let ctx = ui.ctx().clone();
         self.show_dialog(&ctx);
@@ -250,7 +251,7 @@ impl App {
         ui.horizontal(|ui| {
             let r = self.session.sel.range();
             let name = if r.is_single() {
-                self.session.sel.active.to_a1()
+                shell_hook::cell_label(self.session.sel.active)
             } else {
                 format!("{}R x {}C", r.rows(), r.cols())
             };
@@ -261,7 +262,8 @@ impl App {
                     .font(FontId::proportional(13.0)),
             );
             if nb.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) && name_box != name {
-                self.exec("nav.goto_cell", json!({ "reference": name_box }));
+                let reference = shell_hook::name_box_reference(&name_box);
+                self.exec("nav.goto_cell", json!({ "reference": reference }));
             }
             ui.label(egui::RichText::new("fx").italics().color(T.group_label));
             let id = egui::Id::new("formula_editor");
@@ -477,14 +479,14 @@ impl App {
                 painter.hline(
                     rect.x_range(),
                     cells_origin.y + y + h,
-                    Stroke::new(1.0, T.gridline),
+                    Stroke::new(1.0, shell_hook::gridline(T.gridline)),
                 );
             }
             for (_, x, w) in &view.cols {
                 painter.vline(
                     cells_origin.x + x + w,
                     rect.y_range(),
-                    Stroke::new(1.0, T.gridline),
+                    Stroke::new(1.0, shell_hook::gridline(T.gridline)),
                 );
             }
         }
@@ -633,7 +635,7 @@ impl App {
                 painter.with_clip_rect(r).text(
                     r.center(),
                     Align2::CENTER_CENTER,
-                    col_to_letters(*c),
+                    shell_hook::col_label(*c),
                     font(9.0),
                     T.header_text,
                 );

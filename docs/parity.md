@@ -6,26 +6,26 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 
 | Surface | Live | Total | % |
 |---|---|---|---|
-| Commands (ribbon + keyboard) | 265 | 304 | 87.2% |
+| Commands (ribbon + keyboard) | 267 | 304 | 87.8% |
 | Worksheet functions | 496 | 514 | 96.5% |
-| **All** | **761** | **818** | **93.0%** |
+| **All** | **763** | **818** | **93.3%** |
 
 ## Commands by tab
 
 | Tab | Live | Total | Missing |
 |---|---|---|---|
-| Data | 16 | 23 | `data.get_from_text` `data.refresh_all` `data.consolidate` `data.what_if.scenario` `data.what_if.goal_seek` `data.what_if.data_table` `data.forecast_sheet` |
-| File | 12 | 15 | `file.inspect` `file.recent` `file.options` |
+| Data | 17 | 23 | `data.refresh_all` `data.consolidate` `data.what_if.scenario` `data.what_if.goal_seek` `data.what_if.data_table` `data.forecast_sheet` |
+| File | 13 | 15 | `file.export.pdf` `file.print` |
 | Format Cells | 1 | 1 | — |
 | Formulas | 15 | 23 | `formulas.library.financial` `formulas.library.logical` `formulas.library.text` `formulas.library.datetime` `formulas.library.lookup` `formulas.library.math` `formulas.library.more` `formulas.use_in_formula` |
 | Home | 110 | 112 | `home.styles.cell_styles` `home.editing.flash_fill` |
-| Insert | 16 | 24 | `insert.pivot_table` `insert.picture` `insert.shapes` `insert.slicer` `insert.text_box` `insert.symbol` `insert.equation` `insert.checkbox` |
+| Insert | 15 | 24 | `insert.pivot_table` `insert.picture` `insert.shapes` `insert.slicer` `insert.text_box` `insert.header_footer` `insert.symbol` `insert.equation` `insert.checkbox` |
 | Name Box | 1 | 1 | — |
 | Page Layout | 14 | 16 | `layout.themes` `layout.background` |
 | Quick Access | 2 | 2 | — |
 | Review | 11 | 12 | `review.spelling` |
 | Sheet tabs | 3 | 3 | — |
-| View | 15 | 20 | `view.new_window` `view.split` `view.hide_window` `view.switch_windows` `view.macros` |
+| View | 16 | 20 | `view.page_break_preview` `view.page_layout` `view.ruler` `view.macros` |
 | keyboard | 47 | 50 | `cell.newline` `cell.toggle_absolute` `cell.array_enter` |
 | mouse | 2 | 2 | — |
 
@@ -52,3 +52,4 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 - command `edit.replace_current`
 - command `edit.find_all`
 - command `table.design`
+- command `app.report_problem`

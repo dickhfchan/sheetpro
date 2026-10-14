@@ -3,3 +3,4 @@
 *.png
 !/docs/img/*.png
 .DS_Store
+/dist/

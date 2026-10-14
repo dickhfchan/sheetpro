@@ -22,8 +22,8 @@ note = ""
 
 [[item]]
 name = "Autosave / crash recovery"
-status = "missing"
-note = ""
+status = "done"
+note = "Background snapshots to the app data folder (never the user's file), recovery prompt at launch, crash reports"
 
 [[item]]
 name = "PDF export / printing"

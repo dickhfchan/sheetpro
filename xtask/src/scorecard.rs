@@ -68,6 +68,15 @@ const ACCESSORS: &[(&str, &str)] = &[
     ("cells", "cells_in("),
 ];
 
+/// App settings read through a method rather than a field access (field, method call).
+const SETTINGS_ACCESSORS: &[(&str, &str)] = &[
+    ("default_font", "apply_to_new("),
+    ("default_font_size", "apply_to_new("),
+    ("calc_mode", "apply_to_new("),
+    ("recent_count", "note_recent("),
+    ("gridline_color", "gridline_rgb("),
+];
+
 fn read_via_accessor(field: &str, consumers: &str) -> bool {
     ACCESSORS
         .iter()
@@ -94,6 +103,28 @@ fn dead_settings(root: &Path) -> Vec<String> {
     for f in struct_fields(&style, "Style") {
         if !consumers.contains(&format!(".{f}")) && !read_via_accessor(&f, &consumers) {
             dead.push(format!("Style.{f}"));
+        }
+    }
+    // App settings: read by the shell or the desktop app (the Options form, which only
+    // displays and edits them, does not count).
+    let settings =
+        std::fs::read_to_string(root.join("crates/sp_engine/src/settings.rs")).unwrap_or_default();
+    let mut app = String::new();
+    if let Ok(rd) = std::fs::read_dir(root.join("apps/sheetpro/src")) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("forms.rs") {
+                app.push_str(&std::fs::read_to_string(&p).unwrap_or_default());
+            }
+        }
+    }
+    let app_consumers = format!("{consumers}\n{app}");
+    for f in struct_fields(&settings, "Settings") {
+        let via = SETTINGS_ACCESSORS
+            .iter()
+            .any(|(sf, call)| *sf == f && app_consumers.contains(call));
+        if !app_consumers.contains(&format!(".{f}")) && !via {
+            dead.push(format!("Settings.{f}"));
         }
     }
     for f in struct_fields(&model, "Sheet") {
@@ -253,7 +284,7 @@ pub fn generate() -> Result<String> {
     );
     md.push_str(&body);
 
-    md.push_str("## Settings that nothing reads\n\nModel/view fields with no reader in `sp_render` or `sp_ui`: the setting can be changed but has no visible effect yet.\n\n");
+    md.push_str("## Settings that nothing reads\n\nModel/view fields with no reader in `sp_render` or `sp_ui`, and app settings (`Settings` in `sp_engine::settings`) with no reader in the shell or the desktop app outside the Options form: the setting can be changed but has no visible effect yet.\n\n");
     let dead = dead_settings(&root);
     if dead.is_empty() {
         md.push_str("None.\n");

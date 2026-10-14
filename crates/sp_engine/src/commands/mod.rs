@@ -1,6 +1,7 @@
 //! Command modules. Each `<area>_cmds` module exposes `specs()`; add new modules here with
 //! a one-line edit (see AGENTS.md › Parallel agents).
 
+pub mod app_cmds;
 pub mod audit_cmds;
 pub mod cell_cmds;
 pub mod cf_cmds;
@@ -52,5 +53,6 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(pivot_cmds::specs());
     v.extend(whatif_cmds::specs());
     v.extend(print_cmds::specs());
+    v.extend(app_cmds::specs());
     v
 }

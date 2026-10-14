@@ -1,10 +1,12 @@
 //! L5 engine: `Session` (open workbook + selection + history + view state) and the command
 //! registry. Every user-visible action is a command dispatched by id.
 
+pub mod autosave;
 pub mod catalog;
 pub mod commands;
 pub mod control;
 pub mod params;
+pub mod settings;
 
 use serde::Serialize;
 use sp_core::{CellAddr, CellRange};
@@ -172,6 +174,8 @@ pub struct ViewState {
     pub review: commands::audit_cmds::ReviewState,
     /// Page views, rulers and the print preview (`print_cmds`).
     pub print: commands::print_cmds::PrintView,
+    /// Extra windows and split panes (View › Window).
+    pub window: commands::app_cmds::WindowState,
 }
 
 impl Default for ViewState {
@@ -190,6 +194,7 @@ impl Default for ViewState {
             ribbon_tab: "Home".into(),
             review: commands::audit_cmds::ReviewState::default(),
             print: commands::print_cmds::PrintView::default(),
+            window: commands::app_cmds::WindowState::default(),
         }
     }
 }
@@ -269,6 +274,7 @@ impl Session {
         self.validate_entry = commands::validation_cmds::is_typing_command(id);
         let r = (cmd.spec.run)(self, params);
         self.validate_entry = false;
+        settings::record_command(id, r.is_ok());
         if r.is_ok()
             && id != "edit.repeat"
             && id != "edit.undo"

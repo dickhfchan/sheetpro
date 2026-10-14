@@ -173,6 +173,10 @@ fn main() -> Result<()> {
                     }
                 }
             }
+            // With SHEETPRO_HOME set, draw with that settings file (gridlines, R1C1).
+            if sp_engine::settings::app_dir().is_some() {
+                sp_ui::shell_hook::apply_settings(&sp_engine::settings::current());
+            }
             sp_ui::screenshot::render_png_with_dialog(s, (width, height), &out, dialog.as_deref())
                 .map_err(|e| anyhow::anyhow!(e))?;
             println!("{}", out.display());
