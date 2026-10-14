@@ -304,6 +304,146 @@ pub fn table_value(
     v
 }
 
+/// Values of `targets` re-evaluated with `overrides` substituted (cached values elsewhere).
+pub fn eval_substituted(
+    wb: &sp_model::Workbook,
+    overrides: Vec<(Key, Value)>,
+    targets: &[Key],
+) -> Vec<Value> {
+    crate::recalc::with_cached_host(wb, |host| {
+        let sub = SubstHost::new(host, overrides);
+        targets.iter().map(|k| sub.value(*k)).collect()
+    })
+}
+
+/// Result of [`goal_seek`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct GoalSeek {
+    /// A value of the changing cell bringing the formula within tolerance was found.
+    pub found: bool,
+    /// Best input value.
+    pub input: f64,
+    /// The formula's value at `input`.
+    pub result: Value,
+    /// Formula evaluations used.
+    pub evals: usize,
+}
+
+/// Most formula evaluations one goal seek may use.
+const MAX_SEEK_EVALS: usize = 400;
+
+/// Find a value of `changing` (a constant cell) making formula cell `set` equal `target`.
+/// Secant steps from the current value, then (if those stall) a bracket search plus
+/// bisection. Tolerance: `0.001` on the formula result (the target's default maximum change)
+/// tightened while iterations remain.
+pub fn goal_seek(wb: &sp_model::Workbook, set: Key, target: f64, changing: Key) -> GoalSeek {
+    let evals = Cell::new(0usize);
+    let f = |x: f64| -> Option<f64> {
+        evals.set(evals.get() + 1);
+        let v = eval_substituted(wb, vec![(changing, Value::Number(x))], &[set]);
+        match v.first() {
+            Some(Value::Number(n)) if n.is_finite() => Some(n - target),
+            Some(Value::Empty) => Some(-target),
+            Some(Value::Bool(b)) => Some(f64::from(u8::from(*b)) - target),
+            _ => None,
+        }
+    };
+    let tol = 0.001_f64;
+    let fine = 1e-9 * target.abs().max(1.0);
+    let x0 = match wb.sheet(changing.0).map(|s| s.value(changing.1)) {
+        Some(Value::Number(n)) if n.is_finite() => *n,
+        _ => 0.0,
+    };
+    let mut best: (f64, f64) = (x0, f64::INFINITY);
+    let note = |x: f64, fx: f64, best: &mut (f64, f64)| {
+        if fx.abs() < best.1.abs() {
+            *best = (x, fx);
+        }
+    };
+    // Secant phase.
+    let mut a = x0;
+    let mut fa = f(a);
+    if let Some(v) = fa {
+        note(a, v, &mut best);
+    }
+    let mut b = if x0 == 0.0 { 0.01 } else { x0 * 1.01 };
+    let mut fb = f(b);
+    if let Some(v) = fb {
+        note(b, v, &mut best);
+    }
+    let mut it = 0;
+    while it < 100 && best.1.abs() > fine {
+        it += 1;
+        let (Some(va), Some(vb)) = (fa, fb) else {
+            break;
+        };
+        let d = vb - va;
+        if d == 0.0 || !d.is_finite() {
+            break;
+        }
+        let next = b - vb * (b - a) / d;
+        if !next.is_finite() || next.abs() > 1e300 {
+            break;
+        }
+        a = b;
+        fa = fb;
+        b = next;
+        fb = f(b);
+        match fb {
+            Some(v) => note(b, v, &mut best),
+            None => break,
+        }
+    }
+    // Bracket + bisection phase.
+    if best.1.abs() > tol {
+        let c = best.0;
+        let fc = best.1;
+        let mut step = c.abs().max(1.0) * 0.01;
+        let mut bracket: Option<(f64, f64, f64)> = None;
+        while bracket.is_none() && step < 1e300 && evals.get() < MAX_SEEK_EVALS / 2 {
+            for x in [c + step, c - step] {
+                if let Some(v) = f(x) {
+                    note(x, v, &mut best);
+                    if v.signum() != fc.signum() {
+                        bracket = Some((x, v, c));
+                        break;
+                    }
+                }
+            }
+            step *= 2.0;
+        }
+        if let Some((mut lo, mut flo, mut hi)) = bracket {
+            while evals.get() < MAX_SEEK_EVALS && best.1.abs() > fine && (hi - lo).abs() > 0.0 {
+                let mid = lo + (hi - lo) / 2.0;
+                if mid == lo || mid == hi {
+                    break;
+                }
+                let Some(fm) = f(mid) else {
+                    break;
+                };
+                note(mid, fm, &mut best);
+                if fm.signum() == flo.signum() {
+                    lo = mid;
+                    flo = fm;
+                } else {
+                    hi = mid;
+                }
+            }
+        }
+    }
+    let found = best.1.abs() <= tol;
+    GoalSeek {
+        found,
+        input: best.0,
+        result: if best.1.is_finite() {
+            Value::Number(best.1 + target)
+        } else {
+            Value::Error(ErrorKind::Value)
+        },
+        evals: evals.get(),
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -419,6 +559,37 @@ mod tests {
         recalc(&mut wb, &mut cache, RecalcOptions::default());
         assert_eq!(v(&wb, "D1"), Value::Number(2001.0));
         assert_eq!(v(&wb, "D2"), Value::Number(2100.0));
+    }
+
+    #[test]
+    fn goal_seek_solves_through_chain() {
+        // B3 = B1*B2 + 5; find B1 so that B3 = 50 with B2 = 3.
+        let wb = book(&[("B1", "1"), ("B2", "3"), ("C1", "=B1*B2"), ("B3", "=C1+5")]);
+        let g = super::goal_seek(
+            &wb,
+            (0, CellAddr::parse("B3").unwrap()),
+            50.0,
+            (0, CellAddr::parse("B1").unwrap()),
+        );
+        assert!(g.found);
+        assert!((g.input - 15.0).abs() < 1e-6, "{g:?}");
+        // Non-linear: B1^2 = 2.
+        let wb = book(&[("B1", "1"), ("B2", "=B1^2")]);
+        let g = super::goal_seek(
+            &wb,
+            (0, CellAddr::parse("B2").unwrap()),
+            2.0,
+            (0, CellAddr::parse("B1").unwrap()),
+        );
+        assert!(g.found && (g.input.abs() - 2f64.sqrt()).abs() < 1e-4, "{g:?}");
+        // Impossible: B1^2 = -1.
+        let g = super::goal_seek(
+            &wb,
+            (0, CellAddr::parse("B2").unwrap()),
+            -1.0,
+            (0, CellAddr::parse("B1").unwrap()),
+        );
+        assert!(!g.found);
     }
 
     #[test]

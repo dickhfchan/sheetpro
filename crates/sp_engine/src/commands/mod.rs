@@ -16,11 +16,13 @@ pub mod layout_cmds;
 pub mod misc_cmds;
 pub mod nav_cmds;
 pub mod outline_cmds;
+pub mod pivot_cmds;
 pub mod protect_cmds;
 pub mod sheet_cmds;
 pub mod table_cmds;
 pub mod validation_cmds;
 pub mod view_cmds;
+pub mod whatif_cmds;
 
 use crate::CommandSpec;
 
@@ -46,5 +48,7 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(chart_cmds::specs());
     v.extend(cf_cmds::specs());
     v.extend(table_cmds::specs());
+    v.extend(pivot_cmds::specs());
+    v.extend(whatif_cmds::specs());
     v
 }
