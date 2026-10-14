@@ -222,12 +222,20 @@ pub fn rect_to_anchor(s: &Session, cells_origin: Pos2, r: Rect) -> Option<String
     let snap_col = |px: f64| {
         let (c, off) = sp_render::chart::col_at_px(sheet, origin.col, px);
         let w = f64::from(sp_render::col_width_px(sheet.col_width(c)));
-        if off > w / 2.0 { c.saturating_add(1) } else { c }
+        if off > w / 2.0 {
+            c.saturating_add(1)
+        } else {
+            c
+        }
     };
     let snap_row = |px: f64| {
         let (r, off) = sp_render::chart::row_at_px(sheet, origin.row, px);
         let h = f64::from(sp_render::row_height_px(sheet.row_height(r)));
-        if off > h / 2.0 { r.saturating_add(1) } else { r }
+        if off > h / 2.0 {
+            r.saturating_add(1)
+        } else {
+            r
+        }
     };
     let c0 = snap_col(to_px(r.min.x - base.x));
     let r0 = snap_row(to_px(r.min.y - base.y));
@@ -237,7 +245,10 @@ pub fn rect_to_anchor(s: &Session, cells_origin: Pos2, r: Rect) -> Option<String
     let max_r = sp_core::MAX_ROWS - 1;
     let range = sp_core::CellRange::new(
         CellAddr::new(r0.min(max_r - 1), c0.min(max_c - 1)),
-        CellAddr::new(r1.saturating_sub(1).min(max_r - 1), c1.saturating_sub(1).min(max_c - 1)),
+        CellAddr::new(
+            r1.saturating_sub(1).min(max_r - 1),
+            c1.saturating_sub(1).min(max_c - 1),
+        ),
     );
     Some(range.to_a1())
 }

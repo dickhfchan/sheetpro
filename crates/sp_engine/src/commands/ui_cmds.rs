@@ -40,7 +40,11 @@ pub fn library_functions(categories: &[&str]) -> Vec<String> {
     let live = sp_formula::function_names();
     let mut v: Vec<String> = crate::catalog::functions()
         .iter()
-        .filter(|g| categories.iter().any(|c| g.category.eq_ignore_ascii_case(c)))
+        .filter(|g| {
+            categories
+                .iter()
+                .any(|c| g.category.eq_ignore_ascii_case(c))
+        })
         .flat_map(|g| g.names.iter().cloned())
         .filter(|n| live.contains(&n.as_str()))
         .collect();
@@ -239,10 +243,7 @@ pub fn toggle_absolute(text: &str, caret: usize) -> (String, usize) {
     let caret = caret.min(t.len());
     let refs = find_refs(&t);
     // The reference under (or just before) the caret.
-    let Some(k) = refs
-        .iter()
-        .position(|r| caret >= r.start && caret <= r.end)
-    else {
+    let Some(k) = refs.iter().position(|r| caret >= r.start && caret <= r.end) else {
         return (text.to_string(), caret);
     };
     // A range `X:Y` toggles both ends, following the first end's state.
@@ -312,7 +313,9 @@ fn array_enter(s: &mut Session, p: &Json) -> CmdResult {
     // Other arrays may not be cut in part.
     for a in &sh.spills {
         if a.fixed && a.range.intersect(&r).is_some() && a.range.intersect(&r) != Some(a.range) {
-            return Err(CmdError::Failed("You can't change part of an array.".into()));
+            return Err(CmdError::Failed(
+                "You can't change part of an array.".into(),
+            ));
         }
     }
     if sh.merges.iter().any(|m| m.intersect(&r).is_some()) {
@@ -320,9 +323,9 @@ fn array_enter(s: &mut Session, p: &Json) -> CmdResult {
             "Array formulas aren't valid in merged cells.".into(),
         ));
     }
-    let style =
-        sh.get(r.start)
-            .map_or(sp_model::StyleId::DEFAULT, |c| c.style);
+    let style = sh
+        .get(r.start)
+        .map_or(sp_model::StyleId::DEFAULT, |c| c.style);
     let formula = sp_formula::to_formula(&e);
     s.transact("Array Formula", |tx, _| {
         tx.touch_sheet(sheet);
@@ -377,7 +380,10 @@ pub const SYMBOL_SETS: [(&str, &str); 8] = [
     ("Punctuation", "–—‘’“”‚„†‡•…‹›«»¡¿§¶©®™"),
     ("Fractions", "½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞¹²³⁴⁵⁶⁷⁸⁹⁰"),
     ("Shapes", "■□▪▫▲△▶▷▼▽◀◁◆◇○●◎★☆✓✔✗✘"),
-    ("Latin", "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝßàáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ"),
+    (
+        "Latin",
+        "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝßàáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ",
+    ),
 ];
 
 fn symbol(s: &mut Session, p: &Json) -> CmdResult {
@@ -417,7 +423,10 @@ fn symbol(s: &mut Session, p: &Json) -> CmdResult {
 
 /// Named cell styles, grouped as the gallery shows them.
 pub const CELL_STYLE_GROUPS: [(&str, &[&str]); 5] = [
-    ("Good, Bad and Neutral", &["Normal", "Good", "Bad", "Neutral"]),
+    (
+        "Good, Bad and Neutral",
+        &["Normal", "Good", "Bad", "Neutral"],
+    ),
     (
         "Data and Model",
         &[
@@ -498,14 +507,24 @@ pub fn apply_cell_style(name: &str, st: &mut Style) -> Option<()> {
             st.font_color = Some(Color(214, 112, 40));
             st.bold = true;
             let b = line(BorderStyle::Thin, Color(128, 128, 128));
-            (st.border_left, st.border_right, st.border_top, st.border_bottom) = (b, b, b, b);
+            (
+                st.border_left,
+                st.border_right,
+                st.border_top,
+                st.border_bottom,
+            ) = (b, b, b, b);
         }
         "check cell" => {
             st.fill = Some(Color(160, 160, 160));
             st.font_color = Some(Color::WHITE);
             st.bold = true;
             let b = line(BorderStyle::Double, Color(64, 64, 64));
-            (st.border_left, st.border_right, st.border_top, st.border_bottom) = (b, b, b, b);
+            (
+                st.border_left,
+                st.border_right,
+                st.border_top,
+                st.border_bottom,
+            ) = (b, b, b, b);
         }
         "explanatory text" => {
             st.italic = true;
@@ -515,7 +534,12 @@ pub fn apply_cell_style(name: &str, st: &mut Style) -> Option<()> {
             st.fill = Some(Color(255, 210, 160));
             st.font_color = Some(Color(60, 60, 120));
             let b = line(BorderStyle::Thin, Color(128, 128, 128));
-            (st.border_left, st.border_right, st.border_top, st.border_bottom) = (b, b, b, b);
+            (
+                st.border_left,
+                st.border_right,
+                st.border_top,
+                st.border_bottom,
+            ) = (b, b, b, b);
         }
         "linked cell" => {
             st.font_color = Some(Color(214, 112, 40));
@@ -524,14 +548,24 @@ pub fn apply_cell_style(name: &str, st: &mut Style) -> Option<()> {
         "note" => {
             st.fill = Some(Color(255, 252, 206));
             let b = line(BorderStyle::Thin, Color(180, 180, 180));
-            (st.border_left, st.border_right, st.border_top, st.border_bottom) = (b, b, b, b);
+            (
+                st.border_left,
+                st.border_right,
+                st.border_top,
+                st.border_bottom,
+            ) = (b, b, b, b);
         }
         "output" => {
             st.fill = Some(Color(242, 242, 242));
             st.font_color = Some(Color(64, 64, 64));
             st.bold = true;
             let b = line(BorderStyle::Thin, Color(64, 64, 64));
-            (st.border_left, st.border_right, st.border_top, st.border_bottom) = (b, b, b, b);
+            (
+                st.border_left,
+                st.border_right,
+                st.border_top,
+                st.border_bottom,
+            ) = (b, b, b, b);
         }
         "warning text" => st.font_color = Some(Color(200, 0, 0)),
         "heading 1" => {
@@ -677,7 +711,11 @@ mod tests {
         let v = run(&mut s, "formulas.library.financial", json!({}));
         let fns = v["groups"][0]["functions"].as_array().unwrap();
         assert!(fns.iter().any(|f| f == "PMT"));
-        let v = run(&mut s, "formulas.library.financial", json!({"function": "pmt"}));
+        let v = run(
+            &mut s,
+            "formulas.library.financial",
+            json!({"function": "pmt"}),
+        );
         assert_eq!(v["insert"], "PMT(");
         assert!(
             s.execute("formulas.library.financial", &json!({"function": "SUM"}))
@@ -693,7 +731,10 @@ mod tests {
             "formulas.library.math",
         ] {
             let v = run(&mut s, id, json!({}));
-            assert!(!v["groups"][0]["functions"].as_array().unwrap().is_empty(), "{id}");
+            assert!(
+                !v["groups"][0]["functions"].as_array().unwrap().is_empty(),
+                "{id}"
+            );
         }
     }
 
@@ -783,7 +824,11 @@ mod tests {
         let mut s = Session::new();
         let v = run(&mut s, "insert.symbol", json!({}));
         assert!(v["sets"].as_array().unwrap().len() >= 5);
-        run(&mut s, "insert.symbol", json!({"symbol": "€", "cell": "B2"}));
+        run(
+            &mut s,
+            "insert.symbol",
+            json!({"symbol": "€", "cell": "B2"}),
+        );
         run(
             &mut s,
             "insert.symbol",
@@ -791,20 +836,27 @@ mod tests {
         );
         assert_eq!(s.wb.sheets[0].value(CellAddr::new(1, 1)).to_display(), "€±");
         let v = run(&mut s, "home.styles.cell_styles", json!({}));
-        assert_eq!(v["groups"].as_array().unwrap().len(), CELL_STYLE_GROUPS.len());
+        assert_eq!(
+            v["groups"].as_array().unwrap().len(),
+            CELL_STYLE_GROUPS.len()
+        );
         run(
             &mut s,
             "home.styles.cell_styles",
             json!({"style": "Good", "range": "B2"}),
         );
-        let st = s.wb.styles.get(s.wb.sheets[0].get(CellAddr::new(1, 1)).unwrap().style);
+        let st =
+            s.wb.styles
+                .get(s.wb.sheets[0].get(CellAddr::new(1, 1)).unwrap().style);
         assert!(st.fill.is_some());
         run(
             &mut s,
             "home.styles.cell_styles",
             json!({"style": "Normal", "range": "B2"}),
         );
-        let st = s.wb.styles.get(s.wb.sheets[0].get(CellAddr::new(1, 1)).unwrap().style);
+        let st =
+            s.wb.styles
+                .get(s.wb.sheets[0].get(CellAddr::new(1, 1)).unwrap().style);
         assert!(st.fill.is_none());
         for (_, names) in CELL_STYLE_GROUPS {
             for n in names {
