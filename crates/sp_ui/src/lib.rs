@@ -7,15 +7,16 @@ pub mod dialogs;
 pub mod grid;
 mod menus;
 pub mod overlays;
+pub mod ribbon;
 pub mod theme;
 
 #[cfg(feature = "screenshot")]
 pub mod screenshot;
 
-use egui::{Align2, Color32, FontId, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
+use egui::{Align2, FontId, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 use serde_json::json;
 use sp_core::{CellAddr, CellRange, Value, col_to_letters};
-use sp_engine::{Json, Session, catalog, registry};
+use sp_engine::{Json, Session, registry};
 use sp_render::{Align, layout};
 
 use theme::{LIGHT as T, color};
@@ -227,83 +228,6 @@ impl App {
         self.show_dialog(&ctx);
     }
 
-    fn ribbon(&mut self, ui: &mut egui::Ui) {
-        // Tab strip.
-        egui::Frame::NONE
-            .fill(T.ribbon_tab_bg)
-            .inner_margin(egui::Margin::symmetric(8, 2))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("SheetPro")
-                            .color(Color32::WHITE)
-                            .strong(),
-                    );
-                    ui.add_space(12.0);
-                    for tab in RIBBON_TABS {
-                        let active = self.session.view.ribbon_tab == tab;
-                        let text = egui::RichText::new(tab)
-                            .color(if active { T.accent } else { Color32::WHITE })
-                            .size(12.5);
-                        let b = egui::Button::new(text)
-                            .fill(if active {
-                                T.ribbon_tab_active
-                            } else {
-                                T.ribbon_tab_bg
-                            })
-                            .stroke(Stroke::NONE);
-                        if ui.add(b).clicked() {
-                            self.session.view.ribbon_tab = tab.to_string();
-                        }
-                    }
-                });
-            });
-        // Groups for the active tab, generated from the catalog.
-        let tab = self.session.view.ribbon_tab.clone();
-        let mut groups: Vec<(String, Vec<&'static catalog::CatalogItem>)> = Vec::new();
-        for item in catalog::commands() {
-            let mut parts = item.loc.split(" › ");
-            let (Some(t), g) = (parts.next(), parts.next()) else {
-                continue;
-            };
-            if t != tab {
-                continue;
-            }
-            let g = g.unwrap_or(t).to_string();
-            match groups.iter_mut().find(|(name, _)| *name == g) {
-                Some((_, v)) => v.push(item),
-                None => groups.push((g, vec![item])),
-            }
-        }
-        egui::Frame::NONE
-            .inner_margin(egui::Margin::symmetric(6, 4))
-            .show(ui, |ui| {
-                egui::ScrollArea::horizontal().show(ui, |ui| {
-                    ui.horizontal_top(|ui| {
-                        for (gname, items) in &groups {
-                            ui.vertical(|ui| {
-                                ui.set_max_height(84.0);
-                                egui::Grid::new(format!("grp-{gname}"))
-                                    .spacing([2.0, 1.0])
-                                    .show(ui, |ui| {
-                                        for (i, item) in items.iter().enumerate() {
-                                            self.ribbon_item(ui, item);
-                                            if i % 3 == 2 {
-                                                ui.end_row();
-                                            }
-                                        }
-                                    });
-                                ui.label(
-                                    egui::RichText::new(gname).size(10.0).color(T.group_label),
-                                );
-                            });
-                            ui.separator();
-                        }
-                    });
-                });
-            });
-    }
-
     fn formula_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let r = self.session.sel.range();
@@ -365,7 +289,10 @@ impl App {
     /// F4 (cycle `$` on the reference at the caret), Ctrl+Shift+Enter (array formula).
     fn editor_keys(&mut self, ui: &mut egui::Ui, id: egui::Id) {
         let (cse, newline, f4) = ui.input_mut(|i| {
-            let cse = i.consume_key(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, Key::Enter);
+            let cse = i.consume_key(
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                Key::Enter,
+            );
             let nl = !cse && i.consume_key(egui::Modifiers::ALT, Key::Enter);
             let f4 = i.consume_key(egui::Modifiers::NONE, Key::F4);
             (cse, nl, f4)

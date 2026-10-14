@@ -69,6 +69,11 @@ pub struct Theme {
     pub alert_stop: Color32,
     pub alert_warning: Color32,
     pub alert_info: Color32,
+    /// Ribbon: tab strip text and the line between groups.
+    pub ribbon_tab_text: Color32,
+    pub ribbon_separator: Color32,
+    /// Text on accent-filled buttons.
+    pub accent_text: Color32,
 }
 
 pub const LIGHT: Theme = Theme {
@@ -130,6 +135,9 @@ pub const LIGHT: Theme = Theme {
     alert_stop: Color32::from_rgb(200, 40, 40),
     alert_warning: Color32::from_rgb(220, 160, 20),
     alert_info: Color32::from_rgb(40, 110, 200),
+    ribbon_tab_text: Color32::WHITE,
+    ribbon_separator: Color32::from_rgb(208, 208, 208),
+    accent_text: Color32::WHITE,
 };
 
 /// Default colours for chart series and sparklines, in order (cycled past the end).
