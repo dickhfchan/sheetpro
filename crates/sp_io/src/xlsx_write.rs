@@ -494,6 +494,10 @@ fn write_sheet_data(
                 };
                 let mut cm = "";
                 let f_xml = match &cell.content {
+                    Content::Formula(f) if crate::xlsx_pivots::data_table_f(sheet, sp_core::CellAddr::new(r, *c), f).is_some() => {
+                        crate::xlsx_pivots::data_table_f(sheet, sp_core::CellAddr::new(r, *c), f)
+                            .unwrap_or_default()
+                    }
                     Content::Formula(f) => {
                         let ff = formula_for_cell(f, sheet, sp_core::CellAddr::new(r, *c));
                         match ff.array {
@@ -762,6 +766,9 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     let chart_plan = crate::xlsx_charts::ChartPlan::new(wb);
     reserved.extend(chart_plan.part_names());
     generated.extend(chart_plan.part_names());
+    let pivot_plan = crate::xlsx_pivots::PivotPlan::new(wb);
+    reserved.extend(pivot_plan.part_names());
+    generated.extend(pivot_plan.part_names());
     let emit = pass::Emit::plan(wb, &reserved, &generated);
 
     let mut ct = String::from(
@@ -881,6 +888,12 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         let drawn = crate::xlsx_charts::write_sheet_drawings(wb, i, &chart_plan, &mut rels);
         if let Some(el) = drawn.element {
             known.push(("drawing".to_string(), el));
+        }
+        for (part, body, t) in pivot_plan.write_sheet(i, &mut rels) {
+            if !t.is_empty() {
+                override_ct(&mut ct, &part, t);
+            }
+            put(&mut zip, &part, &body)?;
         }
         let (items, used_ids) =
             pass::merge_elements(pass::WORKSHEET_ORDER, &known, pt, &|_| false, &valid);
@@ -1025,11 +1038,18 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
     known.push(("calcPr".into(), calc.to_string()));
     let pt_rels = emit.rels_for(None, &wb_pt.rels);
     let valid: std::collections::HashSet<String> = pt_rels.iter().map(|r| r.id.clone()).collect();
+    let mut keep_ids = std::collections::HashSet::new();
+    if let Some((el, keep)) =
+        pivot_plan.workbook_element(&valid, &mut || wb_ids.take(), &mut wb_rels)
+    {
+        known.push(("pivotCaches".into(), el));
+        keep_ids = keep;
+    }
     let (items, used_ids) =
         pass::merge_elements(pass::WORKBOOK_ORDER, &known, wb_pt, &|_| false, &valid);
     let all_ids = pass::referenced_ids(wb_pt);
     for r in pt_rels {
-        if used_ids.contains(&r.id) || !all_ids.contains(&r.id) {
+        if used_ids.contains(&r.id) || keep_ids.contains(&r.id) || !all_ids.contains(&r.id) {
             wb_rels.push(r);
         }
     }

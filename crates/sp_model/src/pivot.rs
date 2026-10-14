@@ -302,6 +302,12 @@ pub struct PivotOriginal {
     pub table_xml: Arc<[u8]>,
     pub cache_xml: Arc<[u8]>,
     pub records_xml: Option<Arc<[u8]>>,
+    /// Part names as loaded (`xl/pivotTables/pivotTable1.xml`…), reused when re-emitted.
+    pub table_path: String,
+    pub cache_path: String,
+    pub records_path: String,
+    /// `cacheId` the table refers to.
+    pub cache_id: u32,
 }
 
 impl PivotTable {
@@ -399,6 +405,10 @@ mod tests {
             table_xml: Arc::from(Vec::new()),
             cache_xml: Arc::from(Vec::new()),
             records_xml: None,
+            table_path: String::new(),
+            cache_path: String::new(),
+            records_path: String::new(),
+            cache_id: 1,
         }));
         assert!(p.is_pristine());
         p.rows.push(0);

@@ -141,6 +141,25 @@ Pass-through rule (each chart written exactly once):
 - Chart style/colour preset parts of adopted charts are dropped (the `package_validity` test
   counts drawing/chart parts as regenerated).
 
+## Pivot tables and what-if (sp_model::pivot, sp_io::xlsx_pivots)
+
+`Sheet::analysis` holds pivot tables (definition + cache snapshot + output area), slicers,
+scenarios and data-table records; every reference is formula text so `sp_ops::pivot_shift`
+moves it on row/column edits and sheet renames. `sp_formula::pivot` lays a pivot out from its
+cache; `pivot_cmds::refresh_pivot` re-reads the source and writes the report as constants
+inside the caller's transaction (`insert.pivot_table`, `data.refresh_all`, `insert.slicer`).
+GETPIVOTDATA queries the model. `sp_formula::whatif` evaluates formulas under substituted
+inputs (TABLE cells, goal seek, scenario summaries) without touching the workbook.
+
+Pass-through rule: on load `adopt_captured_pivots` adopts the pivot parts only if *every*
+pivot in the workbook is modelled (worksheet/table source, no grouping, calculated
+fields/items, label/value filters, pivot charts, slicers/timelines; data shown as normal or
+% of a total); otherwise all pivot parts stay passed through. An unchanged adopted pivot is
+written back verbatim (same part names and `cacheId`); an edited or new one is generated with
+`refreshOnLoad="1"`. The workbook `pivotCaches` element merges captured and generated caches.
+Data tables are `<f t="dataTable">` on the body's first cell (others store values only) and
+load back as `TABLE()` cells plus a `DataTable` record.
+
 ## Seam: engine → UI
 
 `sp_ui` reads `Session` + `sp_render::GridView` (visible rows/cols, x/y offsets, display text
