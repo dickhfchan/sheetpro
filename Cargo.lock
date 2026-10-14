@@ -2654,6 +2654,7 @@ dependencies = [
  "sp_core",
  "sp_formula",
  "sp_model",
+ "sp_render",
  "thiserror 2.0.20",
  "zip",
 ]

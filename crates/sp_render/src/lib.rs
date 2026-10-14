@@ -3,6 +3,8 @@
 
 pub mod chart;
 pub mod condfmt;
+pub mod paginate;
+pub mod std14;
 pub mod tablestyle;
 
 use sp_core::numfmt::{FmtColor, format_value};
@@ -391,6 +393,20 @@ pub fn layout(
         cols.push((c, x, w));
         x += w;
     }
+    layout_lines(wb, sheet, rows, cols, zoom, show_formulas)
+}
+
+/// Build the view for explicit `(index, offset, size)` rows and columns (in display order;
+/// they need not be contiguous). Used by [`layout`] and by print pagination.
+pub fn layout_lines(
+    wb: &Workbook,
+    sheet: &Sheet,
+    rows: Vec<(u32, f32, f32)>,
+    cols: Vec<(u32, f32, f32)>,
+    zoom: f32,
+    show_formulas: bool,
+) -> GridView {
+    let zoom = zoom.clamp(0.1, 4.0);
     let (Some(first_row), Some(last_row), Some(first_col), Some(last_col)) =
         (rows.first(), rows.last(), cols.first(), cols.last())
     else {

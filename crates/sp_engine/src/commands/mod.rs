@@ -17,6 +17,7 @@ pub mod misc_cmds;
 pub mod nav_cmds;
 pub mod outline_cmds;
 pub mod pivot_cmds;
+pub mod print_cmds;
 pub mod protect_cmds;
 pub mod sheet_cmds;
 pub mod table_cmds;
@@ -50,5 +51,6 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(table_cmds::specs());
     v.extend(pivot_cmds::specs());
     v.extend(whatif_cmds::specs());
+    v.extend(print_cmds::specs());
     v
 }

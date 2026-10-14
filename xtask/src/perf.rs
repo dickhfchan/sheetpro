@@ -59,6 +59,25 @@ fn numbers_and_formulas(rows: u32) -> Workbook {
     wb
 }
 
+/// `rows` × 10 columns: text, numbers and dates, like a sales report.
+fn report(rows: u32) -> Workbook {
+    let mut wb = Workbook::new();
+    let s = &mut wb.sheets[0];
+    for r in 0..rows {
+        let f = f64::from(r);
+        for c in 0..10u32 {
+            let v = match c {
+                0 => Value::text(format!("Region {}", r % 17)),
+                1 => Value::text(format!("Product {r}")),
+                5 | 9 => Value::text(format!("note {}", r % 101)),
+                _ => Value::Number(f * f64::from(c) + 0.25),
+            };
+            s.set(CellAddr::new(r, c), Cell::constant(v));
+        }
+    }
+    wb
+}
+
 pub fn run(quick: bool) -> Result<()> {
     let budgets: Budgets = toml::from_str(&std::fs::read_to_string(
         crate::root().join("perf/budgets.toml"),
@@ -117,6 +136,26 @@ pub fn run(quick: bool) -> Result<()> {
         );
     });
     results.insert("sort_rows".into(), ms);
+
+    // PDF export of a 10-column report (paginate + lay out + write), through the engine.
+    let pdf_rows = n / 10;
+    let mut s = sp_engine::Session::with_workbook(report(pdf_rows));
+    s.execute(
+        "home.number.format",
+        &json!({"range": format!("C1:D{pdf_rows}"), "code": "$#,##0.00"}),
+    )
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let pdf = std::env::temp_dir().join(format!("sp_perf_{}.pdf", std::process::id()));
+    let (ms, r) = time(|| {
+        s.execute(
+            "file.export.pdf",
+            &json!({"path": pdf.display().to_string()}),
+        )
+    });
+    let out = r.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let _ = std::fs::remove_file(&pdf);
+    println!("  ({pdf_rows}x10 report → {} PDF pages)", out["pages"]);
+    results.insert("pdf_export".into(), ms);
 
     let mut base = Baseline {
         date: crate::corpus::today(),

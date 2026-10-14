@@ -137,6 +137,7 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         CommandSpec::new("view.normal", "{}", |s, _| {
             s.view.full_screen = false;
+            s.view.print.mode = crate::commands::print_cmds::ViewMode::Normal;
             Ok(Json::Null)
         }),
         CommandSpec::new("view.freeze_panes", r#"{"cell"?: "B2"}"#, |s, p| {

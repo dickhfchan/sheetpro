@@ -160,6 +160,21 @@ written back verbatim (same part names and `cacheId`); an edited or new one is g
 Data tables are `<f t="dataTable">` on the body's first cell (others store values only) and
 load back as `TABLE()` cells plus a `DataTable` record.
 
+## Printing and PDF (sp_render::paginate, sp_io::pdf)
+
+`paginate` splits a sheet's print area (or used range, or an explicit range) into pages from
+`Sheet::page_setup`: paper size/orientation, margins, scale or fit-to N×M pages (fit ignores
+manual breaks), manual breaks, page order, repeated title rows/cols (`_xlnm.Print_Titles`) and
+headings. `page_scene` lays out one page in points (fills, gridlines, borders, display text
+measured with the standard-14 metrics in `sp_render::std14`, merges, charts, sparklines,
+header/footer with `&P &N &D &T &F &Z &A` and `&L/&C/&R` sections). `Pagination::bounds`
+gives page rectangles with edge kinds for the page break preview. `sp_io::pdf` writes the
+scenes as an uncompressed PDF 1.7 (standard-14 Type1 fonts, WinAnsi; characters outside
+WinAnsi print as `?`) and `pdf::validate` checks its structure. `print_cmds` builds jobs
+(`file.export.pdf`, `file.print`; no OS print spooler) and `sp_ui::page_view` draws the page
+break preview, page layout view and print preview from the same scenes. Page counts are
+capped at `paginate::MAX_PAGES`.
+
 ## Seam: engine → UI
 
 `sp_ui` reads `Session` + `sp_render::GridView` (visible rows/cols, x/y offsets, display text
