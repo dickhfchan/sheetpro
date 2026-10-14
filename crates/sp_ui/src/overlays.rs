@@ -8,9 +8,7 @@ use crate::App;
 use crate::dialogs::Dialog;
 use crate::dialogs::grid_popups::{CommentCard, FilterDropdown, ValidationList};
 use crate::theme::LIGHT as T;
-use egui::{
-    FontId, LayerId, Order, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2,
-};
+use egui::{FontId, LayerId, Order, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sp_core::{CellAddr, CellRange};
@@ -229,9 +227,21 @@ fn text_box(
     r
 }
 
+fn origin_id() -> egui::Id {
+    egui::Id::new("sp-cells-origin")
+}
+
+/// Screen position of the top-left of the cell area (row 1 / column A at no scroll) in the
+/// last frame, for tests and scripts that need to point at a cell or chart.
+pub fn cells_origin(ctx: &egui::Context) -> Option<Pos2> {
+    ctx.data(|d| d.get_temp::<Pos2>(origin_id()))
+}
+
 impl App {
     /// Paint objects over the cells and return their hit areas (topmost last).
     pub(crate) fn paint_overlays(&self, ui: &egui::Ui, painter: &Painter, geo: &Geo) -> Vec<Hot> {
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(origin_id(), geo.origin));
         let mut hots = Vec::new();
         let s = &self.session;
         let si = s.sheet_index();
@@ -311,10 +321,8 @@ impl App {
                     ));
                 }
                 CommentKind::Thread => {
-                    let b = Rect::from_min_size(
-                        Pos2::new(tr.x - 9.0, tr.y + 1.5),
-                        Vec2::new(7.5, 6.0),
-                    );
+                    let b =
+                        Rect::from_min_size(Pos2::new(tr.x - 9.0, tr.y + 1.5), Vec2::new(7.5, 6.0));
                     p.rect_filled(b, 1.5, T.comment_mark);
                     p.add(Shape::convex_polygon(
                         vec![
@@ -328,7 +336,10 @@ impl App {
                 }
             }
             hots.push(Hot::CommentMark {
-                rect: Rect::from_min_max(Pos2::new(tr.x - 11.0, tr.y), Pos2::new(tr.x, tr.y + 10.0)),
+                rect: Rect::from_min_max(
+                    Pos2::new(tr.x - 11.0, tr.y),
+                    Pos2::new(tr.x, tr.y + 10.0),
+                ),
                 cell: c.addr,
             });
         }
@@ -376,7 +387,12 @@ impl App {
                 for h in HANDLES {
                     let hr = handle_rect(r, h);
                     p.rect_filled(hr, 1.0, T.handle_fill);
-                    p.rect_stroke(hr, 1.0, Stroke::new(1.0, T.handle_border), StrokeKind::Inside);
+                    p.rect_stroke(
+                        hr,
+                        1.0,
+                        Stroke::new(1.0, T.handle_border),
+                        StrokeKind::Inside,
+                    );
                 }
                 hit = r.expand(5.0);
             }
@@ -448,12 +464,7 @@ impl App {
 
     /// Pointer handling for overlay objects. Returns true when the pointer event was
     /// consumed (the cell under it must not be selected).
-    pub(crate) fn overlay_input(
-        &mut self,
-        resp: &egui::Response,
-        hots: &[Hot],
-        geo: &Geo,
-    ) -> bool {
+    pub(crate) fn overlay_input(&mut self, resp: &egui::Response, hots: &[Hot], geo: &Geo) -> bool {
         let pos = resp.interact_pointer_pos();
         let top_hit = |p: Pos2| hots.iter().rev().find(|h| h.rect().contains(p)).cloned();
         // Chart drag in progress.

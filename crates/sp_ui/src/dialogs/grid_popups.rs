@@ -111,7 +111,9 @@ pub struct FilterDropdown {
     pub pos: Option<[f32; 2]>,
     pub search: String,
     pub items: Vec<FilterItem>,
-    /// "text" | "number" | "date": which condition submenu applies.
+    /// "text" | "number" | "date": which condition submenu applies. Serialized as
+    /// `value_kind`: `kind` is the [`super::Dialog`] tag.
+    #[serde(rename = "value_kind")]
     pub kind: String,
     /// Column currently filtered.
     pub active: bool,
@@ -499,7 +501,7 @@ impl FilterDropdown {
                 {
                     flow = Flow::Close;
                 }
-                let ok = egui::Button::new(RichText::new("OK").color(egui::Color32::WHITE))
+                let ok = egui::Button::new(RichText::new("OK").color(T.accent_text))
                     .fill(T.accent)
                     .min_size(egui::vec2(64.0, 22.0));
                 if ui.add_enabled(any && !table, ok).clicked() {
@@ -584,7 +586,7 @@ impl FilterDropdown {
             {
                 flow = Flow::Close;
             }
-            let ok = egui::Button::new(RichText::new("OK").color(egui::Color32::WHITE))
+            let ok = egui::Button::new(RichText::new("OK").color(T.accent_text))
                 .fill(T.accent)
                 .min_size(egui::vec2(64.0, 22.0));
             if ui.add(ok).clicked() {
@@ -635,14 +637,11 @@ pub struct ValidationList {
 impl ValidationList {
     pub fn new(s: &Session, cell: CellAddr) -> Self {
         let si = s.sheet_index();
-        let items = s
-            .wb
-            .sheet(si)
-            .and_then(|sh| sh.validation_at(cell))
-            .map(|rule| {
-                sp_engine::commands::validation_cmds::list_items(&s.wb, si, rule, cell)
-            })
-            .unwrap_or_default();
+        let items =
+            s.wb.sheet(si)
+                .and_then(|sh| sh.validation_at(cell))
+                .map(|rule| sp_engine::commands::validation_cmds::list_items(&s.wb, si, rule, cell))
+                .unwrap_or_default();
         ValidationList {
             cell,
             items: items.into_iter().take(MAX_ITEMS).collect(),
@@ -721,12 +720,21 @@ impl CommentCard {
         let cell = self.cell.to_a1();
         let (_, dismissed) = popup(ctx, "comment-card", self.pos, 250.0, |ui| {
             let head = |ui: &mut egui::Ui, who: &str, text: &str| {
-                ui.label(RichText::new(who).strong().size(12.0).color(T.comment_author));
+                ui.label(
+                    RichText::new(who)
+                        .strong()
+                        .size(12.0)
+                        .color(T.comment_author),
+                );
                 ui.label(RichText::new(text).size(12.0).color(T.note_text));
             };
             match c.kind {
                 CommentKind::Note => {
-                    ui.label(RichText::new(format!("Note · {}", c.author)).strong().color(T.comment_author));
+                    ui.label(
+                        RichText::new(format!("Note · {}", c.author))
+                            .strong()
+                            .color(T.comment_author),
+                    );
                     ui.add(
                         egui::TextEdit::multiline(&mut self.draft)
                             .desired_rows(4)
@@ -855,7 +863,7 @@ impl ValidationAlert {
                     egui::Align2::CENTER_CENTER,
                     glyph,
                     egui::FontId::proportional(18.0),
-                    egui::Color32::WHITE,
+                    T.accent_text,
                 );
                 ui.vertical(|ui| {
                     ui.label(RichText::new(&self.message).color(T.dialog_title));
@@ -874,8 +882,7 @@ impl ValidationAlert {
                 for b in buttons {
                     let primary = matches!(*b, "Yes" | "OK" | "Retry");
                     let btn = if primary {
-                        egui::Button::new(RichText::new(*b).color(egui::Color32::WHITE))
-                            .fill(T.accent)
+                        egui::Button::new(RichText::new(*b).color(T.accent_text)).fill(T.accent)
                     } else {
                         egui::Button::new(*b)
                     };
