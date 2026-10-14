@@ -147,6 +147,15 @@ impl App {
             self.menu_cmd(ui, "home.editing.sort_za", "Sort Z to A");
             self.menu_cmd(ui, "home.editing.sort_custom", "Custom Sort…");
         });
+        let s = &self.session;
+        let in_table =
+            s.wb.sheet(s.sheet_index())
+                .and_then(|sh| sh.table_at(s.sel.active))
+                .is_some();
+        if in_table && ui.button("Table Design…").clicked() {
+            self.activate_command("table.design");
+            ui.close();
+        }
         self.menu_cmd(ui, "formulas.insert_function", "Insert Function…");
         self.menu_cmd(ui, "formulas.define_name", "Define Name…");
         ui.separator();

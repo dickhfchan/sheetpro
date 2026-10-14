@@ -5,12 +5,14 @@
 //! screenshot script (or a test) can open any dialog by name with pre-filled fields:
 //! `App::open_dialog("find {\"what\":\"total\"}")`.
 
+pub mod cf_dialog;
 pub mod chart_format;
 pub mod find;
 pub mod format_cells;
 pub mod grid_popups;
 pub mod misc;
 pub mod sort;
+pub mod table_dialog;
 pub mod widgets;
 
 use crate::App;
@@ -49,10 +51,21 @@ pub enum Dialog {
     Comment(grid_popups::CommentCard),
     ValidationAlert(grid_popups::ValidationAlert),
     ChartFormat(chart_format::ChartFormat),
+    CondFormat(Box<cf_dialog::CfDialog>),
+    CreateTable(table_dialog::CreateTable),
+    TableDesign(Box<table_dialog::TableDesign>),
 }
 
 /// Names accepted by [`App::open_dialog`] (and `sp screenshot --dialog`).
-pub const DIALOG_NAMES: [&str; 29] = [
+pub const DIALOG_NAMES: [&str; 37] = [
+    "cf_new",
+    "cf_highlight",
+    "cf_top_bottom",
+    "cf_manage",
+    "create_table",
+    "format_as_table",
+    "table_design",
+    "cf_formula",
     "filter",
     "validation_list",
     "comment",
@@ -116,6 +129,13 @@ pub fn dialog_for_command(id: &str) -> Option<&'static str> {
         "home.cells.unhide_sheet" => "unhide_sheet",
         "home.cells.tab_color" => "tab_color",
         "view.zoom" => "zoom",
+        "home.styles.cf.new_rule" => "cf_new",
+        "home.styles.cf.highlight_rules" => "cf_highlight",
+        "home.styles.cf.top_bottom" => "cf_top_bottom",
+        "home.styles.cf.manage" => "cf_manage",
+        "insert.table" => "create_table",
+        "home.styles.format_as_table" => "format_as_table",
+        "table.design" => "table_design",
         _ => return None,
     })
 }
@@ -237,6 +257,30 @@ impl Dialog {
                         .ok_or("no chart on this sheet")?,
                 )
             }
+            "cf_new" | "cf_highlight" | "cf_top_bottom" | "cf_formula" => {
+                use cf_dialog::{CAT_CONTAINS, CAT_FORMULA, CAT_TOP, CfDialog};
+                let cat = match name {
+                    "cf_top_bottom" => CAT_TOP,
+                    "cf_formula" => CAT_FORMULA,
+                    _ => CAT_CONTAINS,
+                };
+                Dialog::CondFormat(Box::new(CfDialog::new_rule(&app.session, cat)))
+            }
+            "cf_manage" => Dialog::CondFormat(Box::new(cf_dialog::CfDialog::manager(&app.session))),
+            "create_table" => {
+                Dialog::CreateTable(table_dialog::CreateTable::new(&app.session, "insert.table"))
+            }
+            // Restyles the table at the active cell, else creates one with a chosen style.
+            "format_as_table" => match table_dialog::TableDesign::at_active(&app.session) {
+                Some(d) => Dialog::TableDesign(Box::new(d)),
+                None => Dialog::CreateTable(table_dialog::CreateTable::new(
+                    &app.session,
+                    "home.styles.format_as_table",
+                )),
+            },
+            "table_design" => Dialog::TableDesign(Box::new(
+                table_dialog::TableDesign::new(&app.session).ok_or("no table on this sheet")?,
+            )),
             other => match other.strip_prefix("params:") {
                 Some(id) => Dialog::Params(misc::Params::new(id)?),
                 None => return Err(format!("unknown dialog '{other}'")),
@@ -264,6 +308,9 @@ impl Dialog {
             Dialog::Comment(d) => d.ui(ctx, app),
             Dialog::ValidationAlert(d) => d.ui(ctx, app),
             Dialog::ChartFormat(d) => d.ui(ctx, app),
+            Dialog::CondFormat(d) => d.ui(ctx, app),
+            Dialog::CreateTable(d) => d.ui(ctx, app),
+            Dialog::TableDesign(d) => d.ui(ctx, app),
         }
     }
 
@@ -471,7 +518,7 @@ mod tests {
         let mut app = App::new(sp_engine::Session::new());
         for n in DIALOG_NAMES {
             // These need an object at the active cell (filter header, chart).
-            let needs_context = matches!(n, "filter" | "chart_format");
+            let needs_context = matches!(n, "filter" | "chart_format" | "table_design");
             assert_eq!(Dialog::create(n, &mut app).is_ok(), !needs_context, "{n}");
         }
         assert!(Dialog::create("params:view.zoom", &mut app).is_ok());
