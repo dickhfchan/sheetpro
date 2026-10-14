@@ -1,0 +1,29 @@
+{"op": "exec", "id": "home.cells.column_width", "params": {"range": "F1", "width": 20}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A1", "input": "Region"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B1", "input": "Q1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C1", "input": "Q2"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D1", "input": "Growth"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A2", "input": "North"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B2", "input": "12500"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C2", "input": "14100"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D2", "input": "=C2/B2-1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A3", "input": "South"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B3", "input": "9800"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C3", "input": "9150"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D3", "input": "=C3/B3-1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A4", "input": "East"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B4", "input": "11200"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C4", "input": "12900"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D4", "input": "=C4/B4-1"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A5", "input": "Total"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B5", "input": "=SUM(B2:B4)"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C5", "input": "=SUM(C2:C4)"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F2", "input": "=MAX(C2:C4)"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "F3", "input": "10/10/2026"}}
+{"op": "exec", "id": "select.range", "params": {"range": "A1:D1"}}
+{"op": "exec", "id": "home.font.bold", "params": {}}
+{"op": "exec", "id": "home.font.fill_color", "params": {"color": "DDEBF7"}}
+{"op": "exec", "id": "home.number.format", "params": {"range": "B2:C5", "code": "#,##0.00"}}
+{"op": "exec", "id": "home.number.format", "params": {"range": "D2:D4", "code": "0.0%"}}
+{"op": "exec", "id": "home.number.format", "params": {"range": "F3", "code": "dddd, mmmm d"}}
+{"op": "exec", "id": "select.range", "params": {"range": "B2:C4"}}

@@ -1,0 +1,41 @@
+{"op": "exec", "id": "home.cells.column_width", "params": {"range": "A1:E1", "width": 11}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A1", "input": "Region"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B1", "input": "Product"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C1", "input": "Units"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D1", "input": "Shipped"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E1", "input": "Status"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A2", "input": "North"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B2", "input": "Lamp"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C2", "input": "120"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D2", "input": "3/2/2026"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E2", "input": "Open"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A3", "input": "South"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B3", "input": "Desk"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C3", "input": "45"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D3", "input": "3/9/2026"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E3", "input": "Closed"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A4", "input": "East"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B4", "input": "Chair"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C4", "input": "300"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D4", "input": "3/9/2026"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E4", "input": "Pending"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A5", "input": "North"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B5", "input": "Shelf"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C5", "input": "88"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D5", "input": "3/16/2026"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A6", "input": "West"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B6", "input": "Lamp"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C6", "input": "64"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D6", "input": "3/23/2026"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E6", "input": "Open"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A7", "input": "South"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B7", "input": "Desk"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C7", "input": "210"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D7", "input": "3/30/2026"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "E7", "input": "Closed"}}
+{"op": "exec", "id": "data.filter", "params": {"range": "A1:E7", "on": true}}
+{"op": "exec", "id": "data.filter", "params": {"column": "C", "custom": [{"op": ">", "val": 50}]}}
+{"op": "exec", "id": "data.validation", "params": {"range": "E2:E7", "type": "list", "source": "Open,Closed,Pending", "prompt": "Pick a status"}}
+{"op": "exec", "id": "insert.note", "params": {"cell": "E2", "text": "Restock due next week", "author": "Dana"}}
+{"op": "exec", "id": "review.notes.show_all", "params": {}}
+{"op": "exec", "id": "insert.comment", "params": {"cell": "E7", "text": "Is this a bulk order?", "author": "Lee"}}

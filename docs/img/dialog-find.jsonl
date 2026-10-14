@@ -1,0 +1,19 @@
+{"op": "exec", "id": "cell.set", "params": {"cell": "A1", "input": "Region"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B1", "input": "Product"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C1", "input": "Units"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D1", "input": "Price"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A2", "input": "North"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B2", "input": "Widget"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C2", "input": "120"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D2", "input": "=C2*12.79"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A3", "input": "South"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B3", "input": "Gadget"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C3", "input": "85"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D3", "input": "=C3*9.5"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A4", "input": "East"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "B4", "input": "Widget"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C4", "input": "64"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "D4", "input": "=C4*12.79"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "A5", "input": "Total"}}
+{"op": "exec", "id": "cell.set", "params": {"cell": "C5", "input": "=SUM(C2:C4)"}}
+{"op": "exec", "id": "select.range", "params": {"range": "D2"}}
