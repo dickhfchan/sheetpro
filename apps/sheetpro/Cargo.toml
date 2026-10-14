@@ -11,6 +11,11 @@ sp_ui.workspace = true
 eframe.workspace = true
 egui.workspace = true
 serde_json.workspace = true
+image.workspace = true
+rfd.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+winit.workspace = true
 
 [lints]
 workspace = true
