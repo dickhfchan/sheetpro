@@ -456,10 +456,10 @@ fn read_sheet_cells(
                             .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                             .unwrap_or_default()
                             .into_owned();
-                        fa.push((
-                            at.key.local_name().into_inner().to_string(),
-                            v.clone(),
-                        ));
+                        let key = at.key.local_name();
+                        if matches!(key.as_ref(), "dt2D" | "dtr" | "r1" | "r2") {
+                            fa.push((key.into_inner().to_string(), v.clone()));
+                        }
                         match at.key.local_name().as_ref() {
                             "t" => t = Some(v),
                             "si" => c.f_shared_si = Some(v),
@@ -474,6 +474,9 @@ fn read_sheet_cells(
                             c.f_shared_si = None;
                         }
                         Some("dataTable") => {
+                            if let Some(r) = c.f_ref.take() {
+                                fa.push(("ref".to_string(), r));
+                            }
                             ctx.data_tables.push(fa);
                             c.f = None;
                             c.f_shared_si = None;

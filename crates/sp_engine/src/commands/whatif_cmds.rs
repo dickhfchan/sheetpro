@@ -458,6 +458,174 @@ fn summary(s: &mut Session, p: &Json, sheet: usize) -> CmdResult {
     Ok(json!({"sheet": name, "scenarios": scenarios.len()}))
 }
 
+// ---------------------------------------------------------------------------------------
+// Forecast sheet
+
+/// A new sheet with the history, `FORECAST.ETS` formulas for the coming periods, confidence
+/// bounds and a line chart.
+fn forecast_sheet(s: &mut Session, p: &Json) -> CmdResult {
+    use sp_formula::functions::forecast::{MAX_POINTS, fit, prepare, season_for};
+    let home = s.sheet_index();
+    let area = |k: &str| -> Result<(usize, CellRange), CmdError> {
+        let t = str_req(p, k)?;
+        let (i, r) = parse_ref_text(&s.wb, home, t).ok_or_else(|| bad(format!("not a reference: '{t}'")))?;
+        if r.cell_count() > MAX_POINTS as u64 || (r.rows() > 1 && r.cols() > 1) {
+            return Err(bad(format!("'{k}' must be one row or column of at most {MAX_POINTS} cells")));
+        }
+        Ok((i, r))
+    };
+    let (vs, vr) = area("values")?;
+    let (ts, tr) = area("timeline")?;
+    if vr.cell_count() != tr.cell_count() {
+        return Err(bad("'values' and 'timeline' must be the same size"));
+    }
+    let seasonality = crate::params::f64_opt(p, "seasonality")?.unwrap_or(1.0);
+    let conf = crate::params::f64_opt(p, "confidence")?.unwrap_or(0.95);
+    if !(0.0..1.0).contains(&conf) {
+        return Err(bad("'confidence' must be between 0 and 1 (0 = no bounds)"));
+    }
+    let complete = crate::params::bool_opt(p, "fill_missing").unwrap_or(true);
+    let agg = crate::params::u32_opt(p, "aggregation")?.unwrap_or(1);
+    if !(1..=7).contains(&agg) {
+        return Err(bad("'aggregation' must be 1-7"));
+    }
+    let read = |sheet: usize, r: CellRange| -> Vec<Value> {
+        s.wb.sheet(sheet).map_or_else(Vec::new, |sh| r.iter().map(|a| sh.value(a).clone()).collect())
+    };
+    let vals = read(vs, vr);
+    let times = read(ts, tr);
+    let mut pts = Vec::with_capacity(vals.len());
+    for (v, t) in vals.iter().zip(&times) {
+        let Value::Number(t) = t else {
+            if t.is_empty() {
+                continue;
+            }
+            return Err(failed("The timeline must contain numbers or dates."));
+        };
+        let v = match v {
+            Value::Number(n) => Some(*n),
+            Value::Empty => None,
+            _ => return Err(failed("The values must be numbers.")),
+        };
+        pts.push((*t, v));
+    }
+    let series = prepare(&pts, complete, agg as u8)
+        .map_err(|_| failed("The timeline needs at least two points on a consistent step."))?;
+    let season = season_for(&series, seasonality).map_err(|_| bad("'seasonality' must be 0-8760"))?;
+    let model = fit(&series, season).map_err(|_| failed("Not enough data to fit a forecast with this seasonality."))?;
+    let last = series.last_time();
+    let periods = match (crate::params::f64_opt(p, "end")?, crate::params::u32_opt(p, "periods")?) {
+        (Some(end), _) => {
+            let k = ((end - last) / series.step).ceil();
+            if !(k >= 1.0 && k <= MAX_POINTS as f64) {
+                return Err(bad("'end' must be after the last timeline point"));
+            }
+            k as usize
+        }
+        (None, Some(n)) if n >= 1 && (n as usize) <= MAX_POINTS => n as usize,
+        (None, Some(_)) => return Err(bad("'periods' must be 1-50000")),
+        (None, None) => series.y.len().div_ceil(3).max(1),
+    };
+    // History rows (sorted, aggregated, on the step) followed by the forecast rows.
+    let hist = series.y.len();
+    let src_name = s.wb.sheet(home).map_or(String::new(), |x| x.name.clone());
+    let new_name = s.wb.next_sheet_name();
+    let first = 2u32;
+    let last_row = first + hist as u32 - 1;
+    let vref = format!("$B${first}:$B${last_row}");
+    let tref = format!("$A${first}:$A${last_row}");
+    let conf_on = conf > 0.0;
+    let args = format!("{vref},{tref},{seasonality},{},{agg}", u8::from(complete));
+    let at = (home + 1).min(s.wb.sheets.len());
+    let sheet_name = new_name.clone();
+    s.transact("Forecast Sheet", move |tx, _| {
+        tx.touch_book();
+        let bold = tx.wb.styles.intern(Style {
+            bold: true,
+            ..Style::default()
+        });
+        let mut sh = sp_model::Sheet::new(sheet_name.clone());
+        let mut put = |r: u32, c: u32, cell: Cell| {
+            sh.set(CellAddr::new(r - 1, c), cell);
+        };
+        let mut headers = vec!["Timeline", "Values", "Forecast"];
+        if conf_on {
+            headers.extend(["Lower Confidence Bound", "Upper Confidence Bound"]);
+        }
+        for (c, h) in headers.iter().enumerate() {
+            put(1, c as u32, Cell { style: bold, ..Cell::constant(Value::text(*h)) });
+        }
+        for (k, y) in series.y.iter().enumerate() {
+            let r = first + k as u32;
+            put(r, 0, Cell::constant(Value::Number(series.start + series.step * k as f64)));
+            put(r, 1, Cell::constant(Value::Number(*y)));
+        }
+        // The forecast lines start at the last actual value.
+        put(last_row, 2, Cell::formula(format!("B{last_row}")));
+        if conf_on {
+            put(last_row, 3, Cell::formula(format!("B{last_row}")));
+            put(last_row, 4, Cell::formula(format!("B{last_row}")));
+        }
+        for k in 1..=periods {
+            let r = last_row + k as u32;
+            put(r, 0, Cell::constant(Value::Number(last + series.step * k as f64)));
+            put(r, 2, Cell::formula(format!("FORECAST.ETS(A{r},{args})")));
+            if conf_on {
+                let ci = format!("FORECAST.ETS.CONFINT(A{r},{vref},{tref},{conf},{seasonality},{},{agg})", u8::from(complete));
+                put(r, 3, Cell::formula(format!("C{r}-{ci}")));
+                put(r, 4, Cell::formula(format!("C{r}+{ci}")));
+            }
+        }
+        let end_row = last_row + periods as u32;
+        let q = sp_core::addr::quote_sheet_name(&sheet_name);
+        // Series named by their header cells.
+        let ser = |col: &str| sp_model::chart::Series {
+            name: format!("{q}!${col}$1"),
+            categories: format!("{q}!$A$2:$A${end_row}"),
+            values: format!("{q}!${col}$2:${col}${end_row}"),
+            ..sp_model::chart::Series::default()
+        };
+        let mut series_list = vec![ser("B"), ser("C")];
+        if conf_on {
+            series_list.push(ser("D"));
+            series_list.push(ser("E"));
+        }
+        let col0 = if conf_on { 6 } else { 4 };
+        sh.drawings.charts.push(sp_model::chart::Chart {
+            name: "Forecast Chart".into(),
+            kind: sp_model::chart::ChartKind::Line,
+            anchor: sp_model::chart::Anchor {
+                from: CellAddr::new(1, col0),
+                to: CellAddr::new(16, col0 + 8),
+                ..sp_model::chart::Anchor::default()
+            },
+            series: series_list,
+            legend: sp_model::chart::LegendPos::Bottom,
+            ..sp_model::chart::Chart::default()
+        });
+        tx.wb.sheets.insert(at, sh);
+        for n in &mut tx.wb.names {
+            if let Some(sc) = n.scope.as_mut()
+                && *sc >= at
+            {
+                *sc += 1;
+            }
+        }
+        tx.wb.active = at;
+        Ok(())
+    })?;
+    s.select(CellAddr::default());
+    Ok(json!({
+        "sheet": new_name,
+        "source": src_name,
+        "periods": periods,
+        "seasonality": if season >= 2 { season } else { 0 },
+        "alpha": model.alpha,
+        "beta": model.beta,
+        "gamma": model.gamma,
+    }))
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new(
@@ -474,6 +642,11 @@ pub fn specs() -> Vec<CommandSpec> {
             "data.what_if.scenario",
             r#"{"action": "add|edit|show|delete|summary|list", "name"?: "Best case", "changing"?: "B1,B2:B3", "values"?: [1, 2, 3] (default: current values), "comment"?: "...", "result_cells"?: "B10,B11" (summary)}"#,
             scenario,
+        ),
+        CommandSpec::new(
+            "data.forecast_sheet",
+            r#"{"values": "B2:B25", "timeline": "A2:A25", "end"?: 46000 | "periods"?: 12 (default: a third of the history), "seasonality"?: 1 (1 = detect, 0 = none, n = length), "confidence"?: 0.95 (0 = no bounds), "fill_missing"?: true, "aggregation"?: 1-7 (average, count, counta, max, median, min, sum)}"#,
+            forecast_sheet,
         ),
     ]
 }
@@ -621,5 +794,42 @@ mod tests {
             )
             .is_err()
         );
+    }
+    #[test]
+    fn forecast_sheet_writes_formulas_and_chart() {
+        let mut s = Session::new();
+        let pattern = [10.0, 14.0, 8.0, 12.0];
+        set(&mut s, "A1", "Month");
+        set(&mut s, "B1", "Sales");
+        for i in 0..24usize {
+            set(&mut s, &format!("A{}", i + 2), &(i + 1).to_string());
+            set(&mut s, &format!("B{}", i + 2), &(100.0 + 2.0 * i as f64 + pattern[i % 4]).to_string());
+        }
+        let r = s
+            .execute(
+                "data.forecast_sheet",
+                &json!({"values": "B2:B25", "timeline": "A2:A25", "periods": 4}),
+            )
+            .unwrap();
+        assert_eq!(r["seasonality"], 4);
+        assert_eq!(s.wb.active, 1);
+        // History rows 2..25, forecasts in rows 26..29.
+        assert!((num(&s, 1, "C26") - 158.0).abs() < 1.0, "{}", num(&s, 1, "C26"));
+        assert!(num(&s, 1, "D26") < num(&s, 1, "C26"));
+        assert!(num(&s, 1, "E29") > num(&s, 1, "C29"));
+        assert_eq!(num(&s, 1, "C25"), num(&s, 1, "B25"));
+        assert_eq!(s.wb.sheets[1].drawings.charts.len(), 1);
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.wb.sheets.len(), 1);
+        for bad in [
+            json!({"values": "B2:B25", "timeline": "A2:A24"}),
+            json!({"values": "B2:C25", "timeline": "A2:A25"}),
+            json!({"values": "B2:B25", "timeline": "A2:A25", "confidence": 2}),
+            json!({"values": "B2:B25", "timeline": "A2:A25", "end": 3}),
+            json!({"values": "B2:B3", "timeline": "A2:A3", "seasonality": 12}),
+            json!({"values": "A1:A3", "timeline": "B1:B3"}),
+        ] {
+            assert!(s.execute("data.forecast_sheet", &bad).is_err(), "{bad}");
+        }
     }
 }

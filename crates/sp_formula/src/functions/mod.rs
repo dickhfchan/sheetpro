@@ -7,6 +7,7 @@ pub mod analysis;
 pub mod arrays;
 pub mod bonds;
 pub mod criteria;
+pub mod forecast;
 pub mod database;
 pub mod datetime;
 pub mod distributions;
@@ -109,6 +110,7 @@ pub fn registry() -> &'static Registry {
         arrays::register(&mut r);
         lambda::register(&mut r);
         analysis::register(&mut r);
+        forecast::register(&mut r);
         r
     })
 }
