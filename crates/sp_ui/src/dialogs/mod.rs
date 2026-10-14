@@ -253,6 +253,9 @@ impl App {
     /// The command a ribbon button, menu item or shortcut stands for: a dialog when the
     /// command has one or needs params, otherwise run it straight away.
     pub fn activate_command(&mut self, id: &str) {
+        if crate::shell_hook::intercept(id) {
+            return;
+        }
         if let Some(name) = dialog_for_command(id) {
             if let Err(e) = self.open_dialog(name) {
                 self.last_error = Some(e);
