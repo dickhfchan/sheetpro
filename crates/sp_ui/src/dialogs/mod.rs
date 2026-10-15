@@ -12,6 +12,7 @@ pub mod format_cells;
 pub mod grid_popups;
 pub mod misc;
 pub mod sort;
+pub mod spelling;
 pub mod table_dialog;
 pub mod widgets;
 
@@ -54,10 +55,12 @@ pub enum Dialog {
     CondFormat(Box<cf_dialog::CfDialog>),
     CreateTable(table_dialog::CreateTable),
     TableDesign(Box<table_dialog::TableDesign>),
+    Spelling(spelling::Spelling),
 }
 
 /// Names accepted by [`App::open_dialog`] (and `sp screenshot --dialog`).
-pub const DIALOG_NAMES: [&str; 37] = [
+pub const DIALOG_NAMES: [&str; 38] = [
+    "spelling",
     "cf_new",
     "cf_highlight",
     "cf_top_bottom",
@@ -136,6 +139,7 @@ pub fn dialog_for_command(id: &str) -> Option<&'static str> {
         "insert.table" => "create_table",
         "home.styles.format_as_table" => "format_as_table",
         "table.design" => "table_design",
+        "review.spelling" => "spelling",
         _ => return None,
     })
 }
@@ -281,6 +285,7 @@ impl Dialog {
             "table_design" => Dialog::TableDesign(Box::new(
                 table_dialog::TableDesign::new(&app.session).ok_or("no table on this sheet")?,
             )),
+            "spelling" => Dialog::Spelling(spelling::Spelling::new(app)),
             other => match other.strip_prefix("params:") {
                 Some(id) => Dialog::Params(misc::Params::new(id)?),
                 None => return Err(format!("unknown dialog '{other}'")),
@@ -311,6 +316,7 @@ impl Dialog {
             Dialog::CondFormat(d) => d.ui(ctx, app),
             Dialog::CreateTable(d) => d.ui(ctx, app),
             Dialog::TableDesign(d) => d.ui(ctx, app),
+            Dialog::Spelling(d) => d.ui(ctx, app),
         }
     }
 
