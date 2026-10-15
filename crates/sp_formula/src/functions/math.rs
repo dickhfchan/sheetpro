@@ -767,14 +767,10 @@ pub fn register(r: &mut Registry) {
         })
     });
     r.add("POWER", 2, 2, |ev, a| {
-        m2(ev, a, None, |x, y| {
-            if x == 0.0 && y == 0.0 {
-                Err(ErrorKind::Num)
-            } else if x == 0.0 && y < 0.0 {
-                Err(ErrorKind::Div0)
-            } else {
-                nz(x.powf(y))
-            }
+        m2(ev, a, None, |x, y| match crate::eval::power(x, y) {
+            Value::Number(n) => Ok(n),
+            Value::Error(e) => Err(e),
+            _ => Err(ErrorKind::Value),
         })
     });
     r.add("PI", 0, 0, |_, _| EvalValue::num(std::f64::consts::PI));

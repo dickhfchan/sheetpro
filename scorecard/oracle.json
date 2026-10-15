@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 189,
+  "calc_files_pass": 190,
   "cells_compared": 73244,
-  "cells_matched": 72786,
+  "cells_matched": 72788,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -1334,13 +1334,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 29,
-      "matched": 27,
+      "matched": 29,
       "skipped_volatile": 1,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!D3 =POWER(-8,1/3) → expected -2, got #NUM!",
-        "Sheet1!F9 =(-8)^(1/3) → expected -2, got #NUM!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/PRODUCT.xlsx",

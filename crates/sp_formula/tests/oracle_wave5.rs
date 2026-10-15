@@ -272,3 +272,19 @@ fn scalar_functions_lift_over_arrays_and_broadcast_errors() {
     assert_eq!(num(&wb, "E6"), 6.0); // serials 1..3 are Jan 1..3 1900
     assert_eq!(num(&wb, "E7"), 8.0); // 2 + 2 + 4 (halves round away from zero)
 }
+
+#[test]
+fn negative_base_odd_root() {
+    let wb = wb_with(&[
+        ("B1", "=POWER(-8,1/3)"),
+        ("B2", "=(-8)^(1/3)"),
+        ("B3", "=POWER(-8,-1/3)"),
+        ("B4", "=POWER(-8,1/2)"),
+        ("B5", "=(-2)^3"),
+    ]);
+    assert!(close(num(&wb, "B1"), -2.0));
+    assert!(close(num(&wb, "B2"), -2.0));
+    assert!(close(num(&wb, "B3"), -0.5));
+    assert_eq!(err(&wb, "B4"), ErrorKind::Num);
+    assert_eq!(num(&wb, "B5"), -8.0);
+}

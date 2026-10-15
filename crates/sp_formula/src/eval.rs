@@ -123,6 +123,27 @@ impl EvalValue {
 }
 
 /// A finite number, or `#NUM!` for NaN/infinite results.
+/// `x^y` / `POWER(x, y)`: 0^0 is `#NUM!`, 0^negative `#DIV/0!`; a negative base with an
+/// exponent of 1/n for odd n is the real odd root (`(-8)^(1/3)` = -2), other fractional
+/// exponents of a negative base are `#NUM!`.
+pub fn power(x: f64, y: f64) -> Value {
+    if x == 0.0 && y == 0.0 {
+        return Value::Error(ErrorKind::Num);
+    }
+    if x == 0.0 && y < 0.0 {
+        return Value::Error(ErrorKind::Div0);
+    }
+    if x < 0.0 && y.fract() != 0.0 && y.is_finite() {
+        let inv = 1.0 / y;
+        let n = inv.round();
+        if (inv - n).abs() <= 1e-9 * n.abs().max(1.0) && n.rem_euclid(2.0) == 1.0 {
+            return num_value(-(-x).powf(y));
+        }
+        return Value::Error(ErrorKind::Num);
+    }
+    num_value(x.powf(y))
+}
+
 pub fn num_value(n: f64) -> Value {
     if n.is_finite() {
         Value::Number(if n == 0.0 { 0.0 } else { n })
@@ -1110,15 +1131,7 @@ pub fn scalar_binop(op: BinOp, a: &Value, b: &Value) -> Value {
                         num_value(x / y)
                     }
                 }
-                BinOp::Pow => {
-                    if x == 0.0 && y == 0.0 {
-                        Value::Error(ErrorKind::Num)
-                    } else if x == 0.0 && y < 0.0 {
-                        Value::Error(ErrorKind::Div0)
-                    } else {
-                        num_value(x.powf(y))
-                    }
-                }
+                BinOp::Pow => power(x, y),
                 _ => Value::Error(ErrorKind::Value),
             }
         }
