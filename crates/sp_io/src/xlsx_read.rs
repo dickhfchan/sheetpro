@@ -98,7 +98,7 @@ fn border_of(n: Option<&Node>) -> Border {
 }
 
 /// Parse styles.xml into one `Style` per cellXfs entry.
-fn read_styles(xml: &str) -> Result<Vec<Style>, IoError> {
+fn read_styles(xml: &str, theme: &sp_model::theme::Theme) -> Result<Vec<Style>, IoError> {
     let root = parse_dom(xml)?;
     let mut fmts: HashMap<u32, String> = HashMap::new();
     if let Some(nf) = root.child("numFmts") {
@@ -156,13 +156,15 @@ fn read_styles(xml: &str) -> Result<Vec<Style>, IoError> {
                 if let Some(name) = font.child("name").and_then(|n| n.attr("val")) {
                     s.font_name = name.to_string();
                 }
-                s.font_color = color_of(font.child("color"));
+                (s.font_color, s.font_theme) =
+                    crate::xlsx_theme::style_color(font.child("color"), theme, true);
             }
             if let Some(fill) = fills.get(idx(xf, "fillId"))
                 && let Some(pf) = fill.child("patternFill")
                 && pf.attr("patternType").is_some_and(|p| p != "none")
             {
-                s.fill = color_of(pf.child("fgColor"));
+                (s.fill, s.fill_theme) =
+                    crate::xlsx_theme::style_color(pf.child("fgColor"), theme, false);
             }
             if let Some(b) = borders.get(idx(xf, "borderId")) {
                 s.border_left = border_of(b.child("left").or_else(|| b.child("start")));
@@ -990,8 +992,16 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     let rich = read_rich_errors(&mut zip)?;
     let mut wb = Workbook::new();
     wb.sheets.clear();
+    if let Some(r) = raw_rels
+        .iter()
+        .find(|r| !r.external && pass::rel_kind(&r.rel_type) == "theme")
+        && let Some(x) = read_part(&mut zip, &r.target)?
+        && let Some(t) = crate::xlsx_theme::parse_theme(&x)
+    {
+        wb.theme = t;
+    }
     let xf_styles = match read_part(&mut zip, "xl/styles.xml")? {
-        Some(x) => read_styles(&x)?,
+        Some(x) => read_styles(&x, &wb.theme)?,
         None => Vec::new(),
     };
     let xf_map: Vec<StyleId> = xf_styles.into_iter().map(|s| wb.styles.intern(s)).collect();

@@ -7,6 +7,7 @@ pub mod passthrough;
 pub mod pivot;
 pub mod style;
 pub mod table;
+pub mod theme;
 
 use serde::{Deserialize, Serialize};
 use sp_core::{CellAddr, CellRange, Value};
@@ -376,6 +377,9 @@ pub struct Workbook {
     /// File content we don't model, re-emitted on save (see `passthrough.rs`).
     #[serde(default)]
     pub passthrough: passthrough::Passthrough,
+    /// Workbook theme (colour slots and fonts; see `theme.rs`).
+    #[serde(default)]
+    pub theme: theme::Theme,
 }
 
 impl Default for Workbook {
@@ -399,6 +403,7 @@ impl Workbook {
             props: DocProps::default(),
             protection: None,
             passthrough: Default::default(),
+            theme: theme::Theme::default(),
         }
     }
 

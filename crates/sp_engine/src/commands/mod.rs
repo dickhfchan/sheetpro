@@ -23,6 +23,7 @@ pub mod print_cmds;
 pub mod protect_cmds;
 pub mod sheet_cmds;
 pub mod table_cmds;
+pub mod theme_cmds;
 pub mod ui_cmds;
 pub mod validation_cmds;
 pub mod view_cmds;
@@ -58,5 +59,6 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(app_cmds::specs());
     v.extend(ui_cmds::specs());
     v.extend(flash_cmds::specs());
+    v.extend(theme_cmds::specs());
     v
 }
