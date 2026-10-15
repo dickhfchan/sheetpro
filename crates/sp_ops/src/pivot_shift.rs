@@ -43,8 +43,8 @@ pub fn rewrite_exprs(s: &mut Sheet, f: &dyn Fn(&mut sp_formula::Expr)) {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use crate::edit::insert_delete;
-    use crate::history::Tx;
     use sp_formula::shift::Axis;
+    use crate::history::Tx;
     use sp_model::Workbook;
     use sp_model::pivot::{DataTable, PivotTable, Scenario};
 
