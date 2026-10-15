@@ -36,7 +36,19 @@ fn main() -> Result<()> {
         Some("parity") => parity::run(flag("--check")),
         Some("layers") => layers::run(),
         Some("corpus") => corpus::fetch(),
-        Some("test-corpus") => corpus::test(flag("--verbose")),
+        Some("test-corpus") => {
+            let value = |f: &str| {
+                args.iter()
+                    .position(|a| a == f)
+                    .and_then(|i| args.get(i + 1))
+                    .cloned()
+            };
+            corpus::test(&corpus::TestOpts {
+                verbose: flag("--verbose"),
+                dump: value("--dump").map(PathBuf::from),
+                only: value("--only"),
+            })
+        }
         Some("perf") => perf::run(flag("--quick")),
         Some("scorecard") => scorecard::run(flag("--check")),
         Some("package") => package::run_package(),
@@ -65,7 +77,7 @@ fn main() -> Result<()> {
             layers::run()?;
             parity::run(true)?;
             if corpus::present() {
-                corpus::test(false)?;
+                corpus::test(&corpus::TestOpts::default())?;
             } else {
                 println!("corpus: not fetched (run `cargo xtask corpus`); skipping oracle gate");
             }
@@ -75,7 +87,7 @@ fn main() -> Result<()> {
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] | perf [--quick] | scorecard [--check] | panic-hunt | package | check>"
+                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] [--dump out.tsv] [--only substr] | perf [--quick] | scorecard [--check] | panic-hunt | package | check>"
             );
             bail!("unknown task")
         }

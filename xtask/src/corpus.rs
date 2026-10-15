@@ -127,6 +127,29 @@ pub struct FileResult {
     pub skipped_volatile: usize,
     pub roundtrip_ok: bool,
     pub first_mismatches: Vec<String>,
+    /// Every mismatch (only collected with `--dump`; not serialized).
+    #[serde(skip)]
+    pub all_mismatches: Vec<Mismatch>,
+}
+
+/// One failing cell, for `test-corpus --dump`.
+#[derive(Default, Clone)]
+pub struct Mismatch {
+    pub sheet: String,
+    pub cell: String,
+    pub formula: String,
+    pub expected: String,
+    pub got: String,
+}
+
+/// Options for `cargo xtask test-corpus`.
+#[derive(Default)]
+pub struct TestOpts {
+    pub verbose: bool,
+    /// Write every mismatching cell to this TSV path, plus a grouped summary on stdout.
+    pub dump: Option<PathBuf>,
+    /// Only check files whose path contains this substring (floors are not checked).
+    pub only: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -178,7 +201,7 @@ fn is_volatile(src: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn check_file(path: &std::path::Path, e: &Entry) -> FileResult {
+fn check_file(path: &std::path::Path, e: &Entry, dump: bool) -> FileResult {
     let mut r = FileResult {
         path: e.path.clone(),
         kind: e.kind.clone(),
@@ -231,17 +254,28 @@ fn check_file(path: &std::path::Path, e: &Entry) -> FileResult {
             .unwrap_or_default();
         if values_match(exp, &got) {
             r.matched += 1;
-        } else if r.first_mismatches.len() < 5 {
+        } else {
             let sheet = wb
                 .sheets
                 .get(*si)
                 .map(|s| s.name.clone())
                 .unwrap_or_default();
-            r.first_mismatches.push(format!(
-                "{sheet}!{a} ={src} → expected {}, got {}",
-                exp.to_display(),
-                got.to_display()
-            ));
+            if r.first_mismatches.len() < 5 {
+                r.first_mismatches.push(format!(
+                    "{sheet}!{a} ={src} → expected {}, got {}",
+                    exp.to_display(),
+                    got.to_display()
+                ));
+            }
+            if dump {
+                r.all_mismatches.push(Mismatch {
+                    sheet,
+                    cell: a.to_string(),
+                    formula: src.clone(),
+                    expected: exp.to_display(),
+                    got: got.to_display(),
+                });
+            }
         }
     }
     // Round trip: inputs and values survive our writer + reader.
@@ -271,7 +305,77 @@ fn check_file(path: &std::path::Path, e: &Entry) -> FileResult {
     r
 }
 
-pub fn test(verbose: bool) -> Result<()> {
+/// Outermost function name of a formula (or `(expr)` when it doesn't start with a call).
+fn head_function(src: &str) -> String {
+    let t = src.trim_start_matches(['@', '+', '-', ' ']);
+    let name: String = t
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '_')
+        .collect();
+    let name = name
+        .trim_start_matches("_xlfn.")
+        .trim_start_matches("_xlws.")
+        .to_string();
+    if !name.is_empty() && t[name.len().min(t.len())..].contains('(') {
+        name.to_uppercase()
+    } else {
+        "(expr)".into()
+    }
+}
+
+/// Coarse first-mismatch pattern: expected kind vs got kind.
+fn pattern(m: &Mismatch) -> String {
+    let kind = |v: &str| {
+        if v.starts_with('#') {
+            v.to_string()
+        } else if v.parse::<f64>().is_ok() {
+            "num".to_string()
+        } else if v == "TRUE" || v == "FALSE" {
+            "bool".to_string()
+        } else {
+            "text".to_string()
+        }
+    };
+    format!("{} <- {}", kind(&m.expected), kind(&m.got))
+}
+
+fn write_dump(path: &std::path::Path, rep: &OracleReport) -> Result<()> {
+    use std::collections::BTreeMap;
+    use std::fmt::Write as _;
+    let clean = |s: &str| s.replace(['\t', '\n', '\r'], " ");
+    let mut out = String::from("file\tsheet\tcell\tfunction\tpattern\tformula\texpected\tgot\n");
+    let mut groups: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for f in &rep.files {
+        for m in &f.all_mismatches {
+            let func = head_function(&m.formula);
+            let pat = pattern(m);
+            *groups.entry((func.clone(), pat.clone())).or_default() += 1;
+            let _ = writeln!(
+                out,
+                "{}\t{}\t{}\t{func}\t{pat}\t{}\t{}\t{}",
+                f.path,
+                clean(&m.sheet),
+                m.cell,
+                clean(&m.formula),
+                clean(&m.expected),
+                clean(&m.got)
+            );
+        }
+    }
+    std::fs::write(path, out)?;
+    let mut sorted: Vec<_> = groups.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    println!("mismatches by function / pattern (expected <- got):");
+    for ((func, pat), n) in sorted.iter().take(60) {
+        println!("{n:>7}  {func:<16} {pat}");
+    }
+    println!("full list: {}", path.display());
+    Ok(())
+}
+
+pub fn test(opts: &TestOpts) -> Result<()> {
+    let verbose = opts.verbose;
+    let dump = opts.dump.is_some();
     let m = manifest()?;
     if !present() {
         bail!("corpus not fetched: run `cargo xtask corpus`");
@@ -283,7 +387,12 @@ pub fn test(verbose: bool) -> Result<()> {
         ..OracleReport::default()
     };
     for e in &m.file {
-        let r = check_file(&local(e), e);
+        if let Some(only) = &opts.only
+            && !e.path.contains(only.as_str())
+        {
+            continue;
+        }
+        let r = check_file(&local(e), e, dump);
         if e.kind == "calc" {
             rep.calc_files_total += 1;
             if r.load_error.is_none() && r.compared > 0 && r.compared == r.matched {
@@ -311,10 +420,15 @@ pub fn test(verbose: bool) -> Result<()> {
         }
         rep.files.push(r);
     }
-    std::fs::write(
-        crate::root().join("scorecard/oracle.json"),
-        serde_json::to_string_pretty(&rep)?,
-    )?;
+    if let Some(path) = &opts.dump {
+        write_dump(path, &rep)?;
+    }
+    if opts.only.is_none() {
+        std::fs::write(
+            crate::root().join("scorecard/oracle.json"),
+            serde_json::to_string_pretty(&rep)?,
+        )?;
+    }
     println!(
         "test-corpus: calc files {}/{} pass, cells {}/{} ({:.1}%), round-trip {}/{}",
         rep.calc_files_pass,
@@ -325,6 +439,9 @@ pub fn test(verbose: bool) -> Result<()> {
         rep.roundtrip_pass,
         rep.files_total
     );
+    if opts.only.is_some() {
+        return Ok(());
+    }
     let f = floors();
     if rep.calc_files_pass < f.calc_files_pass
         || rep.cells_matched < f.cells_matched
