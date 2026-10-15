@@ -14,24 +14,25 @@
 //!   `pivotCaches` element lists ours plus any captured caches.
 
 use crate::xlsx_extras::SheetRels;
-use crate::xlsx_passthrough::{REL_NS, rel_kind, rel_ids_in};
+use crate::xlsx_passthrough::{REL_NS, rel_ids_in, rel_kind};
 use crate::xml::{Node, esc, parse_dom};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use sp_core::addr::{col_to_letters, quote_sheet_name, split_sheet_prefix};
 use sp_core::{CellAddr, CellRange, ErrorKind, MAX_COLS, MAX_ROWS, Value};
-use sp_formula::pivot::{CellKind, cmp_items, item_key, ItemKey};
+use sp_formula::pivot::{CellKind, ItemKey, cmp_items, item_key};
+use sp_model::Workbook;
 use sp_model::passthrough::{RawPart, RawRel};
 use sp_model::pivot::{
     Aggregate, DataField, FieldFilter, MAX_FIELDS, MAX_OBJECTS, MAX_RECORDS, PivotCache,
     PivotLayout, PivotOriginal, PivotTable, ShowAs,
 };
-use sp_model::Workbook;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-pub const TABLE_CT: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml";
+pub const TABLE_CT: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml";
 pub const CACHE_CT: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml";
 pub const RECORDS_CT: &str =
@@ -133,7 +134,11 @@ fn parse_cache(xml: &str, home_sheet: &str) -> Option<CacheDef> {
             return None;
         }
         let name = f.attr("name")?.to_string();
-        if name.trim().is_empty() || fields.iter().any(|x: &String| x.eq_ignore_ascii_case(&name)) {
+        if name.trim().is_empty()
+            || fields
+                .iter()
+                .any(|x: &String| x.eq_ignore_ascii_case(&name))
+        {
             return None;
         }
         let mut items = Vec::new();
@@ -266,11 +271,17 @@ fn parse_table(xml: &str, def: &CacheDef, records: Vec<Vec<Value>>) -> Option<(P
         grand_total_row: yes(&root, "colGrandTotals", true),
         ..PivotTable::default()
     };
-    if let Some(st) = root.child("pivotTableStyleInfo").and_then(|n| n.attr("name")) {
+    if let Some(st) = root
+        .child("pivotTableStyleInfo")
+        .and_then(|n| n.attr("name"))
+    {
         st.clone_into(&mut p.style);
     }
     // Fields: item lists (to map item indexes) and hidden items.
-    let pfs: Vec<&Node> = root.child("pivotFields")?.children_named("pivotField").collect();
+    let pfs: Vec<&Node> = root
+        .child("pivotFields")?
+        .children_named("pivotField")
+        .collect();
     if pfs.len() != nf {
         return None;
     }
@@ -412,9 +423,10 @@ fn parse_table(xml: &str, def: &CacheDef, records: Vec<Vec<Value>>) -> Option<(P
     };
     let axis: Vec<&usize> = p.rows.iter().chain(&p.cols).collect();
     p.subtotals = axis.is_empty()
-        || axis
-            .iter()
-            .any(|f| pfs.get(**f).is_some_and(|n| yes(n, "defaultSubtotal", true)));
+        || axis.iter().any(|f| {
+            pfs.get(**f)
+                .is_some_and(|n| yes(n, "defaultSubtotal", true))
+        });
     // Location: the table area; the filter area (one row per page field + a gap) above it.
     let loc = root.child("location")?;
     let r = CellRange::parse(&loc.attr("ref")?.replace('$', "")).ok()?;
@@ -426,7 +438,10 @@ fn parse_table(xml: &str, def: &CacheDef, records: Vec<Vec<Value>>) -> Option<(P
     };
     let start = CellAddr::new(top, r.start.col);
     let end_col = if pages > 0 {
-        r.end.col.max(r.start.col.saturating_add(1)).min(MAX_COLS - 1)
+        r.end
+            .col
+            .max(r.start.col.saturating_add(1))
+            .min(MAX_COLS - 1)
     } else {
         r.end.col
     };
@@ -476,17 +491,25 @@ pub fn adopt_captured_pivots(wb: &mut Workbook) {
 fn adoption(wb: &Workbook) -> Option<Vec<(usize, String, PivotTable)>> {
     let wp = &wb.passthrough;
     // Slicers, timelines and OLAP pivots tie into caches in ways we do not model.
-    let tied = |t: &str| t.contains("slicer") || t.contains("timeline") || t.contains("connections");
-    if wp.rels.iter().any(|r| tied(&rel_kind(&r.rel_type).to_ascii_lowercase()))
-        || wp
-            .elements
-            .iter()
-            .any(|e| crate::xml::local(&e.name) != "pivotCaches" && (e.xml.contains("pivotCache") || e.xml.contains("slicerCache") || e.xml.contains("timelineCache")))
+    let tied =
+        |t: &str| t.contains("slicer") || t.contains("timeline") || t.contains("connections");
+    if wp
+        .rels
+        .iter()
+        .any(|r| tied(&rel_kind(&r.rel_type).to_ascii_lowercase()))
+        || wp.elements.iter().any(|e| {
+            crate::xml::local(&e.name) != "pivotCaches"
+                && (e.xml.contains("pivotCache")
+                    || e.xml.contains("slicerCache")
+                    || e.xml.contains("timelineCache"))
+        })
     {
-        let any = wb
-            .sheets
-            .iter()
-            .any(|s| s.passthrough.rels.iter().any(|r| rel_kind(&r.rel_type) == "pivotTable"));
+        let any = wb.sheets.iter().any(|s| {
+            s.passthrough
+                .rels
+                .iter()
+                .any(|r| rel_kind(&r.rel_type) == "pivotTable")
+        });
         if any {
             return None;
         }
@@ -494,7 +517,12 @@ fn adoption(wb: &Workbook) -> Option<Vec<(usize, String, PivotTable)>> {
     let pivot_chart = |p: &RawPart| {
         p.content_type.contains("chart") && p.data.windows(11).any(|w| w == b"pivotSource")
     };
-    if wp.parts.iter().chain(wb.sheets.iter().flat_map(|s| s.passthrough.parts.iter())).any(pivot_chart) {
+    if wp
+        .parts
+        .iter()
+        .chain(wb.sheets.iter().flat_map(|s| s.passthrough.parts.iter()))
+        .any(pivot_chart)
+    {
         return None;
     }
     let caches_el = wp
@@ -519,7 +547,11 @@ fn adoption(wb: &Workbook) -> Option<Vec<(usize, String, PivotTable)>> {
         }
         if sh.passthrough.sheet_part.is_some()
             || sh.analysis.pivots.len() + pivots.len() > MAX_OBJECTS
-            || sh.passthrough.elements.iter().any(|e| e.xml.contains("slicer") || e.xml.contains("timeline"))
+            || sh
+                .passthrough
+                .elements
+                .iter()
+                .any(|e| e.xml.contains("slicer") || e.xml.contains("timeline"))
         {
             return None;
         }
@@ -545,7 +577,8 @@ fn adoption(wb: &Workbook) -> Option<Vec<(usize, String, PivotTable)>> {
             let cache_xml = std::str::from_utf8(&cache.data).ok()?;
             let def = parse_cache(cache_xml, &sh.name)?;
             let recs = parse_records(std::str::from_utf8(&records.data).ok()?, &def)?;
-            let (mut p, cache_id) = parse_table(std::str::from_utf8(&table.data).ok()?, &def, recs)?;
+            let (mut p, cache_id) =
+                parse_table(std::str::from_utf8(&table.data).ok()?, &def, recs)?;
             // The workbook must register this cache under the id the table uses.
             let (_, wrid) = caches.iter().find(|(id, _)| *id == cache_id)?;
             let wrel = wp.rels.iter().find(|r| r.id == *wrid)?;
@@ -642,7 +675,11 @@ impl PivotPlan {
             .elements
             .iter()
             .find(|e| crate::xml::local(&e.name) == "pivotCaches");
-        let mut ids: HashSet<u32> = captured.map(|e| cache_ids_in(&e.xml)).unwrap_or_default().into_iter().collect();
+        let mut ids: HashSet<u32> = captured
+            .map(|e| cache_ids_in(&e.xml))
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
         let captured_caches = captured.map_or(String::new(), |e| inner_xml(&e.xml).to_string());
         // Pristine pivots keep their names and ids (claimed first).
         let mut pristine: Vec<(usize, usize)> = Vec::new();
@@ -655,7 +692,8 @@ impl PivotPlan {
                 let free = [&o.table_path, &o.cache_path, &o.records_path]
                     .iter()
                     .all(|n| !n.is_empty() && !taken.contains(*n));
-                if p.is_pristine() && free && o.records_xml.is_some() && !ids.contains(&o.cache_id) {
+                if p.is_pristine() && free && o.records_xml.is_some() && !ids.contains(&o.cache_id)
+                {
                     taken.insert(o.table_path.clone());
                     taken.insert(o.cache_path.clone());
                     taken.insert(o.records_path.clone());
@@ -683,7 +721,11 @@ impl PivotPlan {
                         cache_id: o.cache_id,
                         table: o.table_xml.to_vec(),
                         cache: o.cache_xml.to_vec(),
-                        records: o.records_xml.as_deref().map(<[u8]>::to_vec).unwrap_or_default(),
+                        records: o
+                            .records_xml
+                            .as_deref()
+                            .map(<[u8]>::to_vec)
+                            .unwrap_or_default(),
                         records_rid: records_rid_of(&o.cache_xml).unwrap_or_else(|| "rId1".into()),
                     });
                     continue;
@@ -719,7 +761,9 @@ impl PivotPlan {
                     cache_path,
                     records_path,
                     cache_id,
-                    table: table.replace("{CACHE_ID}", &cache_id.to_string()).into_bytes(),
+                    table: table
+                        .replace("{CACHE_ID}", &cache_id.to_string())
+                        .into_bytes(),
                     cache: cache.into_bytes(),
                     records: records.into_bytes(),
                     records_rid: "rId1".into(),
@@ -746,7 +790,11 @@ impl PivotPlan {
 
     /// Relationships from sheet `i` to its pivot tables; returns every part to write
     /// (path, bytes, content type), the parts' relationship parts included.
-    pub fn write_sheet(&self, i: usize, rels: &mut SheetRels) -> Vec<(String, Vec<u8>, &'static str)> {
+    pub fn write_sheet(
+        &self,
+        i: usize,
+        rels: &mut SheetRels,
+    ) -> Vec<(String, Vec<u8>, &'static str)> {
         let mut out = Vec::new();
         for e in self.entries.iter().filter(|e| e.sheet == i) {
             rels.add("pivotTable", &format!("/{}", e.table_path), false);
@@ -894,7 +942,13 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
         }
         let mut items: Vec<Value> = seen.into_values().collect();
         items.sort_by(cmp_items);
-        index.push(items.iter().enumerate().map(|(i, v)| (item_key(v), i)).collect());
+        index.push(
+            items
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (item_key(v), i))
+                .collect(),
+        );
         shared.push(items);
     }
     // Source.
@@ -902,8 +956,13 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
         let (sh, body) = split_sheet_prefix(p.source.trim());
         match (sh, CellRange::parse(&body.replace('$', ""))) {
             (sheet_name, Ok(r)) => {
-                let name = sheet_name.unwrap_or_else(|| wb.sheet(sheet).map_or(String::new(), |s| s.name.clone()));
-                format!(r#"<worksheetSource ref="{}" sheet="{}"/>"#, r.to_a1(), esc(&name))
+                let name = sheet_name
+                    .unwrap_or_else(|| wb.sheet(sheet).map_or(String::new(), |s| s.name.clone()));
+                format!(
+                    r#"<worksheetSource ref="{}" sheet="{}"/>"#,
+                    r.to_a1(),
+                    esc(&name)
+                )
             }
             (None, Err(_)) => format!(r#"<worksheetSource name="{}"/>"#, esc(p.source.trim())),
             (Some(_), Err(_)) => return None,
@@ -942,7 +1001,11 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
                 Value::Text(t) if t.is_empty() => Value::Empty,
                 v => v,
             };
-            let x = index.get(f).and_then(|m| m.get(&item_key(&v))).copied().unwrap_or(0);
+            let x = index
+                .get(f)
+                .and_then(|m| m.get(&item_key(&v)))
+                .copied()
+                .unwrap_or(0);
             let _ = write!(records, r#"<x v="{x}"/>"#);
         }
         records.push_str("</r>");
@@ -978,9 +1041,21 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <pivotTableDefinition {MAIN_DECL} name="{}" cacheId="{{CACHE_ID}}" applyNumberFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyAlignmentFormats="0" applyWidthHeightFormats="1" dataCaption="Values" updatedVersion="6" minRefreshableVersion="3" useAutoFormatting="1" itemPrintTitles="1" createdVersion="6" indent="0"{}{}{} outline="1" outlineData="1" multipleFieldFilters="0">"#,
         esc(&p.name),
-        if p.grand_total_col { "" } else { r#" rowGrandTotals="0""# },
-        if p.grand_total_row { "" } else { r#" colGrandTotals="0""# },
-        if compact { "" } else { r#" compact="0" compactData="0""# },
+        if p.grand_total_col {
+            ""
+        } else {
+            r#" rowGrandTotals="0""#
+        },
+        if p.grand_total_row {
+            ""
+        } else {
+            r#" colGrandTotals="0""#
+        },
+        if compact {
+            ""
+        } else {
+            r#" compact="0" compactData="0""#
+        },
     );
     let _ = write!(
         t,
@@ -1008,7 +1083,10 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
         let is_data = p.values.iter().any(|d| d.field == f);
         let hidden: HashSet<ItemKey> = p.hidden_items(f).iter().map(item_key).collect();
         let items = shared.get(f)?;
-        let visible = items.iter().filter(|v| !hidden.contains(&item_key(v))).count();
+        let visible = items
+            .iter()
+            .filter(|v| !hidden.contains(&item_key(v)))
+            .count();
         let multi = axis == Some("axisPage") && !hidden.is_empty() && visible != 1;
         t.push_str("<pivotField");
         if let Some(a) = axis {
@@ -1033,7 +1111,11 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
         let page_single = axis == Some("axisPage") && visible == 1 && !hidden.is_empty();
         if axis.is_some() || !hidden.is_empty() {
             let subtotal = axis.is_some() && (p.subtotals || axis == Some("axisPage"));
-            let _ = write!(t, r#"><items count="{}">"#, items.len() + usize::from(subtotal));
+            let _ = write!(
+                t,
+                r#"><items count="{}">"#,
+                items.len() + usize::from(subtotal)
+            );
             for (i, v) in items.iter().enumerate() {
                 let h = hidden.contains(&item_key(v)) && !page_single;
                 let _ = write!(t, r#"<item x="{i}"{}/>"#, if h { r#" h="1""# } else { "" });
@@ -1056,7 +1138,11 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
     }
     let data_col = p.values.len() > 1;
     if !p.cols.is_empty() || data_col {
-        let _ = write!(t, r#"<colFields count="{}">"#, p.cols.len() + usize::from(data_col));
+        let _ = write!(
+            t,
+            r#"<colFields count="{}">"#,
+            p.cols.len() + usize::from(data_col)
+        );
         for f in &p.cols {
             let _ = write!(t, r#"<field x="{f}"/>"#);
         }
@@ -1102,7 +1188,11 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
                 } else {
                     format!(r#" showDataAs="{}""#, d.show_as.name())
                 },
-                if d.show_as == ShowAs::Normal { "" } else { r#" numFmtId="10""# }
+                if d.show_as == ShowAs::Normal {
+                    ""
+                } else {
+                    r#" numFmtId="10""#
+                }
             );
         }
         t.push_str("</dataFields>");
@@ -1133,9 +1223,7 @@ pub fn apply_data_tables(sheet: &mut sp_model::Sheet, tables: &[Vec<(String, Str
         if body.cell_count() > MAX_TABLE_CELLS || body.start.row == 0 || body.start.col == 0 {
             continue;
         }
-        let cell = |k: &str| {
-            get(k).and_then(|r| CellAddr::parse(&r.replace('$', "")).ok())
-        };
+        let cell = |k: &str| get(k).and_then(|r| CellAddr::parse(&r.replace('$', "")).ok());
         let (row_in, col_in) = if flag("dt2D") {
             (cell("r1"), cell("r2"))
         } else if flag("dtr") {
@@ -1194,7 +1282,10 @@ pub fn data_table_f(sheet: &sp_model::Sheet, at: CellAddr, formula: &str) -> Opt
         (true, false) => format!(r#" dt2D="0" dtr="0" r1="{col_in}""#),
         (true, true) => return None,
     };
-    Some(format!(r#"<f t="dataTable" ref="{}"{attrs}/>"#, body.to_a1()))
+    Some(format!(
+        r#"<f t="dataTable" ref="{}"{attrs}/>"#,
+        body.to_a1()
+    ))
 }
 
 #[cfg(test)]
@@ -1223,7 +1314,11 @@ mod tests {
             }
         }
         let block: Vec<Vec<Value>> = (0..5)
-            .map(|r| (0..3).map(|c| wb.sheets[0].value(CellAddr::new(r, c)).clone()).collect())
+            .map(|r| {
+                (0..3)
+                    .map(|c| wb.sheets[0].value(CellAddr::new(r, c)).clone())
+                    .collect()
+            })
             .collect();
         let cache = sp_formula::pivot::build_cache(&block).unwrap();
         wb.sheets.push(sp_model::Sheet::new("Report"));
@@ -1236,12 +1331,24 @@ mod tests {
             cols: vec![1],
             filters: vec![],
             values: vec![
-                DataField { field: 2, func: Aggregate::Sum, ..DataField::default() },
-                DataField { field: 2, func: Aggregate::Max, show_as: ShowAs::PercentOfTotal, name: "Top".into() },
+                DataField {
+                    field: 2,
+                    func: Aggregate::Sum,
+                    ..DataField::default()
+                },
+                DataField {
+                    field: 2,
+                    func: Aggregate::Max,
+                    show_as: ShowAs::PercentOfTotal,
+                    name: "Top".into(),
+                },
             ],
             layout: PivotLayout::Tabular,
             grand_total_row: false,
-            field_filters: vec![FieldFilter { field: 0, hidden: vec![Value::text("West")] }],
+            field_filters: vec![FieldFilter {
+                field: 0,
+                hidden: vec![Value::text("West")],
+            }],
             ..PivotTable::default()
         });
         wb
@@ -1281,7 +1388,12 @@ mod tests {
         let p = &back.sheets[1].analysis.pivots[0];
         same_definition(&wb.sheets[1].analysis.pivots[0], p);
         assert!(p.is_pristine());
-        assert!(back.passthrough.parts.iter().all(|x| !x.path.contains("pivot")));
+        assert!(
+            back.passthrough
+                .parts
+                .iter()
+                .all(|x| !x.path.contains("pivot"))
+        );
         // A second save writes the loaded parts back byte for byte.
         let (again, bytes2) = round_trip(&back);
         same_definition(p, &again.sheets[1].analysis.pivots[0]);
@@ -1312,7 +1424,10 @@ mod tests {
             p.layout = PivotLayout::Compact;
             p.subtotals = false;
             p.values.truncate(1);
-            p.field_filters = vec![FieldFilter { field: 1, hidden: vec![Value::text("B"), Value::Empty] }];
+            p.field_filters = vec![FieldFilter {
+                field: 1,
+                hidden: vec![Value::text("B"), Value::Empty],
+            }];
             p.location = "$A$1".into();
         }
         let (back, _) = round_trip(&wb);
@@ -1322,7 +1437,11 @@ mod tests {
 
     #[test]
     fn unmodelled_pivots_stay_passed_through() {
-        let def = CacheDef { source: "S!$A$1:$B$2".into(), fields: vec!["a".into(), "b".into()], shared: vec![vec![Value::text("x")], vec![]] };
+        let def = CacheDef {
+            source: "S!$A$1:$B$2".into(),
+            fields: vec!["a".into(), "b".into()],
+            shared: vec![vec![Value::text("x")], vec![]],
+        };
         let ok = r#"<pivotTableDefinition name="P" cacheId="3"><location ref="A3:B5"/><pivotFields count="2"><pivotField axis="axisRow"><items count="2"><item x="0"/><item t="default"/></items></pivotField><pivotField dataField="1"/></pivotFields><rowFields count="1"><field x="0"/></rowFields><dataFields count="1"><dataField name="Sum of b" fld="1"/></dataFields></pivotTableDefinition>"#;
         let recs = vec![vec![Value::text("x"), Value::Number(1.0)]];
         let (p, id) = parse_table(ok, &def, recs.clone()).unwrap();
@@ -1330,9 +1449,18 @@ mod tests {
         assert_eq!(p.values[0].name, "");
         assert_eq!(p.output, "$A$3:$B$5");
         for bad in [
-            ok.replace("</pivotTableDefinition>", "<filters/></pivotTableDefinition>"),
-            ok.replace(r#"dataField name="Sum of b" fld="1""#, r#"dataField name="x" fld="1" showDataAs="difference""#),
-            ok.replace(r#"<field x="0"/></rowFields>"#, r#"<field x="-2"/></rowFields>"#),
+            ok.replace(
+                "</pivotTableDefinition>",
+                "<filters/></pivotTableDefinition>",
+            ),
+            ok.replace(
+                r#"dataField name="Sum of b" fld="1""#,
+                r#"dataField name="x" fld="1" showDataAs="difference""#,
+            ),
+            ok.replace(
+                r#"<field x="0"/></rowFields>"#,
+                r#"<field x="-2"/></rowFields>"#,
+            ),
             ok.replace(r#"<item t="default"/>"#, r#"<item t="sum"/>"#),
             ok.replace(r#"axis="axisRow""#, r#"axis="axisRow" sumSubtotal="1""#),
         ] {
@@ -1342,13 +1470,42 @@ mod tests {
         let d = parse_cache(cache, "Home").unwrap();
         assert_eq!(d.source, "'My Data'!$A$1:$B$3");
         assert_eq!(d.shared[0][1], Value::Number(45293.5));
-        assert!(parse_cache(&cache.replace("<cacheField name=\"b\">", "<cacheField name=\"b\" formula=\"a*2\">"), "H").is_none());
-        assert!(parse_cache(&cache.replace("type=\"worksheet\"", "type=\"external\""), "H").is_none());
+        assert!(
+            parse_cache(
+                &cache.replace(
+                    "<cacheField name=\"b\">",
+                    "<cacheField name=\"b\" formula=\"a*2\">"
+                ),
+                "H"
+            )
+            .is_none()
+        );
+        assert!(
+            parse_cache(
+                &cache.replace("type=\"worksheet\"", "type=\"external\""),
+                "H"
+            )
+            .is_none()
+        );
         let rec = r#"<pivotCacheRecords count="2"><r><x v="1"/><n v="5"/></r><r><x v="0"/><m/></r></pivotCacheRecords>"#;
         let r = parse_records(rec, &d).unwrap();
-        assert_eq!(r, vec![vec![Value::Number(45293.5), Value::Number(5.0)], vec![Value::text("x"), Value::Empty]]);
-        assert!(parse_records(r#"<pivotCacheRecords><r><x v="9"/><m/></r></pivotCacheRecords>"#, &d).is_none());
-        assert!(parse_records(r#"<pivotCacheRecords><r><m/></r></pivotCacheRecords>"#, &d).is_none());
+        assert_eq!(
+            r,
+            vec![
+                vec![Value::Number(45293.5), Value::Number(5.0)],
+                vec![Value::text("x"), Value::Empty]
+            ]
+        );
+        assert!(
+            parse_records(
+                r#"<pivotCacheRecords><r><x v="9"/><m/></r></pivotCacheRecords>"#,
+                &d
+            )
+            .is_none()
+        );
+        assert!(
+            parse_records(r#"<pivotCacheRecords><r><m/></r></pivotCacheRecords>"#, &d).is_none()
+        );
     }
 
     #[test]
@@ -1360,7 +1517,11 @@ mod tests {
             return;
         };
         let (wb, _) = crate::xlsx_read::read_xlsx(std::io::Cursor::new(bytes)).unwrap();
-        let pivots: Vec<&PivotTable> = wb.sheets.iter().flat_map(|s| s.analysis.pivots.iter()).collect();
+        let pivots: Vec<&PivotTable> = wb
+            .sheets
+            .iter()
+            .flat_map(|s| s.analysis.pivots.iter())
+            .collect();
         assert_eq!(pivots.len(), 1);
         let p = pivots[0];
         assert_eq!(p.source, "Table1");
@@ -1371,8 +1532,18 @@ mod tests {
         // The layout engine reproduces the saved report's size.
         let out = sp_formula::pivot::layout(p).unwrap();
         assert_eq!((out.rows, out.cols), (11, 2));
-        assert!(wb.passthrough.parts.iter().all(|x| !x.path.contains("pivot")));
-        assert!(wb.passthrough.elements.iter().all(|e| e.name != "pivotCaches"));
+        assert!(
+            wb.passthrough
+                .parts
+                .iter()
+                .all(|x| !x.path.contains("pivot"))
+        );
+        assert!(
+            wb.passthrough
+                .elements
+                .iter()
+                .all(|e| e.name != "pivotCaches")
+        );
         // Edited: regenerated (new definition, same cache data), still a valid package.
         let mut wb = wb;
         let (si, _) = wb
@@ -1416,13 +1587,24 @@ mod tests {
             row_input: String::new(),
             col_input: "$A$1".into(),
         });
-        sp_formula::recalc(&mut wb, &mut sp_formula::AstCache::default(), Default::default());
+        sp_formula::recalc(
+            &mut wb,
+            &mut sp_formula::AstCache::default(),
+            Default::default(),
+        );
         let (back, bytes) = round_trip(&wb);
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let mut x = String::new();
-        std::io::Read::read_to_string(&mut z.by_name("xl/worksheets/sheet1.xml").unwrap(), &mut x).unwrap();
-        assert!(x.contains(r#"<f t="dataTable" ref="D4:E5" dt2D="1" dtr="1" r1="A1" r2="A2"/>"#), "{x}");
-        assert!(x.contains(r#"<f t="dataTable" ref="H3" dt2D="0" dtr="0" r1="A1"/><v>10</v>"#), "{x}");
+        std::io::Read::read_to_string(&mut z.by_name("xl/worksheets/sheet1.xml").unwrap(), &mut x)
+            .unwrap();
+        assert!(
+            x.contains(r#"<f t="dataTable" ref="D4:E5" dt2D="1" dtr="1" r1="A1" r2="A2"/>"#),
+            "{x}"
+        );
+        assert!(
+            x.contains(r#"<f t="dataTable" ref="H3" dt2D="0" dtr="0" r1="A1"/><v>10</v>"#),
+            "{x}"
+        );
         assert!(x.contains(r#"<c r="E5"><v>"#), "{x}");
         let b = &back.sheets[0];
         assert_eq!(b.get(at("E5")).unwrap().formula_src(), Some("TABLE(A1,A2)"));
@@ -1434,7 +1616,10 @@ mod tests {
         // A TABLE cell outside any data table is a plain formula.
         assert_eq!(data_table_f(b, at("J9"), "TABLE(,A1)"), None);
         assert_eq!(data_table_f(b, at("E5"), "SUM(1)"), None);
-        assert_eq!(data_table_f(b, at("E5"), "TABLE(A1,A2)"), Some(String::new()));
+        assert_eq!(
+            data_table_f(b, at("E5"), "TABLE(A1,A2)"),
+            Some(String::new())
+        );
     }
 
     #[test]
@@ -1445,16 +1630,25 @@ mod tests {
         let mut n = 20;
         let mut rels = Vec::new();
         let (x, keep) = plan
-            .workbook_element(&valid, &mut || {
-                n += 1;
-                format!("rId{n}")
-            }, &mut rels)
+            .workbook_element(
+                &valid,
+                &mut || {
+                    n += 1;
+                    format!("rId{n}")
+                },
+                &mut rels,
+            )
             .unwrap();
-        assert!(x.starts_with(r#"<pivotCaches><pivotCache cacheId="1" r:id="rId9"/><pivotCache"#), "{x}");
+        assert!(
+            x.starts_with(r#"<pivotCaches><pivotCache cacheId="1" r:id="rId9"/><pivotCache"#),
+            "{x}"
+        );
         assert!(keep.contains("rId9"));
         assert_eq!(rels.len(), 1);
         // Dangling captured ids are dropped.
-        let (x, keep) = plan.workbook_element(&HashSet::new(), &mut || "rId30".into(), &mut Vec::new()).unwrap();
+        let (x, keep) = plan
+            .workbook_element(&HashSet::new(), &mut || "rId30".into(), &mut Vec::new())
+            .unwrap();
         assert!(!x.contains("rId9") && keep.is_empty());
     }
 }

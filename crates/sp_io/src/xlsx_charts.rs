@@ -742,7 +742,7 @@ pub fn merge_sparkline_ext(known: &mut Vec<(String, String)>, sheet: &Sheet, pt:
 }
 
 /// The captured `<drawing>` element of a sheet and the drawing part it points to.
-fn captured_drawing(pt: &Passthrough) -> Option<(usize, String, String)> {
+pub(crate) fn captured_drawing(pt: &Passthrough) -> Option<(usize, String, String)> {
     let (i, el) = pt
         .elements
         .iter()
@@ -756,7 +756,7 @@ fn captured_drawing(pt: &Passthrough) -> Option<(usize, String, String)> {
 /// Whether this sheet's charts go into a drawing part the writer generates (no drawing was
 /// passed through from the file).
 fn writes_own_drawing(sheet: &Sheet) -> bool {
-    !sheet.drawings.charts.is_empty()
+    (!sheet.drawings.charts.is_empty() || !sheet.objects.is_empty())
         && sheet.passthrough.sheet_part.is_none()
         && captured_drawing(&sheet.passthrough).is_none()
 }
@@ -767,6 +767,8 @@ fn writes_own_drawing(sheet: &Sheet) -> bool {
 pub struct ChartPlan {
     /// Sheet index → (drawing part, chart parts in chart order).
     sheets: std::collections::HashMap<usize, (String, Vec<String>)>,
+    /// Image parts for pictures and sheet backgrounds (`xlsx_drawings`).
+    pub media: crate::xlsx_drawings::MediaPlan,
 }
 
 impl ChartPlan {
@@ -822,6 +824,8 @@ impl ChartPlan {
                 .collect();
             plan.sheets.insert(i, (drawing, charts));
         }
+        let own: Vec<usize> = plan.sheets.keys().copied().collect();
+        plan.media = crate::xlsx_drawings::MediaPlan::new(wb, &own, &mut taken);
         plan
     }
 
@@ -833,6 +837,7 @@ impl ChartPlan {
             out.push(crate::xlsx_passthrough::rels_path(d));
             out.extend(charts.iter().cloned());
         }
+        out.extend(self.media.part_names());
         out
     }
 }
@@ -841,10 +846,10 @@ impl ChartPlan {
 /// (it holds pictures, shapes or chart kinds we don't model) are appended to that part, as
 /// pass-through parts, so the sheet keeps a single drawing. Returns the workbook to write.
 pub fn prepare_for_save(wb: &Workbook) -> std::borrow::Cow<'_, Workbook> {
-    let needs = wb
-        .sheets
-        .iter()
-        .any(|s| !s.drawings.charts.is_empty() && captured_drawing(&s.passthrough).is_some());
+    let needs = wb.sheets.iter().any(|s| {
+        (!s.drawings.charts.is_empty() || !s.objects.is_empty())
+            && captured_drawing(&s.passthrough).is_some()
+    });
     if !needs {
         return std::borrow::Cow::Borrowed(wb);
     }
@@ -926,6 +931,7 @@ pub fn prepare_for_save(wb: &Workbook) -> std::borrow::Cow<'_, Workbook> {
         }
         pt.parts.extend(new_parts);
     }
+    crate::xlsx_drawings::append_to_captured(&mut out, &mut taken);
     std::borrow::Cow::Owned(out)
 }
 
@@ -950,7 +956,23 @@ pub fn write_sheet_drawings(
     let mut drels = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
     );
-    for (k, (c, path)) in sheet.drawings.charts.iter().zip(cpaths).enumerate() {
+    let mut objw = crate::xlsx_drawings::ObjectWriter::new(wb, si, &plan.media);
+    let order = crate::xlsx_drawings::draw_order(sheet.drawings.charts.len(), &sheet.objects);
+    let mut next_id = sheet.drawings.charts.len() + 2;
+    for slot in order {
+        let k = match slot {
+            crate::xlsx_drawings::Slot::Chart(k) => k,
+            crate::xlsx_drawings::Slot::Object(i) => {
+                if let Some(o) = sheet.objects.get(i) {
+                    d.push_str(&objw.anchor(o, next_id, &mut drels));
+                    next_id += 1;
+                }
+                continue;
+            }
+        };
+        let (Some(c), Some(path)) = (sheet.drawings.charts.get(k), cpaths.get(k)) else {
+            continue;
+        };
         let rid = format!("rId{}", k + 1);
         d.push_str(&anchor_xml(k + 2, c, &rid));
         let (rel_type, ct, xml) = chart_part(wb, si, c);
@@ -1484,6 +1506,15 @@ pub fn read_sheet_sparklines(sheet_xml: &str, sheet: &mut Sheet) -> Result<(), I
     parse_sparklines(sheet_xml, sheet)
 }
 
+/// A drawing taken into the model: charts, objects, part names to drop, media part names
+/// (dropped only when nothing else uses them).
+type ModelledDrawing = (
+    Vec<Chart>,
+    Vec<sp_model::objects::DrawObject>,
+    Vec<String>,
+    Vec<String>,
+);
+
 /// Chart parts' own relationships that carry nothing we must keep (style/colour presets).
 const COSMETIC_CHART_RELS: &[&str] = &["chartStyle", "chartColorStyle", "themeOverride"];
 
@@ -1494,19 +1525,33 @@ fn model_drawing(
     sheet: &Sheet,
     parts: &[&sp_model::passthrough::RawPart],
     drawing: &sp_model::passthrough::RawPart,
-) -> Option<(Vec<Chart>, Vec<String>)> {
+) -> Option<ModelledDrawing> {
     let text = std::str::from_utf8(&drawing.data).ok()?;
     let root = parse_dom(text).ok()?;
     let ws = doc(&root, "wsDr")?;
     let mut charts = Vec::new();
+    let mut objects = Vec::new();
+    let mut media = Vec::new();
     let mut paths = vec![drawing.path.clone()];
+    let lookup = crate::xlsx_drawings::MediaLookup {
+        rels: &drawing.rels,
+        parts,
+    };
     for anchor in &ws.children {
         if !matches!(
             anchor.name.as_str(),
             "twoCellAnchor" | "oneCellAnchor" | "absoluteAnchor"
         ) || charts.len() >= MAX_CHARTS
+            || objects.len() >= crate::xlsx_drawings::max_objects()
         {
             return None;
+        }
+        // Pictures, shapes and connectors (anything else drawable keeps it passed through).
+        if crate::xlsx_drawings::is_object_anchor(anchor) {
+            let (o, m) = crate::xlsx_drawings::parse_object(anchor, &lookup, charts.len())?;
+            objects.push(o);
+            media.extend(m);
+            continue;
         }
         // Exactly one chart frame and nothing else drawable.
         if ["pic", "sp", "grpSp", "cxnSp", "contentPart"]
@@ -1540,7 +1585,7 @@ fn model_drawing(
                 .map(|r| r.target.clone()),
         );
     }
-    (!charts.is_empty()).then_some((charts, paths))
+    (!charts.is_empty() || !objects.is_empty()).then_some((charts, objects, paths, media))
 }
 
 /// After pass-through capture: a sheet whose drawing holds only charts we model takes them
@@ -1565,10 +1610,17 @@ pub fn adopt_captured_charts(wb: &mut Workbook) {
                 None => None,
             }
         };
-        let Some((charts, paths)) = modelled else {
+        let Some((charts, objects, mut paths, media)) = modelled else {
             continue;
         };
+        paths.extend(crate::xlsx_drawings::droppable_media(
+            &sheet.passthrough,
+            &wb_parts,
+            &target,
+            media,
+        ));
         sheet.drawings.charts.extend(charts);
+        sheet.objects.extend(objects);
         let pt = &mut sheet.passthrough;
         if el < pt.elements.len() {
             pt.elements.remove(el);
