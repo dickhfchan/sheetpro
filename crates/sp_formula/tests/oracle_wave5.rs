@@ -172,3 +172,32 @@ fn xlookup_blank_lookup_value_finds_blank_cell() {
     ]);
     assert_eq!(num(&wb, "C1"), 3.0);
 }
+
+#[test]
+fn text_general_width_and_date_validation() {
+    let wb = wb_with(&[
+        ("A1", "=1/3"),
+        ("A2", "123456789012"),
+        ("A3", "-0.0000000025"),
+        ("A4", "-0.00000001"),
+        ("A5", "2958466"),
+        ("B1", "=TEXT(A1,\"General\")"),
+        ("B2", "=TEXT(A2,\"General\")"),
+        ("B3", "=TEXT(A3,\"General\")"),
+        ("B4", "=TEXT(A4,\"General\")"),
+        ("B5", "=TEXT(A5,\"m/d/y\")"),
+        ("B6", "=TEXT(41181,\"mm###\")"),
+        ("B7", "=TEXT(-1,\"m/d/y\")"),
+        ("B8", "=TEXT(12,\"00-00-00-00\")"),
+        ("B9", "=TEXT(12,\"#.#\")"),
+    ]);
+    assert_eq!(text(&wb, "B1"), "0.333333333");
+    assert_eq!(text(&wb, "B2"), "1.23457E+11");
+    assert_eq!(text(&wb, "B3"), "-2.5E-09");
+    assert_eq!(text(&wb, "B4"), "-0.00000001");
+    assert_eq!(err(&wb, "B5"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B6"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B7"), ErrorKind::Value);
+    assert_eq!(text(&wb, "B8"), "00-00-00-12");
+    assert_eq!(text(&wb, "B9"), "12.");
+}

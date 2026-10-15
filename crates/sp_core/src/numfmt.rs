@@ -596,6 +596,51 @@ fn format_number(sec: &Section, v: f64) -> String {
     }
     let frac_s: String = frac_chars.into_iter().collect();
 
+    // Integer placeholders separated by literals ("00-00-00-00") take the digits right to
+    // left, one per placeholder; the leftmost placeholder takes any extra leading digits.
+    let int_slots: Vec<usize> = toks
+        .get(..int_end)
+        .unwrap_or(&[])
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| matches!(t, Tok::Digit(_)))
+        .map(|(i, _)| i)
+        .collect();
+    let distributed = match (int_slots.first(), int_slots.last()) {
+        (Some(&a), Some(&b)) => toks
+            .get(a..b)
+            .unwrap_or(&[])
+            .iter()
+            .any(|t| matches!(t, Tok::Lit(_) | Tok::Space)),
+        _ => false,
+    };
+    let mut slot_text: Vec<String> = vec![String::new(); int_slots.len()];
+    if distributed {
+        let mut digits: Vec<char> = int_str.trim_start_matches('0').chars().collect();
+        for (k, &ti) in int_slots.iter().enumerate().rev() {
+            let ph = match toks.get(ti) {
+                Some(Tok::Digit(c)) => *c,
+                _ => '#',
+            };
+            let piece = if k == 0 {
+                std::mem::take(&mut digits).into_iter().collect::<String>()
+            } else {
+                digits.pop().map(String::from).unwrap_or_default()
+            };
+            if let Some(slot) = slot_text.get_mut(k) {
+                *slot = if !piece.is_empty() {
+                    piece
+                } else {
+                    match ph {
+                        '0' => "0".into(),
+                        '?' => " ".into(),
+                        _ => String::new(),
+                    }
+                };
+            }
+        }
+    }
+
     // Re-emit with literals in place: literals before the first digit, between, and after.
     let mut out = String::new();
     let mut int_emitted = false;
@@ -603,7 +648,14 @@ fn format_number(sec: &Section, v: f64) -> String {
     for (i, t) in toks.iter().enumerate() {
         match t {
             Tok::Digit(_) => {
-                if i < int_end {
+                if i < int_end && distributed {
+                    if let Some(k) = int_slots.iter().position(|&x| x == i)
+                        && let Some(t) = slot_text.get(k)
+                    {
+                        out.push_str(t);
+                    }
+                    int_emitted = true;
+                } else if i < int_end {
                     if !int_emitted {
                         out.push_str(&int_s);
                         int_emitted = true;
@@ -621,9 +673,7 @@ fn format_number(sec: &Section, v: f64) -> String {
                     out.push_str(&int_s);
                     int_emitted = true;
                 }
-                if !frac_s.is_empty() || frac_digits.iter().any(|c| *c != '#') || ndec == 0 {
-                    out.push('.');
-                }
+                out.push('.');
             }
             Tok::Exp(_) => {
                 if let Some(e) = &exp_str {
@@ -641,7 +691,7 @@ fn format_number(sec: &Section, v: f64) -> String {
     if !int_emitted && !sec.has_digits() {
         out.push_str(&int_s);
     }
-    // Strip a dangling "." when '#' decimals all trimmed (e.g. "#.##" of 5 → "5.").
+    // A '#'-only fraction that trims to nothing keeps its point ("#.##" of 5 → "5.").
     out
 }
 
@@ -787,6 +837,12 @@ mod tests {
         assert_eq!(f(1234567.0, "#,##0,\"K\""), "1,235K");
         assert_eq!(f(12345.0, "0.00E+00"), "1.23E+04");
         assert_eq!(f(0.5, "#.##"), ".5");
+        assert_eq!(f(12.0, "#.#"), "12.");
+        assert_eq!(f(0.0, "#.#"), ".");
+        assert_eq!(f(12.0, "00-00-00-00"), "00-00-00-12");
+        assert_eq!(f(12345.6789, "00-00-00-00"), "00-01-23-46");
+        assert_eq!(f(123456789012.0, "00-00-00-00"), "123456-78-90-12");
+        assert_eq!(f(-12.0, "00-00-00-00"), "-00-00-00-12");
         assert_eq!(f(7.0, "000"), "007");
         assert_eq!(f(1.23456, "0.00"), "1.23");
         assert_eq!(f(1234.5, "General"), "1234.5");

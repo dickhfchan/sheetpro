@@ -4,7 +4,7 @@ use super::criteria::wildcard_match;
 use super::{Registry, for_each_value, lift1};
 use crate::ast::Expr;
 use crate::eval::{Ev, EvalValue, text_to_number, to_text};
-use sp_core::numfmt::format_value;
+use sp_core::numfmt::{format_value, is_date_format};
 use sp_core::{ErrorKind, MAX_TEXT_LEN, Value};
 
 fn s1(ev: &mut Ev<'_>, args: &[Expr], f: fn(&str) -> String) -> EvalValue {
@@ -299,7 +299,92 @@ fn text_fn(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         Value::Empty => Value::Number(0.0),
         other => other,
     };
+    if let Value::Number(n) = v {
+        if code.trim().eq_ignore_ascii_case("general") {
+            return EvalValue::text(general_11(n));
+        }
+        if is_date_format(&code) {
+            // Dates outside 1900-01-00 .. 9999-12-31, or date codes mixed with digit
+            // placeholders ("mm###"), are #VALUE! here (the grid shows ####).
+            if !(0.0..2_958_466.0).contains(&n) || unquoted_has_any(&code, &['#', '?']) {
+                return EvalValue::err(ErrorKind::Value);
+            }
+        }
+    }
     EvalValue::text(format_value(&v, &code).text)
+}
+
+/// Whether `code` contains any of `chars` outside quotes, brackets and `\` escapes.
+fn unquoted_has_any(code: &str, chars: &[char]) -> bool {
+    let (mut in_q, mut in_b, mut esc) = (false, false, false);
+    for c in code.chars() {
+        if esc {
+            esc = false;
+            continue;
+        }
+        match c {
+            '\\' if !in_q => esc = true,
+            '"' => in_q = !in_q,
+            '[' if !in_q => in_b = true,
+            ']' if !in_q => in_b = false,
+            c if !in_q && !in_b && chars.contains(&c) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// "General" as `TEXT` renders it: at most 11 characters (sign excluded), switching to
+/// scientific notation when that represents the number more accurately.
+pub fn general_11(n: f64) -> String {
+    const WIDTH: usize = 11;
+    if n == 0.0 || !n.is_finite() {
+        return "0".into();
+    }
+    let sign = if n < 0.0 { "-" } else { "" };
+    let a = n.abs();
+    let trim = |s: String| -> String {
+        if s.contains('.') {
+            s.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            s
+        }
+    };
+    // Scientific: mantissa with as many decimals as fit next to the exponent.
+    let sci = {
+        let e10 = a.log10().floor() as i32;
+        let mut e = e10;
+        let mut mant = a / 10f64.powi(e);
+        let exp_len = |e: i32| 2 + e.unsigned_abs().to_string().len().max(2);
+        let decs = WIDTH.saturating_sub(2 + exp_len(e));
+        let mut m = format!("{mant:.decs$}");
+        if m.parse::<f64>().unwrap_or(0.0) >= 10.0 {
+            e += 1;
+            mant = a / 10f64.powi(e);
+            m = format!("{mant:.decs$}");
+        }
+        let es = if e < 0 { "-" } else { "+" };
+        format!("{}E{es}{:02}", trim(m), e.abs())
+    };
+    let int_digits = if a < 1.0 {
+        1
+    } else {
+        a.log10().floor() as usize + 1
+    };
+    if int_digits > WIDTH {
+        return format!("{sign}{sci}");
+    }
+    let decs = WIDTH.saturating_sub(int_digits + 1);
+    let dec = trim(format!("{a:.decs$}"));
+    if dec.split('.').next().is_some_and(|i| i.len() > WIDTH) {
+        return format!("{sign}{sci}");
+    }
+    let err = |s: &str| s.parse::<f64>().map_or(f64::INFINITY, |x| (x - a).abs());
+    if dec != "0" && err(&dec) <= err(&sci) {
+        format!("{sign}{dec}")
+    } else {
+        format!("{sign}{sci}")
+    }
 }
 
 fn fixed(ev: &mut Ev<'_>, args: &[Expr], dollar: bool) -> EvalValue {

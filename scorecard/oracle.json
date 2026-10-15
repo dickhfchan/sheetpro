@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 179,
+  "calc_files_pass": 180,
   "cells_compared": 73244,
-  "cells_matched": 72645,
+  "cells_matched": 72717,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -2177,16 +2177,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 374,
-      "matched": 302,
+      "matched": 374,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "NUMBERS!G3 =TEXT($A3,G$2) → expected 00-00-00-12, got 00000012---",
-        "NUMBERS!I3 =TEXT($A3,I$2) → expected 12., got 12",
-        "NUMBERS!G4 =TEXT($A4,G$2) → expected 00-00-00-00, got 00000000---",
-        "NUMBERS!H4 =TEXT($A4,H$2) → expected 0.333333333, got 0.3333333333",
-        "NUMBERS!G5 =TEXT($A5,G$2) → expected 00-01-23-46, got 00012346---"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/TEXT/TEXTBEFORE_TEXTAFTER.xlsx",
