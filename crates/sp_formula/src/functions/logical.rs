@@ -12,6 +12,8 @@ fn fold_bools(ev: &mut Ev<'_>, args: &[Expr], init: bool, f: fn(bool, bool) -> b
         match (v, from_ref) {
             (Value::Error(e), _) => return Err(*e),
             (Value::Text(_), true) | (Value::Empty, true) => {}
+            // An empty-string argument is skipped like a blank cell ("" alone is #VALUE!).
+            (Value::Text(s), false) if s.is_empty() => {}
             (Value::Text(s), false) => {
                 let b = to_bool(&Value::Text(s.clone()))?;
                 acc = f(acc, b);

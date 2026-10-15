@@ -288,3 +288,19 @@ fn negative_base_odd_root() {
     assert_eq!(err(&wb, "B4"), ErrorKind::Num);
     assert_eq!(num(&wb, "B5"), -8.0);
 }
+
+#[test]
+fn logical_aggregates_skip_empty_string() {
+    let wb = wb_with(&[
+        ("B1", "=OR(\"\",TRUE)"),
+        ("B2", "=AND(\"\",FALSE)"),
+        ("B3", "=XOR(\"\",TRUE)"),
+        ("B4", "=OR(\"\")"),
+        ("B5", "=AND(\"1\")"),
+    ]);
+    assert_eq!(v(&wb, "B1"), Value::Bool(true));
+    assert_eq!(v(&wb, "B2"), Value::Bool(false));
+    assert_eq!(v(&wb, "B3"), Value::Bool(true));
+    assert_eq!(err(&wb, "B4"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B5"), ErrorKind::Value);
+}
