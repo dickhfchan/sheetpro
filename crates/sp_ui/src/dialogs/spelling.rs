@@ -59,8 +59,11 @@ impl Spelling {
     pub fn refresh(&mut self, app: &mut App) {
         match app.query("review.spelling", self.scope()) {
             Ok(r) => {
-                self.findings =
-                    serde_json::from_value(r["misspellings"].clone()).unwrap_or_default();
+                self.findings = r
+                    .get("misspellings")
+                    .cloned()
+                    .and_then(|m| serde_json::from_value(m).ok())
+                    .unwrap_or_default();
                 self.error = None;
             }
             Err(e) => {
@@ -142,26 +145,23 @@ impl Spelling {
             return Flow::Close;
         }
         if let (Some(a), Some(f)) = (action, current) {
-            let mut p = json!({ "action": a, "word": f.word });
-            match a {
-                "ignore" | "change" => {
-                    let cell = match &self.range {
-                        Some(r) => match r.rsplit_once('!') {
-                            Some((sheet, _)) => format!("{sheet}!{}", f.cell),
-                            None => f.cell.clone(),
-                        },
-                        None => f.cell.clone(),
-                    };
-                    p["cell"] = json!(cell);
-                }
-                _ => {}
+            let mut p = serde_json::Map::new();
+            p.insert("action".into(), json!(a));
+            p.insert("word".into(), json!(f.word));
+            if a == "ignore" || a == "change" {
+                let cell = match self.range.as_deref().and_then(|r| r.rsplit_once('!')) {
+                    Some((sheet, _)) => format!("{sheet}!{}", f.cell),
+                    None => f.cell.clone(),
+                };
+                p.insert("cell".into(), json!(cell));
             }
             if a == "change" || a == "change_all" {
-                p["to"] = json!(self.change_to);
+                p.insert("to".into(), json!(self.change_to));
                 if let Some(r) = &self.range {
-                    p["range"] = json!(r);
+                    p.insert("range".into(), json!(r));
                 }
             }
+            let p = Json::Object(p);
             self.act(app, p);
         }
         Flow::Keep

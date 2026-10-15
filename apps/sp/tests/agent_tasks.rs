@@ -1,6 +1,12 @@
 //! M12 "agents can drive SheetPro": ten realistic multi-step workflow tasks, each done only
 //! through MCP tools against the real `sp mcp` binary over stdio, with an end-state
 //! assertion. The scorecard row "Agent workflow tasks" counts these.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 use serde_json::{Value as Json, json};
 use std::io::{BufRead, BufReader, Write};
