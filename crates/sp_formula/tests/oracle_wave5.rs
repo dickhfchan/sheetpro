@@ -304,3 +304,22 @@ fn logical_aggregates_skip_empty_string() {
     assert_eq!(err(&wb, "B4"), ErrorKind::Value);
     assert_eq!(err(&wb, "B5"), ErrorKind::Value);
 }
+
+#[test]
+fn euro_amounts_and_valuetotext_precision() {
+    let wb = wb_with(&[
+        ("A1", "12€"),
+        ("A2", " €100 "),
+        ("A3", "0.000000007123456"),
+        ("B1", "=VALUE(A1)"),
+        ("B2", "=SIGN(A2)"),
+        ("B3", "=VALUETOTEXT(A3)"),
+        ("B4", "=VALUE(\"€€1\")"),
+        ("B5", "=VALUETOTEXT(0.1+0.2)"),
+    ]);
+    assert_eq!(num(&wb, "B1"), 12.0);
+    assert_eq!(num(&wb, "B2"), 1.0);
+    assert_eq!(text(&wb, "B3"), "0.000000007123456");
+    assert_eq!(err(&wb, "B4"), ErrorKind::Value);
+    assert_eq!(text(&wb, "B5"), "0.3");
+}

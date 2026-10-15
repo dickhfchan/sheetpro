@@ -621,8 +621,21 @@ fn trimrange(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
 fn value_text(v: &Value, strict: bool) -> String {
     match v {
         Value::Text(s) if strict => format!("\"{}\"", s.replace('"', "\"\"")),
+        Value::Number(n) => full_precision(*n),
         other => other.to_display(),
     }
+}
+
+/// A number with up to 15 significant digits in plain notation (`7.123456E-09` →
+/// "0.000000007123456"), as VALUETOTEXT/ARRAYTOTEXT show it; very large or tiny
+/// magnitudes fall back to the General display.
+fn full_precision(n: f64) -> String {
+    let a = n.abs();
+    if n == 0.0 || !(1e-15..1e15).contains(&a) {
+        return Value::Number(n).to_display();
+    }
+    let r: f64 = format!("{n:.14e}").parse().unwrap_or(n);
+    format!("{r}")
 }
 
 fn format_arg(ev: &mut Ev<'_>, args: &[Expr]) -> R<bool> {

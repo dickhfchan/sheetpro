@@ -374,17 +374,17 @@ impl<'h> Ev<'h> {
         rows: usize,
         cols: usize,
     ) -> Option<EvalValue> {
-        const ARRAY_FNS: &[&str] = &[
-            "SORT", "SORTBY", "FILTER", "UNIQUE", "TRANSPOSE", "SEQUENCE", "RANDARRAY", "TAKE",
-            "DROP", "CHOOSECOLS", "CHOOSEROWS", "EXPAND", "VSTACK", "HSTACK", "TOCOL", "TOROW",
-            "WRAPCOLS", "WRAPROWS", "MMULT", "MINVERSE", "MUNIT", "FREQUENCY", "LINEST",
-            "LOGEST", "TREND", "GROWTH", "TEXTSPLIT", "MAP", "SCAN", "MAKEARRAY", "BYROW",
-            "BYCOL", "GROUPBY", "PIVOTBY", "FILTERXML", "XLOOKUP", "INDEX", "OFFSET",
-            "INDIRECT", "LET", "LAMBDA", "REGEXEXTRACT", "TEXTBEFORE", "TEXTAFTER",
+        // Array-shaped results (plus functions taking whole ranges by design).
+        const KEEP_RANGES: &[&str] = &[
+            "GROUPBY", "PIVOTBY", "FILTERXML", "XLOOKUP", "INDEX", "OFFSET", "INDIRECT", "LET",
+            "TEXTBEFORE", "TEXTAFTER",
         ];
         let upper = name.to_ascii_uppercase();
         let base = upper.trim_start_matches("_XLFN.").trim_start_matches("_XLWS.");
-        if ARRAY_FNS.contains(&base) || self.registry.get(name).is_none() {
+        if functions::arrays::ARRAY_RESULT.contains(&base)
+            || KEEP_RANGES.contains(&base)
+            || self.registry.get(name).is_none()
+        {
             return None;
         }
         let mut new_args: Vec<Expr> = Vec::with_capacity(args.len());
@@ -1023,7 +1023,10 @@ pub fn text_to_number(s: &str) -> Option<f64> {
         return None;
     }
     let year = sp_core::date::serial_to_date(sp_core::date::now_serial()).map_or(2000, |d| d.0);
-    let (n, hint) = parse_numeric_input(s, year)?;
+    let (n, hint) = match parse_numeric_input(s, year) {
+        Some(r) => r,
+        None => return euro_amount(s, year),
+    };
     // Numbers tolerate surrounding spaces (" 10 "), dates and times do not (" 2024-01-10 ").
     let is_datetime = matches!(
         hint,
@@ -1035,6 +1038,20 @@ pub fn text_to_number(s: &str) -> Option<f64> {
         return None;
     }
     Some(n)
+}
+
+/// "€100", "100€", " €100 ": a euro amount as the target accepts it in coercions.
+fn euro_amount(s: &str, year: i64) -> Option<f64> {
+    let t = s.trim();
+    let body = t.strip_prefix('€').or_else(|| t.strip_suffix('€'))?;
+    let body = body.trim();
+    if body.contains('€') || body.is_empty() {
+        return None;
+    }
+    match parse_numeric_input(body, year)? {
+        (n, sp_core::parse::FormatHint::None | sp_core::parse::FormatHint::Thousands) => Some(n),
+        _ => None,
+    }
 }
 
 pub fn to_text(v: &Value) -> Result<String, ErrorKind> {

@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 190,
+  "calc_files_pass": 192,
   "cells_compared": 73244,
-  "cells_matched": 72788,
+  "cells_matched": 72803,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -786,16 +786,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 317,
-      "matched": 311,
+      "matched": 317,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "AND XOR OR!C52 =OR(\"\",TRUE) → expected TRUE, got #VALUE!",
-        "AND XOR OR!D52 =XOR(\"\",TRUE) → expected TRUE, got #VALUE!",
-        "AND XOR OR!E52 =AND(\"\",TRUE) → expected TRUE, got #VALUE!",
-        "AND XOR OR!C53 =OR(\"\",FALSE) → expected FALSE, got #VALUE!",
-        "AND XOR OR!D53 =XOR(\"\",FALSE) → expected FALSE, got #VALUE!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/LOGICAL/BYCOL_BYROW.xlsx",
@@ -1198,16 +1192,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 132,
-      "matched": 126,
+      "matched": 132,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "EXP_SIGN!B31 =EXP(A31) → expected 2.68812E+43, got #VALUE!",
-        "EXP_SIGN!C31 =SIGN(A31) → expected 1, got #VALUE!",
-        "EXP_SIGN!B49 =EXP(A49) → expected 2.68812E+43, got #VALUE!",
-        "EXP_SIGN!C49 =SIGN(A49) → expected 1, got #VALUE!",
-        "EXP_SIGN!B54 =EXP(A54) → expected 2.68812E+43, got #VALUE!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/FACT_DOUBLEFACT.xlsx",
@@ -2181,14 +2169,11 @@
       "kind": "calc",
       "load_error": null,
       "compared": 63,
-      "matched": 58,
+      "matched": 61,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!I3 =VALUE(H3) → expected 23, got #VALUE!",
         "Sheet1!I5 =VALUE(H5) → expected 36504, got 36445",
-        "Sheet1!C9 =VALUE(A9) → expected 12, got #VALUE!",
-        "Sheet1!D11 =VALUETOTEXT(A11) → expected 0.000000007123456, got 0.0000000071",
         "Sheet1!C15 =VALUE(A15) → expected 44987, got 44960"
       ]
     },
