@@ -2,7 +2,7 @@
 
 use super::{Agg, Registry, arg_array, collect_numbers, m1, m2, ret};
 use crate::ast::Expr;
-use crate::eval::{Array2, Ev, EvalValue, num_value};
+use crate::eval::{Array2, Ev, EvalValue, num_value, to_number};
 use sp_core::{ErrorKind, Value};
 
 fn nz(x: f64) -> Result<f64, ErrorKind> {
@@ -446,21 +446,51 @@ fn decimal(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     EvalValue::num(acc)
 }
 
-const ROMAN: [(u32, &str); 13] = [
-    (1000, "M"),
-    (900, "CM"),
-    (500, "D"),
-    (400, "CD"),
-    (100, "C"),
-    (90, "XC"),
-    (50, "L"),
-    (40, "XL"),
-    (10, "X"),
-    (9, "IX"),
-    (5, "V"),
-    (4, "IV"),
-    (1, "I"),
+/// Roman numeral pieces with the least concise form (0 = classic … 4 = simplified) that
+/// allows each subtractive pair; greedy conversion over the allowed pieces gives every form.
+const ROMAN: [(u32, &str, u8); 25] = [
+    (1000, "M", 0),
+    (999, "IM", 4),
+    (995, "VM", 3),
+    (990, "XM", 2),
+    (950, "LM", 1),
+    (900, "CM", 0),
+    (500, "D", 0),
+    (499, "ID", 4),
+    (495, "VD", 3),
+    (490, "XD", 2),
+    (450, "LD", 1),
+    (400, "CD", 0),
+    (100, "C", 0),
+    (99, "IC", 2),
+    (95, "VC", 1),
+    (90, "XC", 0),
+    (50, "L", 0),
+    (49, "IL", 2),
+    (45, "VL", 1),
+    (40, "XL", 0),
+    (10, "X", 0),
+    (9, "IX", 0),
+    (5, "V", 0),
+    (4, "IV", 0),
+    (1, "I", 0),
 ];
+
+/// Roman numeral of `n` (0..=3999) in `form` 0..=4.
+fn roman_text(n: u32, form: u8) -> String {
+    let mut v = n;
+    let mut s = String::new();
+    for (k, sym, min_form) in ROMAN {
+        if min_form > form {
+            continue;
+        }
+        while v >= k {
+            s.push_str(sym);
+            v -= k;
+        }
+    }
+    s
+}
 
 fn roman(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     let n = match args.first().map(|a| ev.num(a)) {
@@ -468,18 +498,22 @@ fn roman(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         Some(Err(e)) => return EvalValue::err(e),
         None => return EvalValue::err(ErrorKind::Value),
     };
-    if !(0.0..=3999.0).contains(&n) {
+    // Form: TRUE = classic, FALSE = simplified, otherwise 0..=4 (numeric text allowed).
+    let form = match args.get(1) {
+        None | Some(Expr::Missing) => 0.0,
+        Some(e) => match ev.eval_scalar(e) {
+            Value::Bool(true) => 0.0,
+            Value::Bool(false) => 4.0,
+            v => match to_number(&v) {
+                Ok(f) => f.trunc(),
+                Err(e) => return EvalValue::err(e),
+            },
+        },
+    };
+    if !(0.0..=3999.0).contains(&n) || !(0.0..=4.0).contains(&form) {
         return EvalValue::err(ErrorKind::Value);
     }
-    let mut v = n as u32;
-    let mut s = String::new();
-    for (k, sym) in ROMAN {
-        while v >= k {
-            s.push_str(sym);
-            v -= k;
-        }
-    }
-    EvalValue::text(s)
+    EvalValue::text(roman_text(n as u32, form as u8))
 }
 
 fn arabic(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
@@ -897,5 +931,14 @@ mod tests {
         assert_eq!(round_dir(1.23451, 3.0, true), 1.235);
         assert_eq!(round_dir(-1.23451, 1.0, false), -1.2);
         assert_eq!(combin(5.0, 2.0), Ok(10.0));
+    }
+
+    #[test]
+    fn roman_forms() {
+        let forms: Vec<String> = (0..=4).map(|f| roman_text(499, f)).collect();
+        assert_eq!(forms, ["CDXCIX", "LDVLIV", "XDIX", "VDIV", "ID"]);
+        assert_eq!(roman_text(99, 1), "VCIV");
+        assert_eq!(roman_text(469, 1), "LDXIX");
+        assert_eq!(roman_text(1999, 0), "MCMXCIX");
     }
 }
