@@ -273,6 +273,13 @@ impl<'h> Ev<'h> {
             Expr::Spill(a) => self.eval_spill(a),
             Expr::Implicit(a) => {
                 let v = self.eval(a);
+                if let Expr::Call(name, args) = a.as_ref()
+                    && let EvalValue::Array(arr) = &v
+                    && arr.rows * arr.cols > 1
+                    && let Some(r) = self.implicit_call(name, args, arr.rows, arr.cols)
+                {
+                    return r;
+                }
                 self.implicit(v)
             }
             Expr::Invoke(callee, args) => match self.callable(callee) {
@@ -332,6 +339,73 @@ impl<'h> Ev<'h> {
             EvalValue::Array(a) => EvalValue::Scalar(self.to_scalar(EvalValue::Array(a))),
             s @ EvalValue::Scalar(_) => s,
         }
+    }
+
+    /// `@F(range)` where `F` lifted a scalar function over `range`: the legacy meaning is `F`
+    /// of the range's cell in the formula's row/column. Re-run the call with each multi-cell
+    /// reference argument that broadcast into the `rows`×`cols` result replaced by its
+    /// implicit intersection (`#VALUE!` when there is none). Array-producing functions keep
+    /// "top-left of the result".
+    fn implicit_call(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        rows: usize,
+        cols: usize,
+    ) -> Option<EvalValue> {
+        const ARRAY_FNS: &[&str] = &[
+            "SORT", "SORTBY", "FILTER", "UNIQUE", "TRANSPOSE", "SEQUENCE", "RANDARRAY", "TAKE",
+            "DROP", "CHOOSECOLS", "CHOOSEROWS", "EXPAND", "VSTACK", "HSTACK", "TOCOL", "TOROW",
+            "WRAPCOLS", "WRAPROWS", "MMULT", "MINVERSE", "MUNIT", "FREQUENCY", "LINEST",
+            "LOGEST", "TREND", "GROWTH", "TEXTSPLIT", "MAP", "SCAN", "MAKEARRAY", "BYROW",
+            "BYCOL", "GROUPBY", "PIVOTBY", "FILTERXML", "XLOOKUP", "INDEX", "OFFSET",
+            "INDIRECT", "LET", "LAMBDA", "REGEXEXTRACT", "TEXTBEFORE", "TEXTAFTER",
+        ];
+        let upper = name.to_ascii_uppercase();
+        let base = upper.trim_start_matches("_XLFN.").trim_start_matches("_XLWS.");
+        if ARRAY_FNS.contains(&base) || self.registry.get(name).is_none() {
+            return None;
+        }
+        let mut new_args: Vec<Expr> = Vec::with_capacity(args.len());
+        let mut bound = 0usize;
+        for (i, a) in args.iter().enumerate() {
+            let is_ref_expr = matches!(a, Expr::Ref(_) | Expr::Binary(BinOp::Range, ..));
+            let r = if is_ref_expr {
+                match self.eval(a) {
+                    EvalValue::Ref(r) if !r.range.is_single() => Some(r),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let Some(r) = r else {
+                new_args.push(a.clone());
+                continue;
+            };
+            let rg = self.clamp_to_used(r);
+            let (rr, rc) = (rg.rows() as usize, rg.cols() as usize);
+            if !((rr == rows || rr == 1) && (rc == cols || rc == 1)) {
+                new_args.push(a.clone());
+                continue;
+            }
+            let v = match self.intersect_addr(r) {
+                Some(addr) => EvalValue::Ref(SheetRange {
+                    sheet: r.sheet,
+                    range: CellRange::single(addr),
+                }),
+                None => EvalValue::err(ErrorKind::Value),
+            };
+            let local = format!("\u{1}implicit{i}");
+            self.push_local(&local, v);
+            bound += 1;
+            new_args.push(Expr::Name(local));
+        }
+        if bound == 0 {
+            return None;
+        }
+        let out = self.call(name, &new_args);
+        self.pop_locals(bound);
+        Some(self.implicit(out))
     }
 
     /// `A1#`: the area spilled by the dynamic-array formula at the referenced cell.

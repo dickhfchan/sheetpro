@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 180,
+  "calc_files_pass": 181,
   "cells_compared": 73244,
-  "cells_matched": 72717,
+  "cells_matched": 72739,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -1208,15 +1208,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 132,
-      "matched": 124,
+      "matched": 126,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
         "EXP_SIGN!B31 =EXP(A31) → expected 2.68812E+43, got #VALUE!",
         "EXP_SIGN!C31 =SIGN(A31) → expected 1, got #VALUE!",
-        "EXP_SIGN!B36 =@EXP(H:H) → expected 148.4131591, got 1",
-        "EXP_SIGN!C36 =@SIGN(H:H) → expected 1, got 0",
-        "EXP_SIGN!B49 =EXP(A49) → expected 2.68812E+43, got #VALUE!"
+        "EXP_SIGN!B49 =EXP(A49) → expected 2.68812E+43, got #VALUE!",
+        "EXP_SIGN!C49 =SIGN(A49) → expected 1, got #VALUE!",
+        "EXP_SIGN!B54 =EXP(A54) → expected 2.68812E+43, got #VALUE!"
       ]
     },
     {
@@ -1499,16 +1499,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 1187,
-      "matched": 1167,
+      "matched": 1187,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "SIN_COS_TAN!B40 =@SIN(I:I) → expected -0.9589242747, got 0",
-        "SIN_COS_TAN!C40 =@COS(I:I) → expected 0.2836621855, got 1",
-        "SIN_COS_TAN!D40 =@TAN(I:I) → expected -3.380515006, got 0",
-        "ASIN_ACOS_ATAN!B41 =@ASIN(I:I) → expected #NUM!, got 0",
-        "ASIN_ACOS_ATAN!C41 =@ACOS(I:I) → expected #NUM!, got 1.570796327"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/STATISTICAL/AVEDEV.xlsx",

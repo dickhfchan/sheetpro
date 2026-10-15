@@ -201,3 +201,22 @@ fn text_general_width_and_date_validation() {
     assert_eq!(text(&wb, "B8"), "00-00-00-12");
     assert_eq!(text(&wb, "B9"), "12.");
 }
+
+#[test]
+fn implicit_intersection_of_lifted_function_argument() {
+    let wb = wb_with(&[
+        ("I1", "1"),
+        ("I2", "2"),
+        ("I3", "5"),
+        ("B3", "=@SIN(I:I)"),
+        ("C3", "=@EXP(I1:I3)"),
+        ("D3", "=@SUM(I:I)"),
+        ("B5", "=@SIN(I1:I3)"),
+        ("E1", "=@SORT(I1:I3,1,-1)"),
+    ]);
+    assert!(close(num(&wb, "B3"), 5f64.sin()));
+    assert!(close(num(&wb, "C3"), 5f64.exp()));
+    assert_eq!(num(&wb, "D3"), 8.0);
+    assert_eq!(err(&wb, "B5"), ErrorKind::Value); // row 5 is outside I1:I3
+    assert_eq!(num(&wb, "E1"), 5.0); // array functions keep the top-left element
+}
