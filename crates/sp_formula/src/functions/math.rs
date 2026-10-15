@@ -28,6 +28,10 @@ fn round_dir(x: f64, digits: f64, up: bool) -> f64 {
     let d = digits.trunc().clamp(-308.0, 308.0) as i32;
     let m = 10f64.powi(d);
     let raw = (x * m).abs();
+    // At this scale the value is already whole (or overflows): nothing to round.
+    if !raw.is_finite() || raw >= 4_503_599_627_370_496.0 {
+        return x;
+    }
     // Absorb binary noise only when the scaled value is large enough to carry it.
     let s = if raw >= 1e-6 {
         (raw * 1e9).round() / 1e9
@@ -214,6 +218,30 @@ fn subtotal(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     (spec.imp)(ev, &call)
 }
 
+/// Two numeric arguments, analysis-pack style: an omitted argument is `#N/A` and a
+/// logical is `#VALUE!` (MROUND, QUOTIENT).
+fn atp2(
+    ev: &mut Ev<'_>,
+    args: &[Expr],
+    f: impl Fn(f64, f64) -> Result<f64, ErrorKind>,
+) -> EvalValue {
+    let mut nums = [0.0f64; 2];
+    for (k, slot) in nums.iter_mut().enumerate() {
+        let n = match args.get(k) {
+            None | Some(Expr::Missing) => Err(ErrorKind::NA),
+            Some(e) => match ev.eval_scalar(e) {
+                Value::Bool(_) => Err(ErrorKind::Value),
+                v => to_number(&v),
+            },
+        };
+        match n {
+            Ok(n) => *slot = n,
+            Err(e) => return EvalValue::err(e),
+        }
+    }
+    ret(f(nums[0], nums[1]))
+}
+
 fn mround(x: f64, m: f64) -> Result<f64, ErrorKind> {
     if m == 0.0 {
         return Ok(0.0);
@@ -361,6 +389,10 @@ fn strict_numbers(
     let mut out = Vec::new();
     let mut direct_blank = false;
     for a in args {
+        // An omitted argument (`GCD(,5)`) is #N/A, like the other analysis-pack functions.
+        if matches!(a, Expr::Missing) {
+            return Err(ErrorKind::NA);
+        }
         let v = ev.eval(a);
         let single = match &v {
             crate::eval::EvalValue::Ref(r) => r.range.is_single(),
@@ -373,7 +405,10 @@ fn strict_numbers(
                 Value::Number(n) => out.push(*n),
                 Value::Error(e) => return Err(*e),
                 Value::Bool(_) => return Err(ErrorKind::Value),
-                Value::Empty => direct_blank |= single,
+                // Blank cells inside a multi-cell range count as 0; a blank direct argument
+                // is skipped.
+                Value::Empty if !single => out.push(0.0),
+                Value::Empty => direct_blank = true,
                 Value::Text(t) if single || text_in_refs => {
                     out.push(crate::eval::text_to_number(t).ok_or(ErrorKind::Value)?)
                 }
@@ -408,6 +443,9 @@ fn gcd_lcm(ev: &mut Ev<'_>, args: &[Expr], lcm: bool) -> EvalValue {
                 return EvalValue::num(0.0);
             }
             acc = acc / gcd(acc, n) * n;
+            if acc >= 9.007_199_254_740_992e15 {
+                return EvalValue::err(ErrorKind::Num);
+            }
         } else {
             acc = gcd(acc.max(n), acc.min(n));
         }
@@ -858,7 +896,7 @@ pub fn register(r: &mut Registry) {
     r.add("ROUNDDOWN", 2, 2, |ev, a| {
         m2(ev, a, None, |x, d| Ok(round_dir(x, d, false)))
     });
-    r.add("MROUND", 2, 2, |ev, a| m2(ev, a, None, mround));
+    r.add("MROUND", 2, 2, |ev, a| atp2(ev, a, mround));
     r.add("CEILING", 2, 2, |ev, a| m2(ev, a, None, ceiling));
     r.add("FLOOR", 2, 2, |ev, a| m2(ev, a, None, floor_fn));
     r.add("CEILING.MATH", 1, 3, |ev, a| ceiling_math(ev, a, true));
@@ -886,7 +924,7 @@ pub fn register(r: &mut Registry) {
         })
     });
     r.add("QUOTIENT", 2, 2, |ev, a| {
-        m2(ev, a, None, |x, y| {
+        atp2(ev, a, |x, y| {
             if y == 0.0 {
                 Err(ErrorKind::Div0)
             } else {

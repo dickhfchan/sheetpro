@@ -220,3 +220,30 @@ fn implicit_intersection_of_lifted_function_argument() {
     assert_eq!(err(&wb, "B5"), ErrorKind::Value); // row 5 is outside I1:I3
     assert_eq!(num(&wb, "E1"), 5.0); // array functions keep the top-left element
 }
+
+#[test]
+fn analysis_pack_argument_rules() {
+    let wb = wb_with(&[
+        ("A1", "=TRUE"),
+        ("A2", "5"),
+        ("H1", "5"),
+        ("B1", "=MROUND(A1,2)"),
+        ("B2", "=MROUND(,A2)"),
+        ("B3", "=QUOTIENT(A1,A1)"),
+        ("B4", "=GCD(,A2)"),
+        ("B5", "=LCM(G1:H1)"),
+        ("B6", "=LCM(2147483647,1073741823)"),
+        ("B7", "=TRUNC(123456789,1000)"),
+        ("B8", "=TRUNC(5,9.99999E+307)"),
+        ("B9", "=LCM(,5)"),
+    ]);
+    assert_eq!(err(&wb, "B1"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B2"), ErrorKind::NA);
+    assert_eq!(err(&wb, "B3"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B4"), ErrorKind::NA);
+    assert_eq!(num(&wb, "B5"), 0.0); // blank range cell counts as 0
+    assert_eq!(err(&wb, "B6"), ErrorKind::Num);
+    assert_eq!(num(&wb, "B7"), 123456789.0);
+    assert_eq!(num(&wb, "B8"), 5.0);
+    assert_eq!(err(&wb, "B9"), ErrorKind::NA);
+}

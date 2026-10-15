@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 181,
+  "calc_files_pass": 185,
   "cells_compared": 73244,
-  "cells_matched": 72739,
+  "cells_matched": 72759,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -1244,28 +1244,20 @@
       "kind": "calc",
       "load_error": null,
       "compared": 351,
-      "matched": 347,
+      "matched": 351,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!D34 =LCM(,B34,C34) → expected #N/A, got 5",
-        "Sheet1!E34 =GCD(,B34,C34) → expected #N/A, got 5",
-        "Sheet1!I35 =@LCM(G35:H35) → expected 0, got 5",
-        "Sheet1!I53 =@LCM(G53:H53) → expected #NUM!, got 2.30584E+18"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/LCM_GCD.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 132,
-      "matched": 130,
+      "matched": 132,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "LCM_GCD!D34 =LCM(,B34,C34) → expected #N/A, got 5",
-        "LCM_GCD!E34 =GCD(,B34,C34) → expected #N/A, got 5"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/LOG_LOG10_LN.xlsx",
@@ -1312,29 +1304,20 @@
       "kind": "calc",
       "load_error": null,
       "compared": 93,
-      "matched": 91,
+      "matched": 93,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "DATEVALUE!D39 =QUOTIENT(A39,B39) → expected #VALUE!, got 1",
-        "DATEVALUE!D40 =QUOTIENT(A40,B40) → expected #VALUE!, got 0"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MROUND_TRUNC_INT.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 249,
-      "matched": 237,
+      "matched": 249,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "MROUND!C34 =MROUND(,B34) → expected #N/A, got 0",
-        "MROUND!C36 =MROUND(A36,) → expected #N/A, got 0",
-        "MROUND!C51 =MROUND(A51,B51) → expected #VALUE!, got 2",
-        "MROUND!C52 =MROUND(A52,B52) → expected #VALUE!, got 2",
-        "MROUND!C53 =MROUND(A53,B53) → expected #VALUE!, got 0"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/MULTINOMIAL.xlsx",
