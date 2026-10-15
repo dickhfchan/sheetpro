@@ -292,6 +292,50 @@ fn ceiling_math(ev: &mut Ev<'_>, args: &[Expr], up: bool) -> EvalValue {
     EvalValue::num(r * sig)
 }
 
+/// The target reduces trig arguments modulo π/2 using π rounded to a 64-bit mantissa, which
+/// exceeds the true π by about 5.0e-20; that is what makes `SIN(PI())` = 1.22514845490862E-16
+/// and `TAN(PI()/2)` = 1.6324552277619072E+16. π/2 split as an f64 head + exact f64 tail.
+const HALF_PI_HI: f64 = std::f64::consts::FRAC_PI_2;
+const HALF_PI_LO: f64 = 6.1257422745431e-17;
+
+/// `x` reduced to `r` in about [-π/4, π/4] plus the quadrant (0..=3), or `None` for huge `x`.
+fn reduce_half_pi(x: f64) -> Option<(f64, u8)> {
+    if !x.is_finite() || x.abs() > 134_217_728.0 {
+        return None;
+    }
+    let n = (x / HALF_PI_HI).round();
+    let r = (-n).mul_add(HALF_PI_HI, x) - n * HALF_PI_LO;
+    Some((r, n.rem_euclid(4.0) as u8))
+}
+
+fn trig_sin(x: f64) -> f64 {
+    match reduce_half_pi(x) {
+        Some((r, 0)) => r.sin(),
+        Some((r, 1)) => r.cos(),
+        Some((r, 2)) => -r.sin(),
+        Some((r, _)) => -r.cos(),
+        None => x.sin(),
+    }
+}
+
+fn trig_cos(x: f64) -> f64 {
+    match reduce_half_pi(x) {
+        Some((r, 0)) => r.cos(),
+        Some((r, 1)) => -r.sin(),
+        Some((r, 2)) => -r.cos(),
+        Some((r, _)) => r.sin(),
+        None => x.cos(),
+    }
+}
+
+fn trig_tan(x: f64) -> f64 {
+    match reduce_half_pi(x) {
+        Some((r, q)) if q % 2 == 0 => r.tan(),
+        Some((r, _)) => -1.0 / r.tan(),
+        None => x.tan(),
+    }
+}
+
 fn rand(ev: &mut Ev<'_>, _args: &[Expr]) -> EvalValue {
     EvalValue::num(ev.host.random())
 }
@@ -696,9 +740,9 @@ pub fn register(r: &mut Registry) {
         })
     });
     r.add("PI", 0, 0, |_, _| EvalValue::num(std::f64::consts::PI));
-    r.add("SIN", 1, 1, |ev, a| m1(ev, a, |x| Ok(x.sin())));
-    r.add("COS", 1, 1, |ev, a| m1(ev, a, |x| Ok(x.cos())));
-    r.add("TAN", 1, 1, |ev, a| m1(ev, a, |x| Ok(x.tan())));
+    r.add("SIN", 1, 1, |ev, a| m1(ev, a, |x| Ok(trig_sin(x))));
+    r.add("COS", 1, 1, |ev, a| m1(ev, a, |x| Ok(trig_cos(x))));
+    r.add("TAN", 1, 1, |ev, a| m1(ev, a, |x| Ok(trig_tan(x))));
     r.add("ASIN", 1, 1, |ev, a| {
         m1(ev, a, |x| {
             if x.abs() > 1.0 {
@@ -754,7 +798,7 @@ pub fn register(r: &mut Registry) {
             if x == 0.0 {
                 Err(ErrorKind::Div0)
             } else {
-                Ok(1.0 / x.tan())
+                Ok(1.0 / trig_tan(x))
             }
         })
     });
@@ -772,7 +816,7 @@ pub fn register(r: &mut Registry) {
             if x == 0.0 {
                 Err(ErrorKind::Div0)
             } else {
-                Ok(1.0 / x.sin())
+                Ok(1.0 / trig_sin(x))
             }
         })
     });
@@ -785,7 +829,7 @@ pub fn register(r: &mut Registry) {
             }
         })
     });
-    r.add("SEC", 1, 1, |ev, a| m1(ev, a, |x| Ok(1.0 / x.cos())));
+    r.add("SEC", 1, 1, |ev, a| m1(ev, a, |x| Ok(1.0 / trig_cos(x))));
     r.add("SECH", 1, 1, |ev, a| m1(ev, a, |x| Ok(1.0 / x.cosh())));
     r.add("ACOT", 1, 1, |ev, a| {
         m1(ev, a, |x| Ok(std::f64::consts::FRAC_PI_2 - x.atan()))
@@ -944,6 +988,16 @@ mod tests {
         assert_eq!(round_dir(1.23451, 3.0, true), 1.235);
         assert_eq!(round_dir(-1.23451, 1.0, false), -1.2);
         assert_eq!(combin(5.0, 2.0), Ok(10.0));
+    }
+
+    #[test]
+    fn trig_uses_extended_pi_reduction() {
+        let pi = std::f64::consts::PI;
+        assert!((trig_sin(pi) - 1.22514845490862e-16).abs() < 1e-28);
+        assert!((trig_tan(pi / 2.0) - 1.6324552277619072e16).abs() < 1.0);
+        assert!((trig_tan(-3.0 * pi / 2.0) - -5441517425873024.0).abs() < 1.0);
+        assert!((trig_cos(0.5) - 0.5f64.cos()).abs() < 1e-16);
+        assert!((trig_sin(1048576.0) - 0.33049314002171887).abs() < 1e-12);
     }
 
     #[test]

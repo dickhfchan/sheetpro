@@ -5,7 +5,7 @@
   "calc_files_total": 218,
   "calc_files_pass": 177,
   "cells_compared": 73244,
-  "cells_matched": 72554,
+  "cells_matched": 72564,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -1510,15 +1510,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 1187,
-      "matched": 1161,
+      "matched": 1167,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
         "SIN_COS_TAN!B40 =@SIN(I:I) → expected -0.9589242747, got 0",
         "SIN_COS_TAN!C40 =@COS(I:I) → expected 0.2836621855, got 1",
         "SIN_COS_TAN!D40 =@TAN(I:I) → expected -3.380515006, got 0",
-        "SIN_COS_TAN!D45 =TAN(A45) → expected 9.9985E+11, got 9.9985E+11",
-        "SIN_COS_TAN!D46 =TAN(A46) → expected -9.99972E+11, got -9.99972E+11"
+        "ASIN_ACOS_ATAN!B41 =@ASIN(I:I) → expected #NUM!, got 0",
+        "ASIN_ACOS_ATAN!C41 =@ACOS(I:I) → expected #NUM!, got 1.570796327"
       ]
     },
     {
@@ -2580,15 +2580,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 32,
-      "matched": 28,
+      "matched": 32,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!B2 =TAN(A2) → expected -5.44152E+15, got -5.44375E+15",
-        "Sheet1!B4 =TAN(A4) → expected -1.63246E+16, got -1.63312E+16",
-        "Sheet1!B8 =TAN(A8) → expected 1.63246E+16, got 1.63312E+16",
-        "Sheet1!B10 =TAN(A10) → expected 5.44152E+15, got 5.44375E+15"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/docs/YEAR.xlsx",
