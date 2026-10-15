@@ -850,7 +850,18 @@ pub fn text_to_number(s: &str) -> Option<f64> {
         return None;
     }
     let year = sp_core::date::serial_to_date(sp_core::date::now_serial()).map_or(2000, |d| d.0);
-    parse_numeric_input(s, year).map(|(n, _)| n)
+    let (n, hint) = parse_numeric_input(s, year)?;
+    // Numbers tolerate surrounding spaces (" 10 "), dates and times do not (" 2024-01-10 ").
+    let is_datetime = matches!(
+        hint,
+        sp_core::parse::FormatHint::Date
+            | sp_core::parse::FormatHint::Time
+            | sp_core::parse::FormatHint::DateTime
+    );
+    if is_datetime && s.trim() != s {
+        return None;
+    }
+    Some(n)
 }
 
 pub fn to_text(v: &Value) -> Result<String, ErrorKind> {

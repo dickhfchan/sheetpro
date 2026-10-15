@@ -87,6 +87,9 @@ pub fn parse_number(input: &str) -> Option<(f64, FormatHint)> {
     } else if let Some(r) = t.strip_prefix('+') {
         t = r.trim_start().to_string();
     }
+    if t.starts_with(['-', '+']) {
+        return None; // "--8", "+-8": a second sign is not a number
+    }
     if let Some(r) = t.strip_prefix('$') {
         hint = FormatHint::Currency;
         t = r.trim_start().to_string();
@@ -350,6 +353,8 @@ mod tests {
         assert_eq!(parse_number("abc"), None);
         assert_eq!(parse_number("."), None);
         assert_eq!(parse_number("inf"), None);
+        assert_eq!(parse_number("--8"), None);
+        assert_eq!(parse_number("+-8"), None);
     }
 
     #[test]
