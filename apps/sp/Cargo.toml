@@ -10,6 +10,7 @@ sp_core.workspace = true
 sp_engine.workspace = true
 sp_formula.workspace = true
 sp_io.workspace = true
+sp_render.workspace = true
 sp_ui.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

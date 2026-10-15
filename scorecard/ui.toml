@@ -44,3 +44,23 @@ note = "Extra windows are native viewports on one session; split is one directio
 name = "Trial builds (cargo xtask package)"
 status = "partial"
 note = "macOS .app + zip, ad-hoc signed, not notarized; Linux/Windows plain folder, no installer"
+
+[[item]]
+name = "MCP server (sp mcp): initialize/ping/tools/list/tools/call over stdio"
+status = "done"
+note = "10 tools (list_commands, run_command, get_cells, set_cells, open/save_workbook, list_sheets, screenshot, undo, redo); hand-written JSON-RPC 2.0, no new deps; no resources/prompts, no progress or cancellation"
+
+[[item]]
+name = "Agent workflow tasks: 10/10"
+status = "done"
+note = "apps/sp/tests/agent_tasks.rs drives the real sp mcp binary: amortization, CSV clean-up, pivot+chart, overdue CF, budget variance, sort/filter/subtotal, XLOOKUP across sheets, validation+protection, print setup+PDF, broken-model fix"
+
+[[item]]
+name = "Macros (view.macros): record, run, edit as JSONL, stored in the workbook"
+status = "partial"
+note = "Recorded command sequences, not VBA (vbaProject.bin passed through, never run); set_cells over MCP is not a command so is not recorded; no macro dialog (run via command/MCP); no relative-reference recording"
+
+[[item]]
+name = "Spelling (review.spelling)"
+status = "partial"
+note = "SCOWL size-60 American English list, edit-distance suggestions, ignore once/all, user dictionary, change/change all, minimal dialog; English only, no AutoCorrect, text constants only (not comments, charts or formulas)"

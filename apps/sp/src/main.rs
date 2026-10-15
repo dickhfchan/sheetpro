@@ -8,6 +8,8 @@ use sp_engine::control::{Action, handle_line};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
+mod mcp;
+
 #[derive(Parser)]
 #[command(name = "sp", about = "SheetPro command line")]
 struct Cli {
@@ -19,6 +21,11 @@ struct Cli {
 enum Cmd {
     /// JSON-lines control session on stdin/stdout (see docs/control-protocol.md).
     Control {
+        #[arg(long)]
+        open: Option<PathBuf>,
+    },
+    /// Model Context Protocol server on stdin/stdout (see docs/control-protocol.md).
+    Mcp {
         #[arg(long)]
         open: Option<PathBuf>,
     },
@@ -78,6 +85,26 @@ fn session_with(open: Option<&PathBuf>) -> Result<Session> {
     Ok(s)
 }
 
+/// Offscreen render of a copy of `s` to PNG bytes (for the MCP `screenshot` tool).
+fn render_to_png(s: &Session, size: (f32, f32)) -> Result<Vec<u8>, String> {
+    let mut snap = Session::with_workbook(s.wb.clone());
+    snap.sel = s.sel;
+    snap.view = s.view.clone();
+    let dir = std::env::temp_dir();
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let path = dir.join(format!("sp-mcp-{}-{n}.png", std::process::id()));
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sp_ui::screenshot::render_png(snap, size, &path)
+    }))
+    .map_err(|_| "renderer crashed".to_string())
+    .and_then(|r| r);
+    let bytes = r.and_then(|()| std::fs::read(&path).map_err(|e| e.to_string()));
+    let _ = std::fs::remove_file(&path);
+    bytes
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
@@ -111,6 +138,15 @@ fn main() -> Result<()> {
                     Action::None => {}
                 }
             }
+        }
+        Cmd::Mcp { open } => {
+            let s = session_with(open.as_ref())?;
+            let mut server = mcp::Server::new(s, render_to_png);
+            mcp::serve(
+                &mut server,
+                std::io::stdin().lock(),
+                std::io::stdout().lock(),
+            )?;
         }
         Cmd::Eval {
             formula,

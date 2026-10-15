@@ -2648,6 +2648,7 @@ dependencies = [
  "sp_engine",
  "sp_formula",
  "sp_io",
+ "sp_render",
  "sp_ui",
 ]
 
