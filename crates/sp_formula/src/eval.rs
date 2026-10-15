@@ -693,7 +693,85 @@ impl<'h> Ev<'h> {
         if args.len() < spec.min_args || args.len() > spec.max_args {
             return EvalValue::err(ErrorKind::Value);
         }
+        if functions::lifts_scalar_args(spec.name) {
+            return self.call_lifted(spec.imp, args);
+        }
         (spec.imp)(self, args)
+    }
+
+    /// Call a function whose parameters are all scalars: arguments are evaluated once; when
+    /// any is an array or multi-cell reference the function runs once per element of the
+    /// broadcast shape (Excel's implicit array lifting), otherwise once with the values.
+    fn call_lifted(&mut self, imp: functions::FnImp, args: &[Expr]) -> EvalValue {
+        const NAMES: [&str; 8] = [
+            "\u{1}lift0", "\u{1}lift1", "\u{1}lift2", "\u{1}lift3", "\u{1}lift4",
+            "\u{1}lift5", "\u{1}lift6", "\u{1}lift7",
+        ];
+        if args.len() > NAMES.len() {
+            return imp(self, args);
+        }
+        let mut vals: Vec<Option<EvalValue>> = Vec::with_capacity(args.len());
+        let mut exprs: Vec<Expr> = Vec::with_capacity(args.len());
+        for (a, name) in args.iter().zip(NAMES) {
+            if matches!(a, Expr::Missing) {
+                vals.push(None);
+                exprs.push(Expr::Missing);
+            } else {
+                vals.push(Some(self.eval(a)));
+                exprs.push(Expr::Name(name.to_string()));
+            }
+        }
+        let multi = vals.iter().flatten().any(functions::is_multi);
+        if !multi {
+            let mut n = 0;
+            for (v, name) in vals.into_iter().zip(NAMES) {
+                if let Some(v) = v {
+                    self.push_local(name, v);
+                    n += 1;
+                }
+            }
+            let out = imp(self, &exprs);
+            self.pop_locals(n);
+            return out;
+        }
+        // Materialise multi-valued arguments; scalars stay as evaluated.
+        let mut arrays: Vec<Option<Array2>> = Vec::with_capacity(vals.len());
+        let (mut rows, mut cols) = (1usize, 1usize);
+        for v in &vals {
+            match v {
+                Some(v) if functions::is_multi(v) => match self.to_array(v.clone()) {
+                    Ok(a) => {
+                        rows = if rows == 1 { a.rows } else if a.rows == 1 { rows } else { rows.max(a.rows) };
+                        cols = if cols == 1 { a.cols } else if a.cols == 1 { cols } else { cols.max(a.cols) };
+                        arrays.push(Some(a));
+                    }
+                    Err(e) => return EvalValue::err(e),
+                },
+                _ => arrays.push(None),
+            }
+        }
+        if (rows as u64) * (cols as u64) > MAX_CELLS_PER_OP {
+            return EvalValue::err(ErrorKind::Num);
+        }
+        let mut data = Vec::with_capacity(rows * cols);
+        for i in 0..rows {
+            for j in 0..cols {
+                let mut n = 0;
+                for ((v, arr), name) in vals.iter().zip(&arrays).zip(NAMES) {
+                    let bound = match (v, arr) {
+                        (_, Some(a)) => EvalValue::Scalar(a.get_broadcast(i, j)),
+                        (Some(v), None) => v.clone(),
+                        (None, None) => continue,
+                    };
+                    self.push_local(name, bound);
+                    n += 1;
+                }
+                let out = imp(self, &exprs);
+                self.pop_locals(n);
+                data.push(self.to_scalar(out));
+            }
+        }
+        EvalValue::Array(Array2 { rows, cols, data })
     }
 
     // ── coercions ──────────────────────────────────────────────────────────────────────────

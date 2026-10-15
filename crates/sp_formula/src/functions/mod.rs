@@ -86,6 +86,22 @@ impl Registry {
     }
 }
 
+/// Functions whose parameters are all scalars and that therefore evaluate element-wise when
+/// given arrays or multi-cell ranges (the evaluator lifts them; see `Ev::call_lifted`).
+/// Single-argument functions built on `m1`/`lift1` and two-argument `m2` functions lift
+/// themselves and are not listed.
+pub fn lifts_scalar_args(name: &str) -> bool {
+    matches!(
+        name,
+        "MID" | "MIDB" | "LEFT" | "LEFTB" | "RIGHT" | "RIGHTB" | "REPT" | "FIND" | "FINDB"
+            | "SEARCH" | "SEARCHB" | "SUBSTITUTE" | "REPLACE" | "REPLACEB" | "EXACT" | "CHAR"
+            | "CODE" | "UNICHAR" | "UNICODE" | "FIXED" | "DOLLAR" | "VALUE" | "NUMBERVALUE"
+            | "DATE" | "TIME" | "DAY" | "MONTH" | "YEAR" | "HOUR" | "MINUTE" | "SECOND"
+            | "WEEKDAY" | "WEEKNUM" | "ISOWEEKNUM" | "EDATE" | "EOMONTH" | "DATEVALUE"
+            | "TIMEVALUE" | "DAYS" | "DAYS360" | "MROUND" | "QUOTIENT"
+    )
+}
+
 pub fn registry() -> &'static Registry {
     static R: OnceLock<Registry> = OnceLock::new();
     R.get_or_init(|| {
@@ -247,22 +263,56 @@ pub fn m2(
     let Some(a) = args.first() else {
         return EvalValue::err(ErrorKind::Value);
     };
-    let x = match ev.num(a) {
-        Ok(x) => x,
-        Err(e) => return EvalValue::err(e),
-    };
-    let y = match (args.get(1), default_b) {
-        (None | Some(Expr::Missing), Some(d)) => d,
-        (Some(b), _) => match ev.num(b) {
-            Ok(y) => y,
-            Err(e) => return EvalValue::err(e),
-        },
+    let va = ev.eval(a);
+    let vb = match (args.get(1), default_b) {
+        (None | Some(Expr::Missing), Some(d)) => EvalValue::num(d),
+        (Some(b), _) => ev.eval(b),
         (None, None) => return EvalValue::err(ErrorKind::Value),
     };
-    match f(x, y) {
-        Ok(r) => EvalValue::num(r),
-        Err(e) => EvalValue::err(e),
+    let g = |x: &Value, y: &Value| -> Value {
+        let r = to_number(x).and_then(|x| to_number(y).and_then(|y| f(x, y)));
+        match r {
+            Ok(r) => num_value(r),
+            Err(e) => Value::Error(e),
+        }
+    };
+    // Scalar functions broadcast over arrays and multi-cell references.
+    if is_multi(&va) || is_multi(&vb) {
+        let (xa, xb) = match (ev.to_array(va), ev.to_array(vb)) {
+            (Ok(x), Ok(y)) => (x, y),
+            (Err(e), _) | (_, Err(e)) => return EvalValue::err(e),
+        };
+        return broadcast2(&xa, &xb, g);
     }
+    let x = ev.to_scalar(va);
+    let y = ev.to_scalar(vb);
+    EvalValue::Scalar(g(&x, &y))
+}
+
+/// Whether a value holds more than one cell.
+pub fn is_multi(v: &EvalValue) -> bool {
+    match v {
+        EvalValue::Array(a) => a.rows * a.cols != 1,
+        EvalValue::Ref(r) => !r.range.is_single(),
+        EvalValue::Refs(_) => true,
+        EvalValue::Scalar(_) => false,
+    }
+}
+
+/// Element-wise `g` over two arrays with broadcasting (`#N/A` outside a smaller shape).
+pub fn broadcast2(a: &Array2, b: &Array2, g: impl Fn(&Value, &Value) -> Value) -> EvalValue {
+    let dim = |x: usize, y: usize| if x == 1 { y } else if y == 1 { x } else { x.max(y) };
+    let (rows, cols) = (dim(a.rows, b.rows), dim(a.cols, b.cols));
+    if (rows as u64) * (cols as u64) > sp_core::MAX_CELLS_PER_OP {
+        return EvalValue::err(ErrorKind::Num);
+    }
+    let mut data = Vec::with_capacity(rows * cols);
+    for i in 0..rows {
+        for j in 0..cols {
+            data.push(g(&a.get_broadcast(i, j), &b.get_broadcast(i, j)));
+        }
+    }
+    EvalValue::Array(Array2 { rows, cols, data })
 }
 
 /// Shorthand to turn a `Result<f64>` into an `EvalValue`.

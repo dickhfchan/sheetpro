@@ -247,3 +247,28 @@ fn analysis_pack_argument_rules() {
     assert_eq!(num(&wb, "B8"), 5.0);
     assert_eq!(err(&wb, "B9"), ErrorKind::NA);
 }
+
+#[test]
+fn scalar_functions_lift_over_arrays_and_broadcast_errors() {
+    let wb = wb_with(&[
+        ("A1", "1"),
+        ("B1", "2"),
+        ("C1", "3"),
+        ("A2", "abc"),
+        ("B2", "x"),
+        ("E1", "=SUM(POWER(A1:C1,2))"),
+        ("E2", "=POWER(A1:C1,1/0)"),
+        ("E3", "=MID(A2:B2,NA(),1)"),
+        ("E4", "=LEFT({\"hola\",\"Adios\"},A1:A1)"),
+        ("E5", "=EXACT({\"abc\",\"x\"},A2:B2)"),
+        ("E6", "=SUM(DAY(A1:C1))"),
+        ("E7", "=SUM(MROUND(A1:C1,2))"),
+    ]);
+    assert_eq!(num(&wb, "E1"), 14.0);
+    assert_eq!(err(&wb, "E2"), ErrorKind::Div0);
+    assert_eq!(err(&wb, "E3"), ErrorKind::NA);
+    assert_eq!(text(&wb, "E4"), "h");
+    assert_eq!(v(&wb, "E5"), Value::Bool(true));
+    assert_eq!(num(&wb, "E6"), 6.0); // serials 1..3 are Jan 1..3 1900
+    assert_eq!(num(&wb, "E7"), 8.0); // 2 + 2 + 4 (halves round away from zero)
+}
