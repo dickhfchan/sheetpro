@@ -125,3 +125,50 @@ fn floor_ceiling_keep_tiny_quotients_and_tiny_significance() {
     assert_eq!(num(&wb, "B6"), -1.0);
     assert_eq!(num(&wb, "B7"), 1.0);
 }
+
+#[test]
+fn xlookup_binary_search_modes_and_validation() {
+    let mut cells: Vec<(String, String)> = Vec::new();
+    // Ascending with duplicates in A, descending in C, labels in B/D.
+    let asc = [1, 2, 3, 4, 5, 5, 5, 6, 7, 7, 7, 8, 9];
+    for (i, v) in asc.iter().enumerate() {
+        cells.push((format!("A{}", i + 1), v.to_string()));
+        cells.push((format!("B{}", i + 1), format!("r{}", i + 1)));
+        cells.push((format!("C{}", i + 1), asc[asc.len() - 1 - i].to_string()));
+    }
+    cells.push(("E1".into(), "=XLOOKUP(5,A1:A13,B1:B13,,0,2)".into()));
+    cells.push(("E2".into(), "=XLOOKUP(7.1,A1:A13,B1:B13,,-1,2)".into()));
+    cells.push(("E3".into(), "=XLOOKUP(6.8,A1:A13,B1:B13,,1,2)".into()));
+    cells.push(("E4".into(), "=XLOOKUP(5,C1:C13,B1:B13,,0,-2)".into()));
+    cells.push(("E5".into(), "=XLOOKUP(7.1,C1:C13,B1:B13,,-1,-2)".into()));
+    cells.push(("E6".into(), "=XLOOKUP(5,A1:A13,B1:B13,,12)".into()));
+    cells.push(("E7".into(), "=XLOOKUP(\"a*\",B1:B13,A1:A13,,2,2)".into()));
+    cells.push(("E8".into(), "=XLOOKUP(TRUE,A1:A13,B1:B13,,-1)".into()));
+    cells.push(("E9".into(), "=XLOOKUP(1/0,A1:A13,B1:B13,\"nf\")".into()));
+    cells.push(("E10".into(), "=XMATCH(\"r1[0-9]\",B1:B13,3)".into()));
+    let refs: Vec<(&str, &str)> = cells.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+    let wb = wb_with(&refs);
+    assert_eq!(text(&wb, "E1"), "r5"); // first of the duplicate run
+    assert_eq!(text(&wb, "E2"), "r11"); // last 7
+    assert_eq!(text(&wb, "E3"), "r9"); // first 7
+    assert_eq!(text(&wb, "E4"), "r9"); // descending: last 5
+    assert_eq!(text(&wb, "E5"), "r3"); // descending: first 7
+    assert_eq!(err(&wb, "E6"), ErrorKind::Value);
+    assert_eq!(err(&wb, "E7"), ErrorKind::Value);
+    assert_eq!(text(&wb, "E8"), "r13"); // logicals sort after numbers
+    assert_eq!(err(&wb, "E9"), ErrorKind::Div0);
+    assert_eq!(num(&wb, "E10"), 10.0);
+}
+
+#[test]
+fn xlookup_blank_lookup_value_finds_blank_cell() {
+    let wb = wb_with(&[
+        ("A1", "a"),
+        ("A2", "b"),
+        ("B1", "1"),
+        ("B2", "2"),
+        ("B3", "3"),
+        ("C1", "=XLOOKUP(,A1:A3,B1:B3,,1,2)"),
+    ]);
+    assert_eq!(num(&wb, "C1"), 3.0);
+}

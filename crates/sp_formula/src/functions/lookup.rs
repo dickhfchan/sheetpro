@@ -155,40 +155,129 @@ fn match_fn(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     }
 }
 
-/// XMATCH/XLOOKUP search: match_mode 0 exact, -1 exact-or-next-smaller, 1 exact-or-next-larger,
-/// 2 wildcard; search_mode 1 first-to-last, -1 last-to-first (binary modes treated linearly).
-fn xfind(items: &[Value], target: &Value, match_mode: i32, search_mode: i32) -> Option<usize> {
-    let order: Vec<usize> = if search_mode < 0 && search_mode != -2 {
-        (0..items.len()).rev().collect()
+/// Validated XMATCH/XLOOKUP modes: match_mode 0 exact, -1 exact-or-next-smaller,
+/// 1 exact-or-next-larger, 2 wildcard, 3 regex; search_mode 1 / -1 linear first/last,
+/// 2 / -2 binary over ascending / descending data. Anything else (or wildcard/regex with a
+/// binary search) is `#VALUE!`.
+fn x_modes(ev: &mut Ev<'_>, args: &[Expr], mi: usize, si: usize) -> Result<(i32, i32), ErrorKind> {
+    let mm = ev.num_or(args, mi, 0.0)?.trunc();
+    let sm = ev.num_or(args, si, 1.0)?.trunc();
+    if !(-1.0..=3.0).contains(&mm) || ![-2.0, -1.0, 1.0, 2.0].contains(&sm) {
+        return Err(ErrorKind::Value);
+    }
+    let (mm, sm) = (mm as i32, sm as i32);
+    if mm >= 2 && sm.abs() == 2 {
+        return Err(ErrorKind::Value);
+    }
+    Ok((mm, sm))
+}
+
+/// Ordering for approximate XMATCH/XLOOKUP: numbers < text < logicals, text case-insensitive.
+fn x_cmp(a: &Value, b: &Value) -> Ordering {
+    compare(a, b)
+}
+
+fn x_eq(target: &Value, v: &Value) -> bool {
+    same_kind(target, v) && compare(target, v) == Ordering::Equal
+}
+
+/// XMATCH/XLOOKUP search (modes from [`x_modes`]).
+fn xfind(
+    items: &[Value],
+    target: &Value,
+    match_mode: i32,
+    search_mode: i32,
+) -> Result<Option<usize>, ErrorKind> {
+    let n = items.len();
+    // A blank lookup value finds the first (or last) blank cell.
+    if matches!(target, Value::Empty) {
+        let mut it = items.iter().enumerate().filter(|(_, v)| v.is_empty());
+        return Ok(if search_mode < 0 {
+            it.next_back().map(|(i, _)| i)
+        } else {
+            it.next().map(|(i, _)| i)
+        });
+    }
+    if search_mode.abs() == 2 {
+        // Binary search in the ascending view (descending data is searched back to front).
+        let at = |i: usize| -> Option<&Value> {
+            let j = if search_mode < 0 { n.checked_sub(i + 1)? } else { i };
+            items.get(j)
+        };
+        let unview = |i: usize| if search_mode < 0 { n - 1 - i } else { i };
+        let (mut lo, mut hi) = (0usize, n);
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            // Blanks and errors sort after everything.
+            let less = match at(mid) {
+                Some(v) if !v.is_empty() && !matches!(v, Value::Error(_)) => {
+                    x_cmp(v, target) == Ordering::Less
+                }
+                _ => false,
+            };
+            if less {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if at(lo).is_some_and(|v| x_eq(target, v)) {
+            return Ok(Some(unview(lo)));
+        }
+        let found = match match_mode {
+            -1 => lo.checked_sub(1),
+            1 => at(lo).filter(|v| !v.is_empty()).map(|_| lo),
+            _ => None,
+        };
+        return Ok(found.map(unview));
+    }
+    let regex = if match_mode == 3 {
+        let pat = match target {
+            Value::Error(e) => return Err(*e),
+            other => other.to_display(),
+        };
+        Some(super::regex::Regex::new(&pat, false)?)
     } else {
-        (0..items.len()).collect()
+        None
+    };
+    let order: Box<dyn Iterator<Item = usize>> = if search_mode < 0 {
+        Box::new((0..n).rev())
+    } else {
+        Box::new(0..n)
     };
     let mut best: Option<usize> = None;
     for i in order {
         let Some(v) = items.get(i) else { continue };
-        if exact_eq(target, v, match_mode == 2) {
-            return Some(i);
+        let hit = match (&regex, match_mode) {
+            (Some(re), _) => match v {
+                Value::Text(s) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    re.find_at(&chars, 0)?.is_some()
+                }
+                _ => false,
+            },
+            (None, 2) => exact_eq(target, v, true),
+            _ => x_eq(target, v),
+        };
+        if hit {
+            return Ok(Some(i));
         }
-        if (match_mode == -1 || match_mode == 1) && same_kind(target, v) {
-            let o = compare(v, target);
-            let better = |b: usize| {
-                items.get(b).is_some_and(|bv| {
-                    compare(v, bv)
-                        == if match_mode == -1 {
-                            Ordering::Greater
-                        } else {
-                            Ordering::Less
-                        }
-                })
+        if (match_mode == -1 || match_mode == 1)
+            && !v.is_empty()
+            && !matches!(v, Value::Error(_))
+        {
+            let want = if match_mode == -1 {
+                Ordering::Less
+            } else {
+                Ordering::Greater
             };
-            let candidate = (match_mode == -1 && o == Ordering::Less)
-                || (match_mode == 1 && o == Ordering::Greater);
-            if candidate && best.is_none_or(better) {
+            let better = |b: usize| items.get(b).is_some_and(|bv| x_cmp(v, bv) == want.reverse());
+            if x_cmp(v, target) == want && best.is_none_or(better) {
                 best = Some(i);
             }
         }
     }
-    best
+    Ok(best)
 }
 
 fn xmatch(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
@@ -196,20 +285,24 @@ fn xmatch(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         return EvalValue::err(ErrorKind::Value);
     };
     let target = ev.eval_scalar(t);
+    if let Value::Error(e) = target {
+        return EvalValue::err(e);
+    }
     let arr = match arg_array(ev, args, 1) {
         Ok(a) => a,
         Err(e) => return EvalValue::err(e),
     };
-    let (mm, sm) = match (ev.num_or(args, 2, 0.0), ev.num_or(args, 3, 1.0)) {
-        (Ok(a), Ok(b)) => (a as i32, b as i32),
-        (Err(e), _) | (_, Err(e)) => return EvalValue::err(e),
+    let (mm, sm) = match x_modes(ev, args, 2, 3) {
+        Ok(m) => m,
+        Err(e) => return EvalValue::err(e),
     };
     if arr.rows != 1 && arr.cols != 1 {
         return EvalValue::err(ErrorKind::Value);
     }
     match xfind(&arr.data, &target, mm, sm) {
-        Some(p) => EvalValue::num(p as f64 + 1.0),
-        None => EvalValue::err(ErrorKind::NA),
+        Ok(Some(p)) => EvalValue::num(p as f64 + 1.0),
+        Ok(None) => EvalValue::err(ErrorKind::NA),
+        Err(e) => EvalValue::err(e),
     }
 }
 
@@ -218,13 +311,16 @@ fn xlookup(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         return EvalValue::err(ErrorKind::Value);
     };
     let target = ev.eval_scalar(t);
+    if let Value::Error(e) = target {
+        return EvalValue::err(e);
+    }
     let (look, ret) = match (arg_array(ev, args, 1), arg_array(ev, args, 2)) {
         (Ok(a), Ok(b)) => (a, b),
         (Err(e), _) | (_, Err(e)) => return EvalValue::err(e),
     };
-    let (mm, sm) = match (ev.num_or(args, 4, 0.0), ev.num_or(args, 5, 1.0)) {
-        (Ok(a), Ok(b)) => (a as i32, b as i32),
-        (Err(e), _) | (_, Err(e)) => return EvalValue::err(e),
+    let (mm, sm) = match x_modes(ev, args, 4, 5) {
+        Ok(m) => m,
+        Err(e) => return EvalValue::err(e),
     };
     let vertical = look.cols == 1;
     if look.rows != 1 && look.cols != 1 {
@@ -234,7 +330,7 @@ fn xlookup(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         return EvalValue::err(ErrorKind::Value);
     }
     match xfind(&look.data, &target, mm, sm) {
-        Some(p) => {
+        Ok(Some(p)) => {
             if vertical {
                 let row: Vec<Value> = ret.row(p).cloned().collect();
                 if row.len() == 1 {
@@ -251,10 +347,11 @@ fn xlookup(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
                 }
             }
         }
-        None => match args.get(3) {
+        Ok(None) => match args.get(3) {
             Some(Expr::Missing) | None => EvalValue::err(ErrorKind::NA),
             Some(e) => ev.eval(e),
         },
+        Err(e) => EvalValue::err(e),
     }
 }
 

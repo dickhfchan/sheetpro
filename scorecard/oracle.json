@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 177,
+  "calc_files_pass": 179,
   "cells_compared": 73244,
-  "cells_matched": 72564,
+  "cells_matched": 72645,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -1108,31 +1108,20 @@
       "kind": "calc",
       "load_error": null,
       "compared": 439,
-      "matched": 362,
+      "matched": 439,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Errors!N1 =@XLOOKUP(,L:L,M:M,,1,2) → expected 6, got #N/A",
-        "Errors!H5 =@XLOOKUP(E2,A:A,B:B,,12) → expected #VALUE!, got +99",
-        "Errors!I5 =@XLOOKUP(E2,A:A,B:B,,-2) → expected #VALUE!, got +99",
-        "Errors!H6 =@XLOOKUP(E2,A:A,B:B,,12) → expected #VALUE!, got +99",
-        "ExactMatch!U12 =@XLOOKUP(T12,R:R,S:S,\"Not found :/\") → expected 0, got Not found :/"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/XMATCH.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 8,
-      "matched": 4,
+      "matched": 8,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!D6 =@XMATCH(\"[A-Z][a-z]+y\",A2:A9,3,1) → expected 4, got #N/A",
-        "Sheet1!E6 =INDEX(A2:A9,D6) → expected Germany, got #N/A",
-        "Sheet1!D7 =@XMATCH(\"[A-Z][a-z]+y\",A2:A9,3,-1) → expected 8, got #N/A",
-        "Sheet1!E7 =INDEX(A2:A9,D7) → expected Francialy, got #N/A"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/XMATCH_arrays.xlsx",
