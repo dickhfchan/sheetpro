@@ -105,3 +105,23 @@ fn roman_forms_and_form_argument() {
     assert_eq!(text(&wb, "B6"), "XDIX");
     assert_eq!(err(&wb, "B7"), ErrorKind::Value);
 }
+
+#[test]
+fn floor_ceiling_keep_tiny_quotients_and_tiny_significance() {
+    let wb = wb_with(&[
+        ("B1", "=FLOOR(-1E-12,1)"),
+        ("B2", "=CEILING(1E-12,1)"),
+        ("B3", "=CEILING(10,1E-307)"),
+        ("B4", "=CEILING(9999999999999,1E-307)"),
+        ("B5", "=FLOOR(7.1,0.1)"),
+        ("B6", "=FLOOR.MATH(-1E-12)"),
+        ("B7", "=CEILING.PRECISE(1E-12)"),
+    ]);
+    assert_eq!(num(&wb, "B1"), -1.0);
+    assert_eq!(num(&wb, "B2"), 1.0);
+    assert!(close(num(&wb, "B3"), 10.0));
+    assert_eq!(err(&wb, "B4"), ErrorKind::Num);
+    assert!(close(num(&wb, "B5"), 7.1));
+    assert_eq!(num(&wb, "B6"), -1.0);
+    assert_eq!(num(&wb, "B7"), 1.0);
+}

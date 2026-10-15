@@ -224,6 +224,18 @@ fn mround(x: f64, m: f64) -> Result<f64, ErrorKind> {
     Ok(round_to(x / m, 0.0) * m)
 }
 
+/// Snap a quotient to the nearest integer when it is within relative rounding noise of it
+/// (`7.1/0.1` = 70.99999999999999 → 71), without disturbing genuinely tiny quotients
+/// (`1e-12/1` stays 1e-12). Non-finite quotients are `#NUM!`.
+fn snap_quotient(x: f64, sig: f64) -> Result<f64, ErrorKind> {
+    let q = x / sig;
+    if !q.is_finite() {
+        return Err(ErrorKind::Num);
+    }
+    let r = q.round();
+    Ok(if (q - r).abs() <= 1e-12 * q.abs() { r } else { q })
+}
+
 fn ceiling(x: f64, sig: f64) -> Result<f64, ErrorKind> {
     if sig == 0.0 {
         return Ok(0.0);
@@ -231,8 +243,7 @@ fn ceiling(x: f64, sig: f64) -> Result<f64, ErrorKind> {
     if x > 0.0 && sig < 0.0 {
         return Err(ErrorKind::Num);
     }
-    let q = x / sig;
-    Ok(((q * 1e9).round() / 1e9).ceil() * sig)
+    Ok(snap_quotient(x, sig)?.ceil() * sig)
 }
 
 fn floor_fn(x: f64, sig: f64) -> Result<f64, ErrorKind> {
@@ -246,8 +257,7 @@ fn floor_fn(x: f64, sig: f64) -> Result<f64, ErrorKind> {
     if x > 0.0 && sig < 0.0 {
         return Err(ErrorKind::Num);
     }
-    let q = x / sig;
-    Ok(((q * 1e9).round() / 1e9).floor() * sig)
+    Ok(snap_quotient(x, sig)?.floor() * sig)
 }
 
 fn ceiling_math(ev: &mut Ev<'_>, args: &[Expr], up: bool) -> EvalValue {
@@ -267,7 +277,10 @@ fn ceiling_math(ev: &mut Ev<'_>, args: &[Expr], up: bool) -> EvalValue {
     if sig == 0.0 {
         return EvalValue::num(0.0);
     }
-    let q = ((x / sig) * 1e9).round() / 1e9;
+    let q = match snap_quotient(x, sig) {
+        Ok(q) => q,
+        Err(e) => return EvalValue::err(e),
+    };
     // Negative numbers round toward zero by default; mode≠0 rounds away from zero.
     let r = if x < 0.0 && mode != 0.0 {
         if up { q.floor() } else { q.ceil() }

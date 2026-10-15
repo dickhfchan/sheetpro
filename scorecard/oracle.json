@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-14",
+  "date": "2026-10-15",
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 175,
+  "calc_files_pass": 177,
   "cells_compared": 73244,
-  "cells_matched": 68359,
+  "cells_matched": 72554,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -1159,16 +1159,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 40427,
-      "matched": 37311,
+      "matched": 40427,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "ROMAN!K2 =ROMAN($A2,K$1) → expected #VALUE!, got I",
-        "ROMAN!N2 =ROMAN($A2,N$1) → expected #VALUE!, got I",
-        "ROMAN!K3 =ROMAN($A3,K$1) → expected #VALUE!, got V",
-        "ROMAN!N3 =ROMAN($A3,N$1) → expected #VALUE!, got V",
-        "ROMAN!K4 =ROMAN($A4,K$1) → expected #VALUE!, got X"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/ATAN2_POWER.xlsx",
@@ -1225,15 +1219,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 132,
-      "matched": 120,
+      "matched": 124,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "EXP_SIGN!B23 =EXP(A23) → expected #VALUE!, got 2980.957987",
-        "EXP_SIGN!C23 =SIGN(A23) → expected #VALUE!, got 1",
         "EXP_SIGN!B31 =EXP(A31) → expected 2.68812E+43, got #VALUE!",
         "EXP_SIGN!C31 =SIGN(A31) → expected 1, got #VALUE!",
-        "EXP_SIGN!B34 =EXP(A34) → expected #VALUE!, got #NUM!"
+        "EXP_SIGN!B36 =@EXP(H:H) → expected 148.4131591, got 1",
+        "EXP_SIGN!C36 =@SIGN(H:H) → expected 1, got 0",
+        "EXP_SIGN!B49 =EXP(A49) → expected 2.68812E+43, got #VALUE!"
       ]
     },
     {
@@ -1251,31 +1245,24 @@
       "kind": "calc",
       "load_error": null,
       "compared": 11474,
-      "matched": 10429,
+      "matched": 11474,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "FLOOR!U3 =FLOOR($A3,U$2) → expected #VALUE!, got 8",
-        "FLOOR!AE3 =FLOOR($A3,AE$2) → expected #VALUE!, got 0",
-        "FLOOR!U4 =FLOOR($A4,U$2) → expected #VALUE!, got -16",
-        "FLOOR!AE4 =FLOOR($A4,AE$2) → expected #VALUE!, got -45301",
-        "FLOOR!U5 =FLOOR($A5,U$2) → expected #VALUE!, got 0"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/GCD_LCM.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 351,
-      "matched": 343,
+      "matched": 347,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!D32 =LCM(A32,B32,C32) → expected #VALUE!, got 317107",
-        "Sheet1!E32 =GCD(A32,B32,C32) → expected #VALUE!, got 1",
-        "Sheet1!I32 =@LCM(G32:H32) → expected #VALUE!, got 317107",
-        "Sheet1!J32 =@GCD(G32:H32) → expected #VALUE!, got 1",
-        "Sheet1!D34 =LCM(,B34,C34) → expected #N/A, got 5"
+        "Sheet1!D34 =LCM(,B34,C34) → expected #N/A, got 5",
+        "Sheet1!E34 =GCD(,B34,C34) → expected #N/A, got 5",
+        "Sheet1!I35 =@LCM(G35:H35) → expected 0, got 5",
+        "Sheet1!I53 =@LCM(G53:H53) → expected #NUM!, got 2.30584E+18"
       ]
     },
     {
@@ -1283,12 +1270,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 132,
-      "matched": 128,
+      "matched": 130,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "LCM_GCD!D32 =LCM(A32,B32,C32) → expected #VALUE!, got 317107",
-        "LCM_GCD!E32 =GCD(A32,B32,C32) → expected #VALUE!, got 1",
         "LCM_GCD!D34 =LCM(,B34,C34) → expected #N/A, got 5",
         "LCM_GCD!E34 =GCD(,B34,C34) → expected #N/A, got 5"
       ]
@@ -1351,15 +1336,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 249,
-      "matched": 234,
+      "matched": 237,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "MROUND!C32 =MROUND(A32,B32) → expected #VALUE!, got 45304",
         "MROUND!C34 =MROUND(,B34) → expected #N/A, got 0",
         "MROUND!C36 =MROUND(A36,) → expected #N/A, got 0",
         "MROUND!C51 =MROUND(A51,B51) → expected #VALUE!, got 2",
-        "MROUND!C52 =MROUND(A52,B52) → expected #VALUE!, got 2"
+        "MROUND!C52 =MROUND(A52,B52) → expected #VALUE!, got 2",
+        "MROUND!C53 =MROUND(A53,B53) → expected #VALUE!, got 0"
       ]
     },
     {
@@ -1525,15 +1510,15 @@
       "kind": "calc",
       "load_error": null,
       "compared": 1187,
-      "matched": 1141,
+      "matched": 1161,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "SIN_COS_TAN!B38 =SIN(A38) → expected #VALUE!, got -0.6933047084",
-        "SIN_COS_TAN!C38 =COS(A38) → expected #VALUE!, got 0.7206445596",
-        "SIN_COS_TAN!D38 =TAN(A38) → expected #VALUE!, got -0.9620619474",
         "SIN_COS_TAN!B40 =@SIN(I:I) → expected -0.9589242747, got 0",
-        "SIN_COS_TAN!C40 =@COS(I:I) → expected 0.2836621855, got 1"
+        "SIN_COS_TAN!C40 =@COS(I:I) → expected 0.2836621855, got 1",
+        "SIN_COS_TAN!D40 =@TAN(I:I) → expected -3.380515006, got 0",
+        "SIN_COS_TAN!D45 =TAN(A45) → expected 9.9985E+11, got 9.9985E+11",
+        "SIN_COS_TAN!D46 =TAN(A46) → expected -9.99972E+11, got -9.99972E+11"
       ]
     },
     {
@@ -2441,11 +2426,11 @@
       "skipped_volatile": 4,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!B28 =B27-1 → expected 46158, got 46308",
-        "Sheet1!B29 =B27-1.2 → expected 46157.8, got 46307.8",
-        "Sheet1!B30 =B27-0.8 → expected 46158.2, got 46308.2",
-        "Sheet1!B31 =B30+10 → expected 46168.2, got 46318.2",
-        "TimePeriod!A3 =A2+10 → expected 46169, got 46319"
+        "Sheet1!B28 =B27-1 → expected 46158, got 46309",
+        "Sheet1!B29 =B27-1.2 → expected 46157.8, got 46308.8",
+        "Sheet1!B30 =B27-0.8 → expected 46158.2, got 46309.2",
+        "Sheet1!B31 =B30+10 → expected 46168.2, got 46319.2",
+        "TimePeriod!A3 =A2+10 → expected 46169, got 46320"
       ]
     },
     {
@@ -2756,11 +2741,11 @@
       "skipped_volatile": 3,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Plan!I2 =I3 → expected 46226, got 46309",
+        "Plan!I2 =I3 → expected 46226, got 46310",
         "Plan!R2 =IF(DAY(R3)=1,R3,\"\") → expected 46235, got ",
-        "Plan!AA2 =IF(DAY(AA3)=1,AA3,\"\") → expected , got 46327",
+        "Plan!Z2 =IF(DAY(Z3)=1,Z3,\"\") → expected , got 46327",
         "Plan!AW2 =IF(DAY(AW3)=1,AW3,\"\") → expected 46266, got ",
-        "Plan!BE2 =IF(DAY(BE3)=1,BE3,\"\") → expected , got 46357"
+        "Plan!BD2 =IF(DAY(BD3)=1,BD3,\"\") → expected , got 46357"
       ]
     },
     {
@@ -2772,7 +2757,7 @@
       "skipped_volatile": 2,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Invoice!H5 =WORKDAY(H4,PaymentTermsDays) → expected 46275, got 46351"
+        "Invoice!H5 =WORKDAY(H4,PaymentTermsDays) → expected 46275, got 46352"
       ]
     },
     {
@@ -2790,15 +2775,15 @@
       "kind": "io",
       "load_error": null,
       "compared": 47,
-      "matched": 39,
+      "matched": 40,
       "skipped_volatile": 2,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Timesheet!A3 =F1+SEQUENCE(DAY(EOMONTH(F1,0)))-1 → expected 46226, got 46309",
-        "Timesheet!B3 =TEXT(A3#,\"ddd\") → expected Thu, got Wed",
+        "Timesheet!A3 =F1+SEQUENCE(DAY(EOMONTH(F1,0)))-1 → expected 46226, got 46310",
         "Overview!A3 =ISOWEEKNUM(Timesheet!F1) → expected 30, got 42",
         "Overview!A4 =A3+1 → expected 31, got 43",
-        "Overview!A5 =A4+1 → expected 32, got 44"
+        "Overview!A5 =A4+1 → expected 32, got 44",
+        "Overview!A6 =A5+1 → expected 33, got 45"
       ]
     },
     {
