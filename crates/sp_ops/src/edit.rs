@@ -523,6 +523,7 @@ pub fn insert_delete(
         }
         shift_sheet_features(s, &sh);
         crate::chart_shift::shift_drawings(s, &sh);
+        crate::object_shift::shift_objects(s, &sh);
         losses = crate::table_shift::shift_cf_and_tables(s, &sh);
     }
     let ed_name = name.clone();

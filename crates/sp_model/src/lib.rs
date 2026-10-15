@@ -3,6 +3,7 @@
 pub mod chart;
 pub mod condfmt;
 pub mod features;
+pub mod objects;
 pub mod passthrough;
 pub mod pivot;
 pub mod style;
@@ -191,6 +192,12 @@ pub struct Sheet {
     /// Pivot tables, slicers, scenarios and data tables (see `pivot.rs`).
     #[serde(default)]
     pub analysis: pivot::Analysis,
+    /// Pictures, shapes and text boxes, bottom to top (see `objects.rs`).
+    #[serde(default)]
+    pub objects: Vec<objects::DrawObject>,
+    /// Sheet background picture (tiled behind the cells on screen, not printed).
+    #[serde(default)]
+    pub background: Option<objects::ImageData>,
 }
 
 pub const DEFAULT_COL_WIDTH: f64 = 8.43;
@@ -226,6 +233,8 @@ impl Sheet {
             tables: Vec::new(),
             passthrough: Default::default(),
             analysis: Default::default(),
+            objects: Vec::new(),
+            background: None,
         }
     }
 

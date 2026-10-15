@@ -9,6 +9,7 @@ license.workspace = true
 sp_core.workspace = true
 sp_model.workspace = true
 sp_formula.workspace = true
+image.workspace = true
 
 [lints]
 workspace = true
