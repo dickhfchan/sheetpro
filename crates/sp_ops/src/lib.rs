@@ -5,6 +5,7 @@ pub mod edit;
 pub mod flash_fill;
 pub mod history;
 pub mod object_shift;
+pub mod par;
 pub mod pivot_shift;
 pub mod table_shift;
 
