@@ -6,6 +6,7 @@ pub mod catalog;
 pub mod commands;
 pub mod control;
 pub mod params;
+pub mod recalc_scope;
 pub mod settings;
 
 use serde::Serialize;
@@ -321,7 +322,7 @@ impl Session {
                     self.dirty = true;
                     match &changed {
                         Some(cells) => self.after_cells_change(cells),
-                        None => self.after_change(),
+                        None => self.after_txn(&t),
                     }
                     // Data validation on typed entries (after recalc: formulas validate
                     // by result).
@@ -365,6 +366,28 @@ impl Session {
             self.recalc();
         } else {
             self.cache.invalidate_deps();
+        }
+    }
+
+    /// Transaction `t` was applied (committed, undone or redone): recompute what it changed,
+    /// incrementally when the changed cells can be determined (see `recalc_scope`).
+    pub fn after_txn(&mut self, t: &sp_ops::history::Txn) {
+        match recalc_scope::changed_keys(&self.wb, t) {
+            Some(cells) => self.after_cells_change(&cells),
+            None => self.after_change(),
+        }
+    }
+
+    /// After `history.undo` (`undone`) or `history.redo`: recompute what that step changed.
+    pub fn after_history_step(&mut self, undone: bool) {
+        let t = if undone {
+            self.history.last_undone()
+        } else {
+            self.history.last_done()
+        };
+        match t.and_then(|t| recalc_scope::changed_keys(&self.wb, t)) {
+            Some(cells) => self.after_cells_change(&cells),
+            None => self.after_change(),
         }
     }
 
@@ -473,8 +496,10 @@ mod tests {
         assert!(s.last_recalc.incremental);
         assert_eq!(s.last_recalc.formulas, 2);
         assert_eq!(v(&s, "B3"), sp_core::Value::Number(33.0));
+        // Undo knows the cells it restored: incremental too.
         s.execute("edit.undo", &json!({})).unwrap();
-        assert!(!s.last_recalc.incremental);
+        assert!(s.last_recalc.incremental);
+        assert_eq!(s.last_recalc.formulas, 2);
         assert_eq!(v(&s, "B3"), sp_core::Value::Number(22.0));
         s.execute("formulas.calc_manual", &json!({})).unwrap();
         s.execute("cell.set", &json!({"cell": "A1", "input": "4"}))

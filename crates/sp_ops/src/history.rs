@@ -65,6 +65,37 @@ impl Txn {
             .collect()
     }
 
+    /// Cells recorded individually (cell patches), in recording order.
+    pub fn cell_keys(&self) -> Vec<(usize, CellAddr)> {
+        self.undo
+            .iter()
+            .filter_map(|p| match p {
+                Patch::Cell { sheet, addr, .. } => Some((*sheet, *addr)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whole-sheet snapshots as `(sheet, before, after)`, or `None` if the transaction
+    /// replaced the whole workbook.
+    pub fn sheet_versions(&self) -> Option<Vec<(usize, &Sheet, &Sheet)>> {
+        let mut out = Vec::new();
+        for p in &self.undo {
+            match p {
+                Patch::Book(_) => return None,
+                Patch::Cell { .. } => {}
+                Patch::Sheet { index, sheet } => {
+                    let after = self.redo.iter().find_map(|r| match r {
+                        Patch::Sheet { index: i, sheet } if i == index => Some(&**sheet),
+                        _ => None,
+                    })?;
+                    out.push((*index, &**sheet, after));
+                }
+            }
+        }
+        Some(out)
+    }
+
     /// Undo this transaction without recording it (used to roll back a failed command).
     pub fn revert(self, wb: &mut Workbook) {
         for p in self.undo.iter().rev() {
@@ -227,6 +258,16 @@ impl History {
         let label = t.label.clone();
         self.done.push(t);
         Some(label)
+    }
+
+    /// The transaction the last `undo` reverted (next to redo).
+    pub fn last_undone(&self) -> Option<&Txn> {
+        self.undone.last()
+    }
+
+    /// The transaction the last `redo` (or push) applied (next to undo).
+    pub fn last_done(&self) -> Option<&Txn> {
+        self.done.last()
     }
 
     pub fn can_undo(&self) -> bool {
