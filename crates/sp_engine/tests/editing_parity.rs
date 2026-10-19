@@ -680,7 +680,8 @@ fn fill_dates_by_day_month_year() {
     autofill(&mut s, "E1:E2", "E1:E3");
     assert_eq!(num(&mut s, "E3"), 45382.0);
     // The fill keeps the date format.
-    assert_eq!(text(&mut s, "C3"), text(&mut s, "C1").replace("01", "03"));
+    assert_eq!(text(&mut s, "C1"), "1/15/2024");
+    assert_eq!(text(&mut s, "C3"), "3/15/2024");
 }
 
 #[test]

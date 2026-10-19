@@ -151,95 +151,14 @@ pub fn fill(tx: &mut Tx<'_>, sheet: usize, r: CellRange, dir: FillDir) -> Result
     Ok(n)
 }
 
-/// AutoFill: extend `src` into `dest` (which contains `src` and extends it down or right).
-/// Numeric runs continue their linear trend; single numbers and text repeat; formulas shift.
+/// AutoFill: extend `src` into `dest` (see [`crate::autofill`]).
 pub fn autofill(
     tx: &mut Tx<'_>,
     sheet: usize,
     src: CellRange,
     dest: CellRange,
 ) -> Result<usize, OpError> {
-    check_size(&dest)?;
-    let s = tx.wb.sheet(sheet).ok_or(OpError::NoSheet)?;
-    let vertical =
-        dest.cols() == src.cols() && dest.start.col == src.start.col && dest.rows() > src.rows();
-    let horizontal =
-        dest.rows() == src.rows() && dest.start.row == src.start.row && dest.cols() > src.cols();
-    if !(vertical || horizontal) || dest.start != src.start {
-        return Err(OpError::Invalid(
-            "fill range must extend the source down or right".into(),
-        ));
-    }
-    let mut writes = Vec::new();
-    let lines = if vertical { src.cols() } else { src.rows() };
-    let len = if vertical { src.rows() } else { src.cols() };
-    let total = if vertical { dest.rows() } else { dest.cols() };
-    for line in 0..lines {
-        let at = |k: u32| {
-            if vertical {
-                CellAddr::new(src.start.row + k, src.start.col + line)
-            } else {
-                CellAddr::new(src.start.row + line, src.start.col + k)
-            }
-        };
-        let cells: Vec<Option<Cell>> = (0..len).map(|k| s.get(at(k)).cloned()).collect();
-        let nums: Vec<f64> = cells
-            .iter()
-            .filter_map(|c| match c.as_ref().map(|c| &c.content) {
-                Some(Content::Value(Value::Number(n))) => Some(*n),
-                _ => None,
-            })
-            .collect();
-        let series = nums.len() == len as usize && len >= 2;
-        let (slope, intercept) = if series {
-            let n = len as f64;
-            let mx = (n - 1.0) / 2.0;
-            let my = nums.iter().sum::<f64>() / n;
-            let sxx: f64 = (0..len).map(|k| (f64::from(k) - mx).powi(2)).sum();
-            let sxy: f64 = nums
-                .iter()
-                .enumerate()
-                .map(|(k, y)| (k as f64 - mx) * (y - my))
-                .sum();
-            let b = if sxx == 0.0 { 0.0 } else { sxy / sxx };
-            (b, my - b * mx)
-        } else {
-            (0.0, 0.0)
-        };
-        for k in len..total {
-            let dest_addr = if vertical {
-                CellAddr::new(dest.start.row + k, dest.start.col + line)
-            } else {
-                CellAddr::new(dest.start.row + line, dest.start.col + k)
-            };
-            let src_k = (k % len) as usize;
-            let base = cells.get(src_k).cloned().flatten();
-            let cell = if series {
-                let style = base.as_ref().map_or(StyleId::DEFAULT, |c| c.style);
-                let v = Value::Number(intercept + slope * f64::from(k));
-                Some(Cell {
-                    content: Content::Value(v.clone()),
-                    value: v,
-                    style,
-                })
-            } else {
-                let off = i64::from(k) - src_k as i64;
-                base.map(|c| {
-                    if vertical {
-                        moved_cell(&c, off, 0)
-                    } else {
-                        moved_cell(&c, 0, off)
-                    }
-                })
-            };
-            writes.push((dest_addr, cell));
-        }
-    }
-    let n = writes.len();
-    for (a, c) in writes {
-        tx.set_cell(sheet, a, c);
-    }
-    Ok(n)
+    crate::autofill::autofill(tx, sheet, src, dest, false)
 }
 
 #[derive(Debug, Clone, Copy)]

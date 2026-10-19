@@ -1,5 +1,6 @@
 //! L2 operations: transactional history plus editing algorithms.
 
+pub mod autofill;
 pub mod chart_shift;
 pub mod clipboard;
 pub mod edit;
