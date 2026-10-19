@@ -468,15 +468,17 @@ fn row_col(ev: &mut Ev<'_>, args: &[Expr], row: bool) -> EvalValue {
         None => EvalValue::num(f64::from(if row { ev.cell.row } else { ev.cell.col }) + 1.0),
         Some(e) => match ev.eval(e) {
             EvalValue::Ref(r) => {
-                let rg = r.range;
+                // Whole columns/rows are clamped to the used range, like every other
+                // reference read, so `(B:B<>"")*ROW(B:B)` lines up element by element.
+                let rg = ev.clamp_to_used(r);
                 // A multi-row ref returns a vertical array of row numbers (spills in 365).
-                if row && rg.rows() > 1 && !rg.is_full_cols() {
+                if row && rg.rows() > 1 {
                     let data = (rg.start.row..=rg.end.row)
                         .map(|x| Value::Number(f64::from(x) + 1.0))
                         .collect();
                     return EvalValue::Array(Array2::new(rg.rows() as usize, 1, data));
                 }
-                if !row && rg.cols() > 1 && !rg.is_full_rows() {
+                if !row && rg.cols() > 1 {
                     let data = (rg.start.col..=rg.end.col)
                         .map(|x| Value::Number(f64::from(x) + 1.0))
                         .collect();

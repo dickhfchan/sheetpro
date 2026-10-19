@@ -454,3 +454,18 @@ fn oddfprice_long_first_period_all_bases() {
     assert!(close(num(&wb, "A3"), 131.530_204_810_012_26));
     assert!(close(num(&wb, "A4"), 125.749_203_192_038_89));
 }
+
+#[test]
+fn row_column_of_whole_lines_align_with_clamped_comparisons() {
+    let wb = wb_with(&[
+        ("B1", "1"),
+        ("B3", "x"),
+        ("B5", "2"),
+        ("A7", "1"),
+        ("B7", "2"),
+        ("D1", "=MAX((B:B<>\"\")*ROW(B:B))"),
+        ("D2", "=MAX((7:7<>\"\")*COLUMN(7:7))"),
+    ]);
+    assert_eq!(num(&wb, "D1"), 7.0);
+    assert_eq!(num(&wb, "D2"), 2.0);
+}
