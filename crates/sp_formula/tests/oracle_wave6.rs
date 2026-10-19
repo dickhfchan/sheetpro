@@ -210,9 +210,9 @@ fn bessel_j_y_reproduce_target_approximations() {
     ]);
     // Values the target computes (its approximations are accurate to ~1e-8, not exact).
     assert!(close(num(&wb, "A1"), 1.000_000_002_831_41));
-    assert!(close(num(&wb, "A2"), 4.347_224_965_225_415_1e-2));
+    assert!(close(num(&wb, "A2"), 4.347_224_965_225_415e-2));
     assert!(close(num(&wb, "A3"), 0.216_710_438_003_148_9));
-    assert!(close(num(&wb, "A4"), -4.347_224_965_225_415_1e-2));
+    assert!(close(num(&wb, "A4"), -4.347_224_965_225_415e-2));
     assert!(close(num(&wb, "A5"), 0.329_925_728));
     assert!(close(num(&wb, "A6"), 0.249_015_424_1));
 }

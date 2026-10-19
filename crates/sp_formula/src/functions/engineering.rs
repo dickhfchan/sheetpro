@@ -800,6 +800,8 @@ fn pq1(y: f64, j1_quirk: bool) -> (f64, f64) {
     )
 }
 
+/// 2/π truncated to 9 digits, as in the target's approximations (not `FRAC_2_PI`).
+#[allow(clippy::approx_constant)]
 const TWO_OVER_PI: f64 = 0.636_619_772;
 
 fn bessel_j0(x: f64) -> f64 {
