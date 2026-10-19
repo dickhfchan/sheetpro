@@ -379,12 +379,19 @@ fn find_replace_across_sheets_then_undo() {
     );
     exec(&mut s, "home.cells.insert_sheet", json!({"name": "Two"}));
     set(&mut s, "Two!B2", "green apple");
+    // Find & Replace searches the active sheet unless asked for the whole workbook.
     let found = exec(&mut s, "edit.find_all", json!({"what": "apple"}));
+    assert_eq!(found.as_array().map(Vec::len), Some(1));
+    let found = exec(
+        &mut s,
+        "edit.find_all",
+        json!({"what": "apple", "within": "workbook"}),
+    );
     assert_eq!(found.as_array().map(Vec::len), Some(4));
     let n = exec(
         &mut s,
         "home.editing.replace",
-        json!({"what": "apple", "with": "pear"}),
+        json!({"what": "apple", "with": "pear", "within": "workbook"}),
     );
     assert_eq!(n, 4);
     assert_eq!(text(&mut s, "Sheet1!A1"), "pear pie");
