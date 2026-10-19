@@ -925,6 +925,19 @@ pub fn encode_png(width: u32, height: u32, rgba: Vec<u8>) -> Option<Vec<u8>> {
     Some(buf)
 }
 
+/// Encode RGB pixels as a baseline JPEG file (sample images, tests); `None` on a size
+/// mismatch.
+pub fn encode_jpeg(width: u32, height: u32, rgb: Vec<u8>) -> Option<Vec<u8>> {
+    let img = image::RgbImage::from_raw(width, height, rgb)?;
+    let mut buf = Vec::new();
+    img.write_to(
+        &mut std::io::Cursor::new(&mut buf),
+        image::ImageFormat::Jpeg,
+    )
+    .ok()?;
+    Some(buf)
+}
+
 /// Nearest-neighbour downscale so neither side exceeds `max_side` (returns a clone when
 /// already small enough).
 pub fn downscale(d: &Decoded, max_side: u32) -> Decoded {

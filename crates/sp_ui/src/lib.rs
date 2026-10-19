@@ -484,7 +484,7 @@ impl App {
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, T.grid_bg);
-        if page_view::paper(&painter, rect, &self.session) {
+        if page_view::paper(&painter, rect, &self.session, &mut self.textures) {
             return;
         }
         let s = &self.session;

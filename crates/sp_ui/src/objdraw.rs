@@ -227,7 +227,7 @@ pub fn paint_background(
 
 /// Fill a (possibly concave) outline: convex ones as one anti-aliased polygon, others
 /// triangulated with a hairline edge in the fill colour.
-fn fill_outline(p: &Painter, pts: &[Pos2], c: Color32) {
+pub(crate) fn fill_outline(p: &Painter, pts: &[Pos2], c: Color32) {
     if pts.len() < 3 {
         return;
     }
@@ -268,7 +268,7 @@ fn is_convex(pts: &[Pos2]) -> bool {
     true
 }
 
-fn draw_image(p: &Painter, id: TextureId, corners: &[(f32, f32); 4]) {
+pub(crate) fn draw_image(p: &Painter, id: TextureId, corners: &[(f32, f32); 4]) {
     let mut m = Mesh::with_texture(id);
     let uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
     for (c, uv) in corners.iter().zip(uvs) {
@@ -283,7 +283,7 @@ fn draw_image(p: &Painter, id: TextureId, corners: &[(f32, f32); 4]) {
     p.add(m);
 }
 
-fn draw_missing(p: &Painter, corners: &[(f32, f32); 4]) {
+pub(crate) fn draw_missing(p: &Painter, corners: &[(f32, f32); 4]) {
     let pts: Vec<Pos2> = corners.iter().map(|c| pos(*c)).collect();
     p.add(Shape::convex_polygon(
         pts.clone(),

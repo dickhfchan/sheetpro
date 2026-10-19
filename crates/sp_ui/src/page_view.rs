@@ -6,6 +6,7 @@
 //! `sp_engine::commands::print_cmds` (the same scenes the PDF writer draws); this module only
 //! maps them to the egui painter.
 
+use crate::objdraw::Textures;
 use crate::theme::color;
 use egui::epaint::TextShape;
 use egui::{
@@ -60,13 +61,13 @@ const GAP: f32 = 24.0;
 
 /// Draw the page layout view or the print preview over `rect` when one is active. Returns
 /// `true` when it drew (the caller then skips the normal grid).
-pub fn paper(painter: &Painter, rect: Rect, s: &Session) -> bool {
+pub fn paper(painter: &Painter, rect: Rect, s: &Session, tex: &mut Textures) -> bool {
     let pv = &s.view.print;
     if pv.preview {
-        preview(painter, rect, s);
+        preview(painter, rect, s, tex);
         true
     } else if pv.mode == ViewMode::PageLayout {
-        page_layout(painter, rect, s);
+        page_layout(painter, rect, s, tex);
         true
     } else {
         false
@@ -74,7 +75,7 @@ pub fn paper(painter: &Painter, rect: Rect, s: &Session) -> bool {
 }
 
 /// Backstage › Print: one page of the job, fitted to the area, with "Page i of n".
-fn preview(painter: &Painter, rect: Rect, s: &Session) {
+fn preview(painter: &Painter, rect: Rect, s: &Session, tex: &mut Textures) {
     painter.rect_filled(rect, 0.0, P.desk);
     let pv = &s.view.print;
     let Ok(job) = print_job(s, &pv.preview_sheets, None) else {
@@ -110,6 +111,7 @@ fn preview(painter: &Painter, rect: Rect, s: &Session) {
         page.min,
         k,
         &scene.items,
+        tex,
     );
     painter.text(
         Pos2::new(rect.center().x, rect.max.y - label_h / 2.0 - 4.0),
@@ -122,7 +124,7 @@ fn preview(painter: &Painter, rect: Rect, s: &Session) {
 
 /// Page layout view: the active sheet's pages as paper, top to bottom, starting with the page
 /// that holds the scroll position; optional rulers along the top and left.
-fn page_layout(painter: &Painter, rect: Rect, s: &Session) {
+fn page_layout(painter: &Painter, rect: Rect, s: &Session, tex: &mut Textures) {
     painter.rect_filled(rect, 0.0, P.desk);
     let Ok(job) = print_job(s, "active", None) else {
         return;
@@ -169,6 +171,7 @@ fn page_layout(painter: &Painter, rect: Rect, s: &Session) {
             page.min,
             k,
             &scene.items,
+            tex,
         );
         y = page.max.y + GAP;
     }
@@ -290,7 +293,7 @@ fn dashed_rect(p: &Painter, r: Rect, stroke: Stroke, on: f32, off: f32) {
 }
 
 /// Paint page-scene items (points, top-left origin) at `o`, `k` px per point.
-fn draw_items(p: &Painter, o: Pos2, k: f32, items: &[Item]) {
+fn draw_items(p: &Painter, o: Pos2, k: f32, items: &[Item], tex: &mut Textures) {
     let at = |x: f32, y: f32| o + Vec2::new(x, y) * k;
     for it in items {
         match it {
@@ -338,6 +341,20 @@ fn draw_items(p: &Painter, o: Pos2, k: f32, items: &[Item]) {
                 let c = color(*c);
                 p.add(Shape::convex_polygon(v, c, Stroke::new(0.5, c)));
             }
+            Item::Area { pts, color: c } => {
+                let v: Vec<Pos2> = pts.iter().map(|(x, y)| at(*x, *y)).collect();
+                crate::objdraw::fill_outline(p, &v, color(*c));
+            }
+            Item::Image { image, corners } => {
+                let c = corners.map(|(x, y)| {
+                    let q = at(x, y);
+                    (q.x, q.y)
+                });
+                match tex.get(p.ctx(), image) {
+                    Some(id) => crate::objdraw::draw_image(p, id, &c),
+                    None => crate::objdraw::draw_missing(p, &c),
+                }
+            }
             Item::Circle { x, y, r, color: c } => {
                 p.circle_filled(at(*x, *y), r * k, color(*c));
             }
@@ -378,7 +395,13 @@ fn draw_items(p: &Painter, o: Pos2, k: f32, items: &[Item]) {
             }
             Item::Clip { x, y, w, h, items } => {
                 let r = Rect::from_min_size(at(*x, *y), Vec2::new(*w, *h) * k);
-                draw_items(&p.with_clip_rect(r.intersect(p.clip_rect())), o, k, items);
+                draw_items(
+                    &p.with_clip_rect(r.intersect(p.clip_rect())),
+                    o,
+                    k,
+                    items,
+                    tex,
+                );
             }
         }
     }
