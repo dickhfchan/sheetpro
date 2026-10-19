@@ -299,3 +299,106 @@ fn external_workbook_links_evaluate_to_ref() {
         Value::Error(ErrorKind::Name)
     );
 }
+
+// ── hand-authored oracle cases (expected values derivable with certainty) ────────────────
+
+/// GETPIVOTDATA returns the pivot's aggregate for the named items; with a Sum data field
+/// that is the plain sum of the matching source rows, so the expected values are the
+/// hand-computed sums below (Region/Rep/Amount).
+#[test]
+fn getpivotdata_returns_hand_computed_sums() {
+    use sp_model::pivot::{Aggregate, DataField, PivotTable};
+    let rows: &[(&str, &str, f64)] = &[
+        ("North", "Ann", 10.0),
+        ("North", "Bob", 20.0),
+        ("South", "Ann", 5.0),
+        ("South", "Cid", 7.5),
+        ("North", "Ann", 2.5),
+    ];
+    let mut block = vec![vec![
+        Value::text("Region"),
+        Value::text("Rep"),
+        Value::text("Amount"),
+    ]];
+    for (r, p, a) in rows {
+        block.push(vec![Value::text(*r), Value::text(*p), Value::Number(*a)]);
+    }
+    let cache = sp_formula::pivot::build_cache(&block).unwrap();
+    let mut wb = Workbook::new();
+    for (i, row) in block.iter().enumerate() {
+        for (j, v) in row.iter().enumerate() {
+            wb.sheets[0].set(CellAddr::new(i as u32, j as u32), Cell::constant(v.clone()));
+        }
+    }
+    wb.sheets[0].analysis.pivots.push(PivotTable {
+        name: "P1".into(),
+        source: "Sheet1!$A$1:$C$6".into(),
+        location: "$F$1".into(),
+        output: "F1:H6".into(),
+        cache,
+        rows: vec![0],
+        cols: vec![1],
+        values: vec![DataField {
+            field: 2,
+            func: Aggregate::Sum,
+            ..DataField::default()
+        }],
+        grand_total_row: true,
+        grand_total_col: true,
+        ..PivotTable::default()
+    });
+    let formulas = [
+        ("K1", "=GETPIVOTDATA(\"Amount\",$F$1)"),
+        ("K2", "=GETPIVOTDATA(\"Amount\",$F$1,\"Region\",\"North\")"),
+        ("K3", "=GETPIVOTDATA(\"Amount\",$F$1,\"Region\",\"South\")"),
+        (
+            "K4",
+            "=GETPIVOTDATA(\"Amount\",$F$1,\"Region\",\"North\",\"Rep\",\"Ann\")",
+        ),
+        ("K5", "=GETPIVOTDATA(\"Amount\",$F$1,\"Rep\",\"Cid\")"),
+        ("K6", "=GETPIVOTDATA(\"Amount\",$F$1,\"Region\",\"West\")"),
+    ];
+    for (a, f) in formulas {
+        let addr = CellAddr::parse(a).unwrap();
+        wb.sheets[0].set(addr, Cell::formula(f.trim_start_matches('=')));
+    }
+    let mut cache = AstCache::default();
+    recalc(&mut wb, &mut cache, RecalcOptions::default());
+    assert_eq!(num(&wb, "K1"), 45.0);
+    assert_eq!(num(&wb, "K2"), 32.5);
+    assert_eq!(num(&wb, "K3"), 12.5);
+    assert_eq!(num(&wb, "K4"), 12.5);
+    assert_eq!(num(&wb, "K5"), 7.5);
+    // An item that is not in the pivot is #REF!.
+    assert_eq!(err(&wb, "K6"), ErrorKind::Ref);
+}
+
+/// FORECAST.ETS on an exactly linear series without seasonality: every additive
+/// exponential-smoothing fit reproduces the line with zero error, so the forecast is the
+/// straight-line extrapolation (y = 3x + 2) regardless of the smoothing parameters.
+/// A constant series forecasts the constant. Argument errors follow the documented rules:
+/// a target date before the end of the timeline is #NUM!, mismatched sizes are #N/A.
+#[test]
+fn forecast_ets_exact_on_linear_and_constant_series() {
+    let mut cells: Vec<(String, String)> = Vec::new();
+    for i in 1..=12 {
+        cells.push((format!("A{i}"), format!("{i}")));
+        cells.push((format!("B{i}"), format!("{}", 3 * i + 2)));
+        cells.push((format!("C{i}"), "7".to_string()));
+    }
+    cells.push(("D1".into(), "=FORECAST.ETS(15,B1:B12,A1:A12,1)".into()));
+    cells.push(("D2".into(), "=FORECAST.ETS(13,C1:C12,A1:A12,1)".into()));
+    cells.push(("D3".into(), "=FORECAST.ETS(13,B1:B12,A1:A12,0)".into()));
+    cells.push(("D4".into(), "=FORECAST.ETS(0,B1:B12,A1:A12,1)".into()));
+    cells.push(("D5".into(), "=FORECAST.ETS(15,B1:B11,A1:A12,1)".into()));
+    let refs: Vec<(&str, &str)> = cells
+        .iter()
+        .map(|(a, b)| (a.as_str(), b.as_str()))
+        .collect();
+    let wb = wb_with(&refs);
+    assert!(close(num(&wb, "D1"), 47.0), "{}", num(&wb, "D1"));
+    assert!(close(num(&wb, "D2"), 7.0), "{}", num(&wb, "D2"));
+    assert!(close(num(&wb, "D3"), 41.0), "{}", num(&wb, "D3"));
+    assert_eq!(err(&wb, "D4"), ErrorKind::Num);
+    assert_eq!(err(&wb, "D5"), ErrorKind::NA);
+}
