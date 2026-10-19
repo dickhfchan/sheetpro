@@ -830,6 +830,9 @@ fn oddl_args(ev: &mut Ev<'_>, args: &[Expr]) -> R<(f64, f64, f64, f64, f64, f64,
     if !(last < settle && settle < mat) || rate < 0.0 || x < 0.0 || red <= 0.0 {
         return Err(ErrorKind::Num);
     }
+    // Actual/360 and actual/365 measure the odd last period's quasi-coupon periods by their
+    // actual length, like actual/actual (day counts are actual days in all three).
+    let basis = if basis == 2 || basis == 3 { 1 } else { basis };
     let dc = accrual_periods(last, mat, last, freq, basis)?;
     let a = accrual_periods(last, settle, last, freq, basis)?;
     let dsc = accrual_periods(settle, mat, last, freq, basis)?;

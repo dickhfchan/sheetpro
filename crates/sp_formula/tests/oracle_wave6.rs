@@ -418,3 +418,13 @@ fn accrint_counts_back_from_period_start_and_calc_method_false_uses_first_period
     assert!(close(num(&wb, "A4"), 5.020_833_333_333_334));
     assert!(close(num(&wb, "A5"), -2.479_166_666_666_666_5));
 }
+
+#[test]
+fn oddlprice_actual_360_and_365_use_actual_quasi_period_lengths() {
+    let wb = wb_with(&[
+        ("A1", "=ODDLPRICE(43891,47543,43845,0.075,0.0589,120,2,2)"),
+        ("A2", "=ODDLPRICE(43891,47543,43845,0.08,0.0711,120,2,3)"),
+    ]);
+    assert!(close(num(&wb, "A1"), 122.367_058_394_175_25));
+    assert!(close(num(&wb, "A2"), 116.471_020_121_363_68));
+}
