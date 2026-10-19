@@ -261,7 +261,11 @@ fn snap_quotient(x: f64, sig: f64) -> Result<f64, ErrorKind> {
         return Err(ErrorKind::Num);
     }
     let r = q.round();
-    Ok(if (q - r).abs() <= 1e-12 * q.abs() { r } else { q })
+    Ok(if (q - r).abs() <= 1e-12 * q.abs() {
+        r
+    } else {
+        q
+    })
 }
 
 fn ceiling(x: f64, sig: f64) -> Result<f64, ErrorKind> {
@@ -466,6 +470,9 @@ fn sequence(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
             return EvalValue::err(e);
         }
     };
+    if rows < 0.0 || cols < 0.0 {
+        return EvalValue::err(ErrorKind::Value);
+    }
     if rows < 1.0 || cols < 1.0 {
         return EvalValue::err(ErrorKind::Calc);
     }

@@ -90,9 +90,14 @@ fn vhlookup(ev: &mut Ev<'_>, args: &[Expr], vertical: bool) -> EvalValue {
     if let Value::Error(e) = target {
         return EvalValue::err(e);
     }
-    let table = match arg_array(ev, args, 1) {
-        Ok(a) => a,
-        Err(e) => return EvalValue::err(e),
+    // A text constant as the table is #VALUE!; a number or logical is a 1x1 table.
+    let table = match args.get(1).map(|e| ev.eval(e)) {
+        Some(EvalValue::Scalar(Value::Error(e))) => return EvalValue::err(e),
+        Some(EvalValue::Scalar(Value::Text(_))) | None => return EvalValue::err(ErrorKind::Value),
+        Some(v) => match ev.to_array(v) {
+            Ok(a) => a,
+            Err(e) => return EvalValue::err(e),
+        },
     };
     let idx = match args.get(2).map(|e| ev.num(e)) {
         Some(Ok(n)) => n.trunc(),
@@ -201,7 +206,11 @@ fn xfind(
     if search_mode.abs() == 2 {
         // Binary search in the ascending view (descending data is searched back to front).
         let at = |i: usize| -> Option<&Value> {
-            let j = if search_mode < 0 { n.checked_sub(i + 1)? } else { i };
+            let j = if search_mode < 0 {
+                n.checked_sub(i + 1)?
+            } else {
+                i
+            };
             items.get(j)
         };
         let unview = |i: usize| if search_mode < 0 { n - 1 - i } else { i };
@@ -262,16 +271,17 @@ fn xfind(
         if hit {
             return Ok(Some(i));
         }
-        if (match_mode == -1 || match_mode == 1)
-            && !v.is_empty()
-            && !matches!(v, Value::Error(_))
-        {
+        if (match_mode == -1 || match_mode == 1) && !v.is_empty() && !matches!(v, Value::Error(_)) {
             let want = if match_mode == -1 {
                 Ordering::Less
             } else {
                 Ordering::Greater
             };
-            let better = |b: usize| items.get(b).is_some_and(|bv| x_cmp(v, bv) == want.reverse());
+            let better = |b: usize| {
+                items
+                    .get(b)
+                    .is_some_and(|bv| x_cmp(v, bv) == want.reverse())
+            };
             if x_cmp(v, target) == want && best.is_none_or(better) {
                 best = Some(i);
             }
@@ -376,6 +386,8 @@ fn index(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
             Some(r) => EvalValue::Ref(*r),
             None => return EvalValue::err(ErrorKind::Ref),
         },
+        // Only a multi-area reference has areas beyond the first.
+        _ if area != 1 => return EvalValue::err(ErrorKind::Ref),
         other => other,
     };
     match base {
@@ -626,6 +638,9 @@ fn lookup(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         return EvalValue::err(ErrorKind::Value);
     };
     let target = ev.eval_scalar(t);
+    if let Value::Error(e) = target {
+        return EvalValue::err(e);
+    }
     let look = match arg_array(ev, args, 1) {
         Ok(a) => a,
         Err(e) => return EvalValue::err(e),

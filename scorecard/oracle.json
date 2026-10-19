@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 192,
+  "calc_files_pass": 198,
   "cells_compared": 73244,
-  "cells_matched": 72802,
+  "cells_matched": 72812,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -966,12 +966,14 @@
       "kind": "calc",
       "load_error": null,
       "compared": 103,
-      "matched": 101,
+      "matched": 99,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "HLOOKUP!N13 =HLOOKUP(M13,\"Nothing\",1) → expected #VALUE!, got #N/A",
-        "VLOOKUP!N13 =VLOOKUP(M13,\"Nothing\",1) → expected #VALUE!, got #N/A"
+        "HLOOKUP!N12 =HLOOKUP(M12,3,1) → expected #N/A, got #VALUE!",
+        "HLOOKUP!N14 =HLOOKUP(M14,TRUE,1) → expected #N/A, got #VALUE!",
+        "VLOOKUP!N12 =VLOOKUP(M12,3,1) → expected #N/A, got #VALUE!",
+        "VLOOKUP!N14 =VLOOKUP(M14,TRUE,1) → expected #N/A, got #VALUE!"
       ]
     },
     {
@@ -979,12 +981,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 11,
-      "matched": 10,
+      "matched": 11,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "INDEX!E20 =INDEX({1,2,3},1,0,2) → expected #REF!, got 1"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/INDIRECT.xlsx",
@@ -1362,12 +1362,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 17,
-      "matched": 16,
+      "matched": 17,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!C18 =SEQUENCE(-1) → expected #VALUE!, got #CALC!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/MATH_AND_TRIGONOMETRY/SERIESSUM.xlsx",
@@ -2032,14 +2030,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 62,
-      "matched": 59,
+      "matched": 62,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!E29 =SEARCH(A29,B29,C29) → expected 1, got #VALUE!",
-        "Sheet1!E30 =SEARCH(A30,B30,C30) → expected 1, got #VALUE!",
-        "Sheet1!E31 =SEARCH(A31,B31,C31) → expected 4, got #VALUE!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/TEXT/MID_LEFT_RIGHT_arrays.xlsx",
@@ -2096,13 +2090,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 147,
-      "matched": 145,
+      "matched": 147,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!H7 =LEFT(A7,-1) → expected #DIV/0!, got #VALUE!",
-        "Sheet1!M7 =RIGHT(A7,-2) → expected #DIV/0!, got #VALUE!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/TEXT/SUBSTITUTE.xlsx",
@@ -2145,14 +2136,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 42,
-      "matched": 39,
+      "matched": 42,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!G9 =TEXTJOIN(A9,B9,C9:F9) → expected Monday,,Wednesday,, got Monday,Wednesday",
-        "Sheet1!H9 =TEXTJOIN(A9,B9,C9,D9,E9,F9) → expected Monday,,Wednesday,, got Monday,Wednesday",
-        "Sheet1!I9 =TEXTJOIN(A9,B9,C9,D9:E9,F9) → expected Monday,,Wednesday,, got Monday,Wednesday"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/TEXT/TEXTSPLIT.xlsx",
@@ -2322,12 +2309,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 199,
-      "matched": 198,
+      "matched": 199,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "LOOKUP!D15 =@LOOKUP(C15,$A$2:$A$6,$B$2:$B$6) → expected #DIV/0!, got #N/A"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/spill_operator.xlsx",
@@ -2480,12 +2465,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 20,
-      "matched": 19,
+      "matched": 20,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!A14 =PV(-1,20,300) → expected #DIV/0!, got #NUM!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/docs/SIN.xlsx",

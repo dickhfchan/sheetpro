@@ -1,0 +1,128 @@
+//! Oracle-corpus behaviours fixed in wave 6, one test per root cause.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
+use sp_core::{CellAddr, ErrorKind, Value};
+use sp_formula::{AstCache, RecalcOptions, recalc};
+use sp_model::{Cell, Workbook};
+
+fn wb_with(cells: &[(&str, &str)]) -> Workbook {
+    let mut wb = Workbook::new();
+    for (a, input) in cells {
+        let addr = CellAddr::parse(a).unwrap();
+        let cell = match input.strip_prefix('=') {
+            Some(f) => Cell::formula(f),
+            None => match input.parse::<f64>() {
+                Ok(n) => Cell::constant(Value::Number(n)),
+                Err(_) => Cell::constant(Value::text(*input)),
+            },
+        };
+        wb.sheets[0].set(addr, cell);
+    }
+    let mut cache = AstCache::default();
+    recalc(
+        &mut wb,
+        &mut cache,
+        RecalcOptions {
+            now: Some(45306.5),
+            seed: 7,
+        },
+    );
+    wb
+}
+
+fn v(wb: &Workbook, a: &str) -> Value {
+    wb.sheets[0].value(CellAddr::parse(a).unwrap()).clone()
+}
+
+fn num(wb: &Workbook, a: &str) -> f64 {
+    match v(wb, a) {
+        Value::Number(n) => n,
+        other => panic!("{a}: {other:?}"),
+    }
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 1e-8 * b.abs().max(1.0)
+}
+
+fn err(wb: &Workbook, a: &str) -> ErrorKind {
+    match v(wb, a) {
+        Value::Error(e) => e,
+        other => panic!("{a}: expected error, got {other:?}"),
+    }
+}
+
+fn text(wb: &Workbook, a: &str) -> String {
+    match v(wb, a) {
+        Value::Text(s) => s.to_string(),
+        other => panic!("{a}: expected text, got {other:?}"),
+    }
+}
+
+#[test]
+fn textjoin_keeps_blank_cells_when_not_ignoring_empty() {
+    let wb = wb_with(&[
+        ("A1", ","),
+        ("C1", "Monday"),
+        ("E1", "Wednesday"),
+        ("G1", "=TEXTJOIN(A1,FALSE,C1:F1)"),
+        ("H1", "=TEXTJOIN(A1,FALSE,C1,D1,E1,F1)"),
+        ("I1", "=TEXTJOIN(A1,TRUE,C1:F1)"),
+    ]);
+    assert_eq!(text(&wb, "G1"), "Monday,,Wednesday,");
+    assert_eq!(text(&wb, "H1"), "Monday,,Wednesday,");
+    assert_eq!(text(&wb, "I1"), "Monday,Wednesday");
+}
+
+#[test]
+fn search_tilde_escapes_any_char_and_trailing_tilde_matches_nothing() {
+    let wb = wb_with(&[
+        ("A1", "=SEARCH(\"~\",\"Hi ~Bang!\",1)"),
+        ("A2", "=SEARCH(\"~\",\"Hello\")"),
+        ("A3", "=SEARCH(\"~d\",\"My dear\")"),
+        ("A4", "=SEARCH(\"~*\",\"a*b\")"),
+        ("A5", "=SEARCH(\"b?d\",\"abcd\")"),
+    ]);
+    assert_eq!(num(&wb, "A1"), 1.0);
+    assert_eq!(num(&wb, "A2"), 1.0);
+    assert_eq!(num(&wb, "A3"), 4.0);
+    assert_eq!(num(&wb, "A4"), 2.0);
+    assert_eq!(num(&wb, "A5"), 2.0);
+}
+
+#[test]
+fn argument_errors_win_over_bad_counts_and_shapes() {
+    let wb = wb_with(&[
+        ("A1", "=1/0"),
+        ("B1", "=LEFT(A1,-1)"),
+        ("B2", "=RIGHT(A1,-2)"),
+        ("B3", "=LEFT(\"abc\",-1)"),
+        ("B4", "=LOOKUP(A1,{1,2},{3,4})"),
+        ("B5", "=HLOOKUP(\"x\",\"Nothing\",1)"),
+        ("B6", "=VLOOKUP(\"x\",\"Nothing\",1)"),
+        ("B7", "=INDEX({1,2,3},1,0,2)"),
+        ("B8", "=SEQUENCE(-1)"),
+        ("B9", "=SEQUENCE(0)"),
+        ("B10", "=PV(-1,20,300)"),
+        ("B11", "=HLOOKUP(\"x\",3,1)"),
+        ("B12", "=VLOOKUP(\"x\",TRUE,1)"),
+    ]);
+    assert_eq!(err(&wb, "B1"), ErrorKind::Div0);
+    assert_eq!(err(&wb, "B2"), ErrorKind::Div0);
+    assert_eq!(err(&wb, "B3"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B4"), ErrorKind::Div0);
+    assert_eq!(err(&wb, "B5"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B6"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B7"), ErrorKind::Ref);
+    assert_eq!(err(&wb, "B8"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B9"), ErrorKind::Calc);
+    assert_eq!(err(&wb, "B10"), ErrorKind::Div0);
+    assert_eq!(err(&wb, "B11"), ErrorKind::NA);
+    assert_eq!(err(&wb, "B12"), ErrorKind::NA);
+}

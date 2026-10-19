@@ -35,13 +35,12 @@ fn left_right(ev: &mut Ev<'_>, args: &[Expr], left: bool) -> EvalValue {
     let Some(a) = args.first() else {
         return EvalValue::err(ErrorKind::Value);
     };
-    let n = match char_count_arg(ev, args, 1, 1.0) {
-        Ok(n) => n,
-        Err(e) => return EvalValue::err(e),
-    };
+    // The text argument's error wins over a bad count (`LEFT(#DIV/0!,-1)` is #DIV/0!).
+    let n = char_count_arg(ev, args, 1, 1.0);
     let v = ev.eval(a);
-    lift1(ev, v, |x| match to_text(x) {
-        Ok(s) => {
+    lift1(ev, v, |x| match (to_text(x), n) {
+        (Err(e), _) | (Ok(_), Err(e)) => Value::Error(e),
+        (Ok(s), Ok(n)) => {
             let len = s.chars().count();
             Value::text(if left {
                 s.chars().take(n).collect::<String>()
@@ -49,7 +48,6 @@ fn left_right(ev: &mut Ev<'_>, args: &[Expr], left: bool) -> EvalValue {
                 s.chars().skip(len.saturating_sub(n)).collect()
             })
         }
-        Err(e) => Value::Error(e),
     })
 }
 
@@ -143,13 +141,19 @@ fn textjoin(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         Err(e) => return EvalValue::err(e),
     };
     let mut parts: Vec<String> = Vec::new();
-    let r = for_each_value(ev, args.get(2..).unwrap_or(&[]), &mut |v, _| {
-        let s = to_text(v)?;
-        if !(ignore && s.is_empty()) {
-            parts.push(s);
-        }
-        Ok(())
-    });
+    let rest = args.get(2..).unwrap_or(&[]);
+    let r = if ignore {
+        for_each_value(ev, rest, &mut |v, _| {
+            let s = to_text(v)?;
+            if !s.is_empty() {
+                parts.push(s);
+            }
+            Ok(())
+        })
+    } else {
+        // Not ignoring empties: blank cells inside references count as "" too.
+        textjoin_all(ev, rest, &mut parts)
+    };
     if let Err(e) = r {
         return EvalValue::err(e);
     }
@@ -159,6 +163,30 @@ fn textjoin(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     } else {
         EvalValue::text(out)
     }
+}
+
+/// Every value of `args` as text, blank cells of references included.
+fn textjoin_all(ev: &mut Ev<'_>, args: &[Expr], parts: &mut Vec<String>) -> Result<(), ErrorKind> {
+    for a in args {
+        let refs = match ev.eval(a) {
+            EvalValue::Ref(r) => vec![r],
+            EvalValue::Refs(rs) => rs,
+            other => {
+                let arr = ev.to_array(other)?;
+                for v in &arr.data {
+                    parts.push(to_text(v)?);
+                }
+                continue;
+            }
+        };
+        for r in refs {
+            let arr = ev.ref_to_array(r)?;
+            for v in &arr.data {
+                parts.push(to_text(v)?);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn rept(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
@@ -258,6 +286,12 @@ fn find(ev: &mut Ev<'_>, args: &[Expr], search: bool) -> EvalValue {
         return EvalValue::err(ErrorKind::Value);
     }
     let st = start as usize - 1;
+    let wild = search && needle.contains(['*', '?', '~']);
+    let needle = if wild {
+        search_pattern(&needle)
+    } else {
+        needle
+    };
     if needle.is_empty() {
         return EvalValue::num(start);
     }
@@ -266,7 +300,7 @@ fn find(ev: &mut Ev<'_>, args: &[Expr], search: bool) -> EvalValue {
         let hit = if search {
             // Wildcards: match the needle as a prefix pattern at this position.
             let pat = format!("{needle}*");
-            if needle.contains(['*', '?', '~']) {
+            if wild {
                 wildcard_match(&pat, &rest)
             } else {
                 rest.to_lowercase().starts_with(&needle.to_lowercase())
@@ -279,6 +313,26 @@ fn find(ev: &mut Ev<'_>, args: &[Expr], search: bool) -> EvalValue {
         }
     }
     EvalValue::err(ErrorKind::Value)
+}
+
+/// SEARCH's needle in `wildcard_match` syntax: in SEARCH a tilde escapes whatever follows
+/// it (`~d` is `d`) and a trailing lone tilde matches nothing.
+fn search_pattern(needle: &str) -> String {
+    let mut out = String::with_capacity(needle.len());
+    let mut it = needle.chars();
+    while let Some(c) = it.next() {
+        if c == '~' {
+            if let Some(n) = it.next() {
+                if matches!(n, '*' | '?' | '~') {
+                    out.push('~');
+                }
+                out.push(n);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn text_fn(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {

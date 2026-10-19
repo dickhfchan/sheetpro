@@ -73,6 +73,10 @@ pub fn pv(rate: f64, nper: f64, pmt: f64, fv: f64, typ: f64) -> Result<f64, Erro
     }
     let t = if typ != 0.0 { 1.0 } else { 0.0 };
     let f = (1.0 + rate).powf(nper);
+    if f == 0.0 {
+        // rate = -1: the discount factor divides by zero.
+        return Err(ErrorKind::Div0);
+    }
     fin(-(fv + pmt * (1.0 + rate * t) * (f - 1.0) / rate) / f)
 }
 
