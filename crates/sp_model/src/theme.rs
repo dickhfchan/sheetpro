@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 /// Colour slots in file (scheme) order.
 pub const SLOT_NAMES: [&str; 12] = [
-    "dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5",
-    "accent6", "hlink", "folHlink",
+    "dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6",
+    "hlink", "folHlink",
 ];
 
 /// Slot labels for pickers, in scheme order.
@@ -48,14 +48,17 @@ pub struct Theme {
 
 impl Default for Theme {
     fn default() -> Self {
-        builtin_themes().into_iter().next().unwrap_or_else(|| Theme {
-            name: "SheetPro".into(),
-            colors_name: "SheetPro".into(),
-            colors: [Color::BLACK; 12],
-            fonts_name: "SheetPro".into(),
-            major_font: "Cambria".into(),
-            minor_font: crate::style::DEFAULT_FONT.into(),
-        })
+        builtin_themes()
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Theme {
+                name: "SheetPro".into(),
+                colors_name: "SheetPro".into(),
+                colors: [Color::BLACK; 12],
+                fonts_name: "SheetPro".into(),
+                major_font: "Cambria".into(),
+                minor_font: crate::style::DEFAULT_FONT.into(),
+            })
     }
 }
 
@@ -151,7 +154,11 @@ fn hsl_to_rgb(h: f64, s: f64, l: f64) -> Color {
         let v = to(l);
         return Color(v, v, v);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let hue = |t: f64| {
         let t = t.rem_euclid(1.0);
@@ -292,7 +299,11 @@ mod tests {
 
     #[test]
     fn hsl_round_trips() {
-        for c in [Color(0x21, 0x73, 0x46), Color(255, 0, 0), Color(10, 200, 250)] {
+        for c in [
+            Color(0x21, 0x73, 0x46),
+            Color(255, 0, 0),
+            Color(10, 200, 250),
+        ] {
             let (h, s, l) = rgb_to_hsl(c);
             assert_eq!(hsl_to_rgb(h, s, l), c);
         }

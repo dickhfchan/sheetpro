@@ -13,7 +13,7 @@ use sp_model::{
     WorkbookProtection,
 };
 use sp_ops::{History, Txn};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 const LOCKED_MSG: &str = "The cell or chart you're trying to change is on a protected sheet. \
 To make a change, unprotect the sheet. You might be requested to enter a password.";
@@ -70,7 +70,7 @@ pub fn visible_input(wb: &Workbook, sheet: usize, a: CellAddr) -> String {
 
 /// Everything structural edits can change on a sheet, for before/after comparison.
 struct SheetShape {
-    cells: BTreeMap<u32, BTreeMap<u32, Cell>>,
+    cells: sp_model::Cells,
     merges: Vec<CellRange>,
     hidden_rows: BTreeSet<u32>,
     hidden_cols: BTreeSet<u32>,
@@ -177,10 +177,7 @@ impl Guard {
 }
 
 /// Addresses whose cell differs between two cell maps.
-fn changed_addrs(
-    a: &BTreeMap<u32, BTreeMap<u32, Cell>>,
-    b: &BTreeMap<u32, BTreeMap<u32, Cell>>,
-) -> Vec<CellAddr> {
+fn changed_addrs(a: &sp_model::Cells, b: &sp_model::Cells) -> Vec<CellAddr> {
     let mut out = Vec::new();
     let rows: BTreeSet<u32> = a.keys().chain(b.keys()).copied().collect();
     for r in rows {

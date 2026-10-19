@@ -248,11 +248,19 @@ pub fn invalidate_refs(wb: &mut Workbook, losses: &[TableLoss]) {
     for s in &mut wb.sheets {
         let home = s.name.clone();
         for row in s.cells.values_mut() {
-            for c in row.values_mut() {
-                if let sp_model::Content::Formula(f) = &c.content
-                    && let Some(n) = fix(f, &home)
-                {
-                    c.content = sp_model::Content::Formula(n);
+            let updates: Vec<(u32, String)> = row
+                .iter()
+                .filter_map(|(c, cell)| match &cell.content {
+                    sp_model::Content::Formula(f) => fix(f, &home).map(|n| (*c, n)),
+                    sp_model::Content::Value(_) => None,
+                })
+                .collect();
+            if !updates.is_empty() {
+                let row = std::sync::Arc::make_mut(row);
+                for (c, n) in updates {
+                    if let Some(cell) = row.get_mut(&c) {
+                        cell.content = sp_model::Content::Formula(n);
+                    }
                 }
             }
         }

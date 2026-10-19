@@ -481,7 +481,7 @@ fn write_sheet_data(
         x.push_str(&crate::xlsx_extras::outline_attr(sheet, r, true));
         x.push('>');
         if let Some(cells) = sheet.cells.get(&r) {
-            for (c, cell) in cells {
+            for (c, cell) in cells.iter() {
                 let addr = format!("{}{}", col_to_letters(*c), r + 1);
                 let s = styles
                     .xf_index

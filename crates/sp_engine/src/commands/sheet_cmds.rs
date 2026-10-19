@@ -42,7 +42,14 @@ fn structural(s: &mut Session, p: &Json, axis: Axis, insert: bool) -> CmdResult 
 fn rewrite_formulas(wb: &mut sp_model::Workbook, f: &dyn Fn(&mut sp_formula::Expr)) {
     for sh in &mut wb.sheets {
         for row in sh.cells.values_mut() {
-            for c in row.values_mut() {
+            // Unshare (copy-on-write) only rows holding formulas.
+            if !row
+                .values()
+                .any(|c| matches!(c.content, Content::Formula(_)))
+            {
+                continue;
+            }
+            for c in std::sync::Arc::make_mut(row).values_mut() {
                 if let Content::Formula(src) = &c.content
                     && let Ok(mut e) = sp_formula::parse(src)
                 {

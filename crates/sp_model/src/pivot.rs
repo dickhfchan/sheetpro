@@ -387,7 +387,13 @@ impl Slicer {
         let base: String = self
             .name
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .take(200)
             .collect();
         if base.starts_with("Slicer_") {
@@ -430,8 +436,14 @@ mod tests {
         for a in Aggregate::ALL {
             assert_eq!(Aggregate::from_name(a.name()), Some(a));
         }
-        assert_eq!(ShowAs::from_name("percent_of_total"), Some(ShowAs::PercentOfTotal));
-        assert_eq!(PivotLayout::from_name("Tabular"), Some(PivotLayout::Tabular));
+        assert_eq!(
+            ShowAs::from_name("percent_of_total"),
+            Some(ShowAs::PercentOfTotal)
+        );
+        assert_eq!(
+            PivotLayout::from_name("Tabular"),
+            Some(PivotLayout::Tabular)
+        );
     }
 
     #[test]

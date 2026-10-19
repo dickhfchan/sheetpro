@@ -333,11 +333,20 @@ fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &st
         let name = sheet.name.clone();
         let g = |e: &mut sp_formula::Expr| f(e, &name);
         for row in sheet.cells.values_mut() {
-            for cell in row.values_mut() {
-                if let Content::Formula(src) = &cell.content
-                    && let Some(new) = rewritten(src, &g)
-                {
-                    cell.content = Content::Formula(new);
+            // Unshare (copy-on-write) only rows whose formulas actually change.
+            let updates: Vec<(u32, String)> = row
+                .iter()
+                .filter_map(|(c, cell)| match &cell.content {
+                    Content::Formula(src) => rewritten(src, &g).map(|n| (*c, n)),
+                    Content::Value(_) => None,
+                })
+                .collect();
+            if !updates.is_empty() {
+                let row = std::sync::Arc::make_mut(row);
+                for (c, new) in updates {
+                    if let Some(cell) = row.get_mut(&c) {
+                        cell.content = Content::Formula(new);
+                    }
                 }
             }
         }
@@ -514,7 +523,7 @@ pub fn insert_delete(
             }
             Axis::Cols => {
                 for row in s.cells.values_mut() {
-                    *row = sh.keys(row);
+                    *row = std::sync::Arc::new(sh.keys(row));
                 }
                 s.cells.retain(|_, r| !r.is_empty());
                 s.col_widths = sh.keys(&s.col_widths);
