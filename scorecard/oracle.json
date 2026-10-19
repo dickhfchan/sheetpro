@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 198,
+  "calc_files_pass": 205,
   "cells_compared": 73244,
-  "cells_matched": 72812,
+  "cells_matched": 73197,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -53,15 +53,15 @@
       "kind": "io",
       "load_error": null,
       "compared": 208,
-      "matched": 194,
+      "matched": 201,
       "skipped_volatile": 4,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Hidden!H5 =SUM(Table3[[#Totals],[the two]]) → expected 38, got #REF!",
-        "Hidden!I5 =SUM(Table3[[#Totals],[the two]:[last]]) → expected 65, got #REF!",
-        "Hidden!B6 =SUBTOTAL(109,Table3[the two]) → expected 38, got #REF!",
-        "Hidden!B8 =SUM(Table3[the two]) → expected 42, got #REF!",
-        "Hidden!B9 =SUBTOTAL(9,Table3[the two]) → expected 42, got #REF!"
+        "filters!B8 =SUBTOTAL(9,B3:B6) → expected 4, got 16",
+        "filters!B10 =SUBTOTAL(9,Table4[Cats]) → expected 4, got 17",
+        "Functions Filters!D46 =SUBTOTAL(1,Table16[Units]) → expected 47.82142857, got #N/A",
+        "Functions Filters!D47 =SUBTOTAL(4,Table16[Units]) → expected 96, got #N/A",
+        "Functions Filters!E48 =SUBTOTAL(8,Table16[Unit Cost]) → expected 55.16797249, got 46.79135458"
       ]
     },
     {
@@ -269,16 +269,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 476,
-      "matched": 426,
+      "matched": 476,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "BESSELY!B3 =BESSELY(A3,0) → expected -1.08110533, got -1.081105322",
-        "BESSELY!B4 =BESSELY(A4,0) → expected -0.6060245712, got -0.6060245684",
-        "BESSELY!B5 =BESSELY(A5,0) → expected -0.0868022739, got -0.0868022797",
-        "BESSELY!E5 =BESSELY(A5,7) → expected -143672.9582, got -143672.9578",
-        "BESSELY!F5 =BESSELY(A5,10) → expected -1121353767, got -1121353765"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/ENGINEERING/BITs.xlsx",
@@ -410,16 +404,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 80,
-      "matched": 74,
+      "matched": 80,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!G10 =DB(A10,B10,C10,D10,E10) → expected 16.5293754, got 16.3297355",
-        "Sheet1!G11 =DB(A11,B11,C11,D11,E11) → expected 15.630906, got 14.93258863",
-        "Sheet1!H13 =DDB(A13,B13,C13,D13,F13) → expected 13.53273553, got 9.534491904",
-        "Sheet1!G17 =DB(A17,B17,C17,D17,E17) → expected 23.8637568, got 23.48669952",
-        "Sheet1!G18 =DB(A18,B18,C18,D18,E18) → expected 23.7171306, got 22.99835508"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/DISC.xlsx",
@@ -615,28 +603,25 @@
       "kind": "calc",
       "load_error": null,
       "compared": 273,
-      "matched": 271,
+      "matched": 273,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!D6 =TBILLEQ(A6,B6,C6) → expected 0.8522961312, got 0.8499684013",
-        "Sheet1!L6 =(360-365*C6/D6)/C6 → expected 291.7450935, got 290.5722713"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/XIRR.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 42,
-      "matched": 26,
+      "matched": 33,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
         "Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got 1.185916208",
         "Sheet1!R5 =XIRR(A5:F5,H5:M5) → expected -0.4867956959, got -0.4867956905",
-        "Sheet1!Q7 =XNPV(O7,A7:F7,H7:M7) → expected #NUM!, got #VALUE!",
-        "Sheet1!R7 =XIRR(A7:F7,H7:M7) → expected #NUM!, got #VALUE!",
-        "Sheet1!Q8 =XNPV(O8,A8:F8,H8:M8) → expected #NUM!, got #VALUE!"
+        "Sheet1!R14 =XIRR(A14:F14,H14:M14) → expected -0.413523405, got -0.4135234087",
+        "Sheet1!R15 =XIRR(A15:F15,H15:M15) → expected -0.5608382769, got -0.5608382796",
+        "Sheet1!R16 =XIRR(A16:F16,H16:M16) → expected -0.3589630894, got -0.3589630829"
       ]
     },
     {
@@ -644,15 +629,12 @@
       "kind": "calc",
       "load_error": null,
       "compared": 24,
-      "matched": 18,
+      "matched": 22,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": [
         "Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got 1.185916208",
-        "Sheet1!R5 =XIRR(A5:F5,H5:M5) → expected -0.4867956959, got -0.4867956905",
-        "Sheet1!Q7 =XNPV(O7,A7:F7,H7:M7) → expected #NUM!, got #VALUE!",
-        "Sheet1!R7 =XIRR(A7:F7,H7:M7) → expected #NUM!, got #VALUE!",
-        "Sheet1!Q8 =XNPV(O8,A8:F8,H8:M8) → expected #NUM!, got #VALUE!"
+        "Sheet1!R5 =XIRR(A5:F5,H5:M5) → expected -0.4867956959, got -0.4867956905"
       ]
     },
     {
@@ -966,15 +948,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 103,
-      "matched": 99,
+      "matched": 103,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "HLOOKUP!N12 =HLOOKUP(M12,3,1) → expected #N/A, got #VALUE!",
-        "HLOOKUP!N14 =HLOOKUP(M14,TRUE,1) → expected #N/A, got #VALUE!",
-        "VLOOKUP!N12 =VLOOKUP(M12,3,1) → expected #N/A, got #VALUE!",
-        "VLOOKUP!N14 =VLOOKUP(M14,TRUE,1) → expected #N/A, got #VALUE!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/INDEX.xlsx",
@@ -991,16 +968,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 55,
-      "matched": 19,
+      "matched": 55,
       "skipped_volatile": 49,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "r1c1_notation!L2 =E1 → expected 5, got #REF!",
-        "r1c1_notation!L3 =E2 → expected 3, got #REF!",
-        "r1c1_notation!L4 =E3 → expected 4, got #REF!",
-        "r1c1_notation!L5 =E4 → expected 21, got #REF!",
-        "r1c1_notation!L6 =E5 → expected 16, got #REF!"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/LOOKUP_AND_REFERENCE/MATCH.xlsx",
@@ -1702,16 +1673,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 33,
-      "matched": 14,
+      "matched": 33,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!F2 =NA() → expected #N/A, got #N/A",
-        "Sheet1!C11 =GEOMEAN(C2:C10) → expected #NUM!, got #NUM!",
-        "Sheet1!D11 =GEOMEAN(D2:D10) → expected #NUM!, got #NUM!",
-        "Sheet1!E11 =GEOMEAN(E2:E10) → expected #NUM!, got #NUM!",
-        "Sheet1!F11 =GEOMEAN(F2:F10) → expected #N/A, got #N/A"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/STATISTICAL/HYPERGEOM_DIST.xlsx",
@@ -2120,16 +2085,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 143,
-      "matched": 120,
+      "matched": 143,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!G16 =TEXTAFTER(A16,B16,C16,D16,E16,F16) → expected  456 the 891, got  891",
-        "Sheet1!I16 =TEXTBEFORE(A16,B16,C16,D16,E16,F16) → expected 123 , got 123 the 456 ",
-        "Sheet1!G17 =TEXTAFTER(A17,B17,C17,D17,E17,F17) → expected  456 the 891, got  891",
-        "Sheet1!I17 =TEXTBEFORE(A17,B17,C17,D17,E17,F17) → expected 123 , got 123 the 456 ",
-        "Sheet1!G19 =TEXTAFTER(A19,B19,C19,D19,E19,F19) → expected #VALUE!, got qwerty"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/TEXT/TEXTJOIN.xlsx",
@@ -2329,16 +2288,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 8,
-      "matched": 0,
+      "matched": 8,
       "skipped_volatile": 4,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!B28 =B27-1 → expected 46158, got 46313",
-        "Sheet1!B29 =B27-1.2 → expected 46157.8, got 46312.8",
-        "Sheet1!B30 =B27-0.8 → expected 46158.2, got 46313.2",
-        "Sheet1!B31 =B30+10 → expected 46168.2, got 46323.2",
-        "TimePeriod!A3 =A2+10 → expected 46169, got 46324"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/crossword_ranges.xlsx",
@@ -2555,12 +2508,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 9,
-      "matched": 8,
+      "matched": 9,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!B21 =[1]Sheet1!A1 → expected #REF!, got #NAME?"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/missing_r_on_row.xlsx",
@@ -2637,28 +2588,20 @@
       "kind": "io",
       "load_error": null,
       "compared": 441,
-      "matched": 232,
+      "matched": 441,
       "skipped_volatile": 3,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Plan!I2 =I3 → expected 46226, got 46314",
-        "Plan!R2 =IF(DAY(R3)=1,R3,\"\") → expected 46235, got ",
-        "Plan!V2 =IF(DAY(V3)=1,V3,\"\") → expected , got 46327",
-        "Plan!AW2 =IF(DAY(AW3)=1,AW3,\"\") → expected 46266, got ",
-        "Plan!AZ2 =IF(DAY(AZ3)=1,AZ3,\"\") → expected , got 46357"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/templates/invoice.xlsx",
       "kind": "io",
       "load_error": null,
       "compared": 23,
-      "matched": 22,
+      "matched": 23,
       "skipped_volatile": 2,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Invoice!H5 =WORKDAY(H4,PaymentTermsDays) → expected 46275, got 46356"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/templates/travel_expenses_tracker.xlsx",
@@ -2675,16 +2618,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 47,
-      "matched": 39,
+      "matched": 47,
       "skipped_volatile": 2,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Timesheet!A3 =F1+SEQUENCE(DAY(EOMONTH(F1,0)))-1 → expected 46226, got 46314",
-        "Timesheet!B3 =TEXT(A3#,\"ddd\") → expected Thu, got Mon",
-        "Overview!A3 =ISOWEEKNUM(Timesheet!F1) → expected 30, got 43",
-        "Overview!A4 =A3+1 → expected 31, got 44",
-        "Overview!A5 =A4+1 → expected 32, got 45"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/templates/wordle.xlsx",

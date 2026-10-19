@@ -204,6 +204,18 @@ fn is_volatile(src: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// The moment the file was last calculated, read from a cached `NOW()` (or `TODAY()`)
+/// result, so formulas that depend on today's date recalculate as they did when saved.
+fn saved_now(cells: &[(usize, sp_core::CellAddr, String, Value)]) -> Option<f64> {
+    let cached = |name: &str| {
+        cells.iter().find_map(|(_, _, src, v)| match v {
+            Value::Number(n) if src.trim().eq_ignore_ascii_case(name) => Some(*n),
+            _ => None,
+        })
+    };
+    cached("NOW()").or_else(|| cached("TODAY()"))
+}
+
 fn check_file(path: &std::path::Path, e: &Entry, dump: bool) -> FileResult {
     let mut r = FileResult {
         path: e.path.clone(),
@@ -239,7 +251,10 @@ fn check_file(path: &std::path::Path, e: &Entry, dump: bool) -> FileResult {
     sp_formula::recalc(
         &mut wb,
         &mut cache,
-        sp_formula::RecalcOptions { now: None, seed: 1 },
+        sp_formula::RecalcOptions {
+            now: saved_now(&expected),
+            seed: 1,
+        },
     );
     for (si, a, src, exp) in &expected {
         if exp.is_empty() {
