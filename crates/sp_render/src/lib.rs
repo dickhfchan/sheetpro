@@ -12,6 +12,8 @@ use sp_core::numfmt::{FmtColor, format_value};
 use sp_core::{CellAddr, CellRange, MAX_COLS, MAX_ROWS, Value};
 use sp_model::{Border, BorderStyle, Color, DiffStyle, HAlign, Sheet, Style, VAlign, Workbook};
 use std::collections::HashMap;
+pub use sp_model::theme::resolve_theme_color;
+use sp_model::theme::{Theme, ThemeColor};
 
 /// Horizontal indent per `Style.indent` level, in px at 100% zoom (about one default-font
 /// space-and-a-half, matching the target app's ~9 px step).
@@ -209,6 +211,37 @@ pub fn display_cell(
         data_bar: None,
         icon: None,
     }
+}
+
+/// Resolve a style's theme colour references through the workbook theme: returns the
+/// (fill, font colour) to draw. Fields whose reference no longer applies keep their sRGB.
+pub fn themed_colors(style: &Style, theme: &Theme) -> (Option<Color>, Option<Color>) {
+    let resolve = |r: Option<ThemeColor>, field: Option<Color>| match r {
+        Some(t) if t.applies_to(field) => {
+            Some(resolve_theme_color(theme, u32::from(t.idx), t.tint_f64()))
+        }
+        _ => field,
+    };
+    (
+        resolve(style.fill_theme, style.fill),
+        resolve(style.font_theme, style.font_color),
+    )
+}
+
+/// `d` (built from `style` by [`display_cell`]) with theme colours resolved.
+pub fn apply_theme(mut d: DisplayCell, style: &Style, theme: &Theme) -> DisplayCell {
+    if style.fill_theme.is_none() && style.font_theme.is_none() {
+        return d;
+    }
+    let (fill, font) = themed_colors(style, theme);
+    if d.fill == style.fill {
+        d.fill = fill;
+    }
+    // A number-format colour ([Red]) wins over the font colour.
+    if d.color == style.font_color {
+        d.color = font;
+    }
+    d
 }
 
 /// Apply a differential format on top of `s`. With `weak`, only attributes the cell left
@@ -470,12 +503,16 @@ pub fn layout_lines(
             let Some(style) = style_at(a) else {
                 continue;
             };
-            cells.push(decorate(display_cell(
-                a,
-                cell.map_or(&Value::Empty, |c| &c.value),
-                cell.and_then(|c| c.formula_src()),
+            cells.push(decorate(apply_theme(
+                display_cell(
+                    a,
+                    cell.map_or(&Value::Empty, |c| &c.value),
+                    cell.and_then(|c| c.formula_src()),
+                    style,
+                    show_formulas,
+                ),
                 style,
-                show_formulas,
+                &wb.theme,
             )));
         }
     }
@@ -490,12 +527,11 @@ pub fn layout_lines(
                 row_height_px(sheet.row_height(r)) * zoom
             });
             let cell = sheet.get(m.start).map(|c| {
-                decorate(display_cell(
-                    m.start,
-                    &c.value,
-                    c.formula_src(),
-                    style_at(m.start).unwrap_or_else(|| wb.styles.get(c.style)),
-                    show_formulas,
+                let st = style_at(m.start).unwrap_or_else(|| wb.styles.get(c.style));
+                decorate(apply_theme(
+                    display_cell(m.start, &c.value, c.formula_src(), st, show_formulas),
+                    st,
+                    &wb.theme,
                 ))
             });
             MergeView {

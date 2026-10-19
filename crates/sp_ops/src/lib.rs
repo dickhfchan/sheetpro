@@ -2,6 +2,7 @@
 
 pub mod chart_shift;
 pub mod edit;
+pub mod flash_fill;
 pub mod history;
 pub mod object_shift;
 pub mod pivot_shift;

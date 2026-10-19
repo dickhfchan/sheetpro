@@ -12,6 +12,7 @@ pub mod dialog_cmds;
 pub mod edit_cmds;
 pub mod file_cmds;
 pub mod filter_cmds;
+pub mod flash_cmds;
 pub mod format_cmds;
 pub mod layout_cmds;
 pub mod macro_cmds;
@@ -25,6 +26,7 @@ pub mod protect_cmds;
 pub mod sheet_cmds;
 pub mod spell_cmds;
 pub mod table_cmds;
+pub mod theme_cmds;
 pub mod ui_cmds;
 pub mod validation_cmds;
 pub mod view_cmds;
@@ -62,5 +64,7 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(ui_cmds::specs());
     v.extend(macro_cmds::specs());
     v.extend(spell_cmds::specs());
+    v.extend(flash_cmds::specs());
+    v.extend(theme_cmds::specs());
     v
 }

@@ -100,6 +100,12 @@ pub struct Style {
     /// Cell checkbox: TRUE/FALSE values draw as a checked / unchecked box.
     #[serde(default)]
     pub checkbox: bool,
+    /// Theme reference behind `font_color` (applies while `font_color` is unchanged).
+    #[serde(default)]
+    pub font_theme: Option<crate::theme::ThemeColor>,
+    /// Theme reference behind `fill`.
+    #[serde(default)]
+    pub fill_theme: Option<crate::theme::ThemeColor>,
 }
 
 pub const DEFAULT_FONT: &str = "Calibri";
@@ -128,6 +134,8 @@ impl Default for Style {
             locked: true,
             hidden_formula: false,
             checkbox: false,
+            font_theme: None,
+            fill_theme: None,
         }
     }
 }
@@ -177,6 +185,13 @@ impl StyleTable {
 
     pub fn len(&self) -> usize {
         self.styles.len()
+    }
+
+    /// Change every style in place (ids keep pointing at the changed styles).
+    pub fn update_all(&mut self, mut f: impl FnMut(&mut Style)) {
+        for s in &mut self.styles {
+            f(s);
+        }
     }
 
     pub fn is_empty(&self) -> bool {

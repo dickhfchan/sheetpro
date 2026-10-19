@@ -296,8 +296,8 @@ fn build_styles(wb: &Workbook) -> StylesXml {
             _ => f.push_str("<u/>"),
         }
         let _ = write!(f, r#"<sz val="{}"/>"#, s.font_size());
-        if let Some(c) = s.font_color {
-            let _ = write!(f, r#"<color rgb="{}"/>"#, c.to_argb_hex());
+        if let Some(c) = crate::xlsx_theme::color_xml("color", s.font_color, s.font_theme) {
+            f.push_str(&c);
         }
         let _ = write!(
             f,
@@ -305,12 +305,11 @@ fn build_styles(wb: &Workbook) -> StylesXml {
             esc(&s.font_name)
         );
         let font_id = intern(&mut fonts, f);
-        let fill_id = match s.fill {
-            Some(c) => intern(
+        let fill_id = match crate::xlsx_theme::color_xml("fgColor", s.fill, s.fill_theme) {
+            Some(fg) => intern(
                 &mut fills,
                 format!(
-                    r#"<fill><patternFill patternType="solid"><fgColor rgb="{}"/><bgColor indexed="64"/></patternFill></fill>"#,
-                    c.to_argb_hex()
+                    r#"<fill><patternFill patternType="solid">{fg}<bgColor indexed="64"/></patternFill></fill>"#
                 ),
             ),
             None => 0,
@@ -724,7 +723,8 @@ impl IdAlloc<'_> {
 }
 
 pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
-    let prepared = crate::xlsx_charts::prepare_for_save(wb);
+    let themed = crate::xlsx_theme::prepare_for_save(wb);
+    let prepared = crate::xlsx_charts::prepare_for_save(&themed);
     let wb: &Workbook = &prepared;
     let mut zip = zip::ZipWriter::new(w);
     let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
