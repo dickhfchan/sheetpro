@@ -364,7 +364,7 @@ fn write_dump(path: &std::path::Path, rep: &OracleReport) -> Result<()> {
     }
     std::fs::write(path, out)?;
     let mut sorted: Vec<_> = groups.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.sort_by_key(|a| std::cmp::Reverse(a.1));
     println!("mismatches by function / pattern (expected <- got):");
     for ((func, pat), n) in sorted.iter().take(60) {
         println!("{n:>7}  {func:<16} {pat}");

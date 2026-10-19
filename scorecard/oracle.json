@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-15",
+  "date": "2026-10-19",
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
   "calc_files_pass": 192,
   "cells_compared": 73244,
-  "cells_matched": 72803,
+  "cells_matched": 72802,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -2348,11 +2348,11 @@
       "skipped_volatile": 4,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Sheet1!B28 =B27-1 → expected 46158, got 46309",
-        "Sheet1!B29 =B27-1.2 → expected 46157.8, got 46308.8",
-        "Sheet1!B30 =B27-0.8 → expected 46158.2, got 46309.2",
-        "Sheet1!B31 =B30+10 → expected 46168.2, got 46319.2",
-        "TimePeriod!A3 =A2+10 → expected 46169, got 46320"
+        "Sheet1!B28 =B27-1 → expected 46158, got 46313",
+        "Sheet1!B29 =B27-1.2 → expected 46157.8, got 46312.8",
+        "Sheet1!B30 =B27-0.8 → expected 46158.2, got 46313.2",
+        "Sheet1!B31 =B30+10 → expected 46168.2, got 46323.2",
+        "TimePeriod!A3 =A2+10 → expected 46169, got 46324"
       ]
     },
     {
@@ -2658,11 +2658,11 @@
       "skipped_volatile": 3,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Plan!I2 =I3 → expected 46226, got 46310",
+        "Plan!I2 =I3 → expected 46226, got 46314",
         "Plan!R2 =IF(DAY(R3)=1,R3,\"\") → expected 46235, got ",
-        "Plan!Z2 =IF(DAY(Z3)=1,Z3,\"\") → expected , got 46327",
+        "Plan!V2 =IF(DAY(V3)=1,V3,\"\") → expected , got 46327",
         "Plan!AW2 =IF(DAY(AW3)=1,AW3,\"\") → expected 46266, got ",
-        "Plan!BD2 =IF(DAY(BD3)=1,BD3,\"\") → expected , got 46357"
+        "Plan!AZ2 =IF(DAY(AZ3)=1,AZ3,\"\") → expected , got 46357"
       ]
     },
     {
@@ -2674,7 +2674,7 @@
       "skipped_volatile": 2,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Invoice!H5 =WORKDAY(H4,PaymentTermsDays) → expected 46275, got 46352"
+        "Invoice!H5 =WORKDAY(H4,PaymentTermsDays) → expected 46275, got 46356"
       ]
     },
     {
@@ -2692,15 +2692,15 @@
       "kind": "io",
       "load_error": null,
       "compared": 47,
-      "matched": 40,
+      "matched": 39,
       "skipped_volatile": 2,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Timesheet!A3 =F1+SEQUENCE(DAY(EOMONTH(F1,0)))-1 → expected 46226, got 46310",
-        "Overview!A3 =ISOWEEKNUM(Timesheet!F1) → expected 30, got 42",
-        "Overview!A4 =A3+1 → expected 31, got 43",
-        "Overview!A5 =A4+1 → expected 32, got 44",
-        "Overview!A6 =A5+1 → expected 33, got 45"
+        "Timesheet!A3 =F1+SEQUENCE(DAY(EOMONTH(F1,0)))-1 → expected 46226, got 46314",
+        "Timesheet!B3 =TEXT(A3#,\"ddd\") → expected Thu, got Mon",
+        "Overview!A3 =ISOWEEKNUM(Timesheet!F1) → expected 30, got 43",
+        "Overview!A4 =A3+1 → expected 31, got 44",
+        "Overview!A5 =A4+1 → expected 32, got 45"
       ]
     },
     {

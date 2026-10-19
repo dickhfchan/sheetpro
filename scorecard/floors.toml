@@ -1,4 +1,4 @@
 # Oracle floors: raise when results improve, never lower. Checked by `cargo xtask test-corpus`.
-calc_files_pass = 175
-cells_matched = 68359
+calc_files_pass = 192
+cells_matched = 72802
 roundtrip_pass = 259

@@ -6,9 +6,9 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 
 | Surface | Live | Total | % |
 |---|---|---|---|
-| Commands (ribbon + keyboard) | 294 | 304 | 96.7% |
+| Commands (ribbon + keyboard) | 296 | 304 | 97.4% |
 | Worksheet functions | 502 | 514 | 97.7% |
-| **All** | **796** | **818** | **97.3%** |
+| **All** | **798** | **818** | **97.6%** |
 
 ## Commands by tab
 
@@ -23,9 +23,9 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 | Name Box | 1 | 1 | — |
 | Page Layout | 14 | 16 | `layout.themes` `layout.background` |
 | Quick Access | 2 | 2 | — |
-| Review | 11 | 12 | `review.spelling` |
+| Review | 12 | 12 | — |
 | Sheet tabs | 3 | 3 | — |
-| View | 19 | 20 | `view.macros` |
+| View | 20 | 20 | — |
 | keyboard | 50 | 50 | — |
 | mouse | 2 | 2 | — |
 

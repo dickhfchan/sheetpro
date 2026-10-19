@@ -186,3 +186,15 @@ Still open:
 - `Sheet.analysis` (pivots/slicers) has no in-grid reader yet (scorecard dead settings).
 - Missing commands (10): picture, shapes, text box, checkbox, equation, themes, background,
   spelling, flash fill, macros. Missing functions (12): IMAGE, STOCKHISTORY, Web & Cube (10).
+
+## 2026-10-19 — Wave 5 integration (part 1: oracle, automation)
+
+Landed:
+- oracle: 13 behaviour fixes (euro coercion, AND/OR skip "", POWER real roots, VALUETOTEXT at
+  15 significant digits, …). Oracle 175→192/218 files, cells 93.3%→99.4% (72802/73244).
+- automation: `sp mcp` server (10 tools), 10 agent workflow tasks, macros commands, minimal
+  Spelling dialog (review.spelling, F7). Commands 294→296/304.
+- Floors raised: parity commands 296; oracle files 192, cells 72802. New nightly clippy lint
+  (unnecessary_sort_by) fixed in xtask/src/corpus.rs.
+
+Still open: wave5/objects and wave5/pivotui not merged (uncommitted work in both worktrees).
