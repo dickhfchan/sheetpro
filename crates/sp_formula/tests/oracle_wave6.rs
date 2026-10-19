@@ -216,3 +216,36 @@ fn bessel_j_y_reproduce_target_approximations() {
     assert!(close(num(&wb, "A5"), 0.329_925_728));
     assert!(close(num(&wb, "A6"), 0.249_015_424_1));
 }
+
+#[test]
+fn xnpv_xirr_argument_rules() {
+    let wb = wb_with(&[
+        ("A1", "-20"),
+        ("B1", "5"),
+        ("D1", "5"),
+        ("A2", "-20"),
+        ("B2", "5"),
+        ("C2", "hello"),
+        ("D2", "5"),
+        ("A3", "44958"),
+        ("B3", "44986"),
+        ("C3", "45017"),
+        ("D3", "45078"),
+        ("A4", "-20"),
+        ("B4", "5"),
+        ("C4", "0"),
+        ("D4", "5"),
+        ("F1", "=XNPV(0.1,A1:D1,A3:D3)"),
+        ("F2", "=XNPV(0.1,A2:D2,A3:D3)"),
+        ("F3", "=XNPV(-0.3,A4:D4,A3:D3)"),
+        ("F4", "=XIRR(A2:D2,A3:D3)"),
+        ("F5", "=XIRR(A1:D1,A3:D3)"),
+        ("F6", "=XIRR(A4:D4,A3:D3)"),
+    ]);
+    assert_eq!(err(&wb, "F1"), ErrorKind::Num);
+    assert_eq!(err(&wb, "F2"), ErrorKind::Num);
+    assert_eq!(err(&wb, "F3"), ErrorKind::Num);
+    assert_eq!(err(&wb, "F4"), ErrorKind::Value);
+    // A blank cash flow counts as zero in XIRR.
+    assert!(close(num(&wb, "F5"), num(&wb, "F6")));
+}

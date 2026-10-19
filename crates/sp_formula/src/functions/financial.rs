@@ -357,11 +357,14 @@ fn vdb(ev: &mut Ev<'_>, args: &[Expr]) -> Result<f64, ErrorKind> {
 }
 
 /// Values and dates of XNPV/XIRR: equal counts, numbers only, dates not before the first.
+/// A non-number value is #NUM! in XNPV; in XIRR a blank counts as 0 and text or a logical
+/// is #VALUE! (`xirr`).
 fn x_flows(
     ev: &mut Ev<'_>,
     args: &[Expr],
     vi: usize,
     di: usize,
+    xirr: bool,
 ) -> Result<(Vec<f64>, Vec<f64>), ErrorKind> {
     let vals = arg_array(ev, args, vi)?;
     let dates = arg_array(ev, args, di)?;
@@ -374,7 +377,9 @@ fn x_flows(
         match x {
             Value::Number(n) => v.push(*n),
             Value::Error(e) => return Err(*e),
-            _ => return Err(ErrorKind::Value),
+            Value::Empty if xirr => v.push(0.0),
+            _ if xirr => return Err(ErrorKind::Value),
+            _ => return Err(ErrorKind::Num),
         }
         match t {
             Value::Number(n) => d.push(n.trunc()),
@@ -399,15 +404,16 @@ fn xnpv_of(rate: f64, v: &[f64], d: &[f64]) -> f64 {
 
 fn xnpv(ev: &mut Ev<'_>, args: &[Expr]) -> Result<f64, ErrorKind> {
     let rate = ev.num(args.first().ok_or(ErrorKind::Value)?)?;
-    let (v, d) = x_flows(ev, args, 1, 2)?;
-    if rate <= -1.0 {
+    let (v, d) = x_flows(ev, args, 1, 2, false)?;
+    // The target rejects any negative discount rate here.
+    if rate < 0.0 {
         return Err(ErrorKind::Num);
     }
     fin(xnpv_of(rate, &v, &d))
 }
 
 fn xirr(ev: &mut Ev<'_>, args: &[Expr]) -> Result<f64, ErrorKind> {
-    let (v, d) = x_flows(ev, args, 0, 1)?;
+    let (v, d) = x_flows(ev, args, 0, 1, true)?;
     let guess = ev.num_or(args, 2, 0.1)?;
     if guess <= -1.0 {
         return Err(ErrorKind::Num);
