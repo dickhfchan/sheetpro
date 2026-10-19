@@ -6,10 +6,11 @@ pub mod chart;
 pub mod dialogs;
 pub mod grid;
 mod menus;
-pub mod page_view;
-pub mod shell_hook;
+pub mod objdraw;
 pub mod overlays;
+pub mod page_view;
 pub mod ribbon;
+pub mod shell_hook;
 pub mod theme;
 
 #[cfg(feature = "screenshot")]
@@ -47,6 +48,8 @@ pub struct App {
     pub(crate) last_error: Option<String>,
     /// Open dialog and its fields (serializable, so scripts and tests can drive it).
     pub ui: dialogs::UiState,
+    /// Decoded pictures (screen textures), kept across frames.
+    pub textures: objdraw::Textures,
 }
 
 impl App {
@@ -59,6 +62,7 @@ impl App {
             drag_anchor: None,
             last_error: None,
             ui: dialogs::UiState::default(),
+            textures: objdraw::Textures::default(),
         };
         a.sync_buffer();
         a
@@ -526,6 +530,8 @@ impl App {
             })
             .collect();
         let in_merge = |a: CellAddr| merge_rects.iter().any(|(m, _)| m.contains(a));
+        let cell_area = Rect::from_min_max(cells_origin, rect.max);
+        objdraw::paint_background(&painter, &mut self.textures, s, cells_origin, cell_area);
 
         // Fills first, then gridlines, then merged areas (hiding their inner gridlines), then
         // text, then borders on top.
@@ -554,7 +560,11 @@ impl App {
             }
         }
         for (m, (_, mr)) in view.merges.iter().zip(&merge_rects) {
-            painter.rect_filled(mr.shrink(0.5), 0.0, grid::merge_fill(m.cell.as_ref()));
+            let filled = m.cell.as_ref().is_some_and(|d| d.fill.is_some());
+            // Unfilled merges stay see-through over a sheet background.
+            if filled || sheet.background.is_none() {
+                painter.rect_filled(mr.shrink(0.5), 0.0, grid::merge_fill(m.cell.as_ref()));
+            }
         }
         // Selection highlight.
         let sel_rect = {
@@ -589,11 +599,11 @@ impl App {
         {
             painter.rect_filled(r, 0.0, T.selection_fill);
         }
-        let cell_area = Rect::from_min_max(cells_origin, rect.max);
         let blocks = |c: u32, row: u32| {
             let a = CellAddr::new(row, c);
             in_merge(a) || sheet.get(a).is_some_and(|x| !x.value.is_empty())
         };
+        let mut cell_hots = Vec::new();
         for d in &view.cells {
             let Some(r) = cell_rect(d.addr) else { continue };
             // Unwrapped, unrotated text overflows into empty neighbours, like the target app.
@@ -630,6 +640,17 @@ impl App {
                     families: &families,
                 },
             );
+            if let Some(checked) = sp_render::objects::checkbox_state(&s.wb, sheet, d.addr) {
+                let align = sheet.get(d.addr).map_or(sp_model::HAlign::General, |c| {
+                    s.wb.styles.get(c.style).h_align
+                });
+                let pc = painter.with_clip_rect(r.intersect(cell_area));
+                let b = objdraw::paint_checkbox(&pc, r, checked, d.color, zoom, align);
+                cell_hots.push(overlays::Hot::Checkbox {
+                    rect: b.expand(2.0).intersect(r),
+                    cell: d.addr,
+                });
+            }
         }
         for (m, (_, mr)) in view.merges.iter().zip(&merge_rects) {
             if let Some(d) = &m.cell {
@@ -678,14 +699,24 @@ impl App {
                 T.selection_border,
             );
         }
-        chart::paint_objects(&painter, s, &view, cells_origin, cell_area);
+        let object_hots = objdraw::paint_drawings(
+            &painter,
+            &mut self.textures,
+            s,
+            &view,
+            cells_origin,
+            cell_area,
+        );
+        self.textures.end_frame();
         page_view::break_preview(&painter, s, &view, cells_origin, cell_area);
         let geo = overlays::Geo {
             view: &view,
             origin: cells_origin,
             area: cell_area,
         };
-        let hots = self.paint_overlays(ui, &painter, &geo);
+        let mut hots = cell_hots;
+        hots.extend(object_hots);
+        hots.extend(self.paint_overlays(ui, &painter, &geo));
         // Headings.
         if s.view.show_headings {
             let top = Rect::from_min_max(rect.min, Pos2::new(rect.max.x, rect.min.y + hh));
@@ -861,6 +892,13 @@ impl App {
         }
     }
 
+    fn active_is_checkbox(&self) -> bool {
+        let s = &self.session;
+        s.wb.sheet(s.sheet_index())
+            .and_then(|sh| sp_render::objects::checkbox_state(&s.wb, sh, s.sel.active))
+            .is_some()
+    }
+
     pub fn on_shortcut(&mut self, sc: &str) {
         if self.chart_key(sc) {
             return;
@@ -870,6 +908,9 @@ impl App {
             // Editor-only keys do nothing on the grid.
             "Alt+Enter" | "Ctrl+Shift+Enter" => return,
             "Delete" | "Backspace" => return self.exec("home.editing.clear_contents", json!({})),
+            "Space" if self.active_is_checkbox() => {
+                return self.exec("cell.toggle_checkbox", json!({}));
+            }
             "Enter" => return self.exec("nav.enter_next", json!({})),
             _ => {}
         }

@@ -70,6 +70,27 @@ pub(crate) enum Hot {
         rect: Rect,
         idx: usize,
     },
+    /// A picture, shape, text box or line (index into `Sheet::objects`).
+    Object {
+        rect: Rect,
+        idx: usize,
+    },
+    /// A cell checkbox square.
+    Checkbox {
+        rect: Rect,
+        cell: CellAddr,
+    },
+    /// A slicer button (`item`), or its body (`None`: swallows the click).
+    Slicer {
+        rect: Rect,
+        slicer: usize,
+        item: Option<String>,
+    },
+    /// A slicer's "Clear Filter" button.
+    SlicerClear {
+        rect: Rect,
+        slicer: usize,
+    },
 }
 
 impl Hot {
@@ -78,16 +99,22 @@ impl Hot {
             Hot::Filter { rect, .. }
             | Hot::ListArrow { rect, .. }
             | Hot::CommentMark { rect, .. }
-            | Hot::Chart { rect, .. } => *rect,
+            | Hot::Chart { rect, .. }
+            | Hot::Object { rect, .. }
+            | Hot::Checkbox { rect, .. }
+            | Hot::Slicer { rect, .. }
+            | Hot::SlicerClear { rect, .. } => *rect,
         }
     }
 }
 
-/// Which part of a selected chart a drag grabbed: the body or one of 8 handles
-/// (`(dx, dy)` in -1..=1: which edges the handle moves).
+/// Which part of a selected chart (or object, when `object`) a drag grabbed: the body or
+/// one of 8 handles (`(dx, dy)` in -1..=1: which edges the handle moves).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ChartDrag {
     pub idx: usize,
+    #[serde(default)]
+    pub object: bool,
     pub handle: Option<(i8, i8)>,
     pub start: [f32; 2],
     pub now: [f32; 2],
@@ -142,6 +169,26 @@ fn handle_rect(r: Rect, h: (i8, i8)) -> Rect {
         _ => r.max.y,
     };
     Rect::from_center_size(Pos2::new(x, y), Vec2::splat(8.0))
+}
+
+/// Frame and 8 resize handles around a selected chart or object.
+fn selection_frame(p: &Painter, r: Rect) {
+    p.rect_stroke(
+        r,
+        0.0,
+        Stroke::new(1.0, T.handle_border),
+        StrokeKind::Outside,
+    );
+    for h in HANDLES {
+        let hr = handle_rect(r, h);
+        p.rect_filled(hr, 1.0, T.handle_fill);
+        p.rect_stroke(
+            hr,
+            1.0,
+            Stroke::new(1.0, T.handle_border),
+            StrokeKind::Inside,
+        );
+    }
 }
 
 /// Down-arrow drop-down button (AutoFilter / validation list).
@@ -378,25 +425,23 @@ impl App {
             let selected = self.ui.grid.chart == Some(idx);
             let mut hit = r;
             if selected {
-                p.rect_stroke(
-                    r,
-                    0.0,
-                    Stroke::new(1.0, T.handle_border),
-                    StrokeKind::Outside,
-                );
-                for h in HANDLES {
-                    let hr = handle_rect(r, h);
-                    p.rect_filled(hr, 1.0, T.handle_fill);
-                    p.rect_stroke(
-                        hr,
-                        1.0,
-                        Stroke::new(1.0, T.handle_border),
-                        StrokeKind::Inside,
-                    );
-                }
+                selection_frame(&p, r);
                 hit = r.expand(5.0);
             }
             hots.push(Hot::Chart { rect: hit, idx });
+        }
+        // The selected object: frame and handles above everything, grabbing first.
+        if let Some(idx) = self.ui.grid.object
+            && let Some((_, r)) = crate::objdraw::object_rects(s, geo.origin)
+                .into_iter()
+                .find(|(i, _)| *i == idx)
+            && r.intersects(geo.area)
+        {
+            selection_frame(&p, r);
+            hots.push(Hot::Object {
+                rect: r.expand(5.0),
+                idx,
+            });
         }
         if let Some(d) = &self.ui.grid.drag {
             p.rect_stroke(
@@ -475,7 +520,11 @@ impl App {
             if resp.drag_stopped() || !resp.dragged() {
                 self.ui.grid.drag = None;
                 let moved = (d.now[0] - d.start[0]).abs() + (d.now[1] - d.start[1]).abs() > 3.0;
-                if moved
+                if moved && d.object {
+                    if let Some(rect) = screen_to_sheet_rect(&self.session, geo.origin, d.ghost()) {
+                        self.exec("object.format", json!({ "object": d.idx, "rect": rect }));
+                    }
+                } else if moved
                     && let Some(anchor) =
                         crate::chart::rect_to_anchor(&self.session, geo.origin, d.ghost())
                 {
@@ -489,16 +538,28 @@ impl App {
             }
             return true;
         }
+        let grabbed = match pos.and_then(top_hit) {
+            Some(Hot::Chart { idx, .. }) => Some((idx, false)),
+            Some(Hot::Object { idx, .. }) => Some((idx, true)),
+            _ => None,
+        };
         if resp.drag_started()
             && let Some(p) = pos
-            && let Some(Hot::Chart { idx, .. }) = top_hit(p)
+            && let Some((idx, object)) = grabbed
         {
-            let rect = crate::chart::chart_rects(&self.session, geo.origin)
-                .into_iter()
-                .find(|(i, _)| *i == idx)
-                .map(|(_, r)| r);
+            let rects = if object {
+                crate::objdraw::object_rects(&self.session, geo.origin)
+            } else {
+                crate::chart::chart_rects(&self.session, geo.origin)
+            };
+            let rect = rects.into_iter().find(|(i, _)| *i == idx).map(|(_, r)| r);
             if let Some(r) = rect {
-                let handle = if self.ui.grid.chart == Some(idx) {
+                let selected = if object {
+                    self.ui.grid.object == Some(idx)
+                } else {
+                    self.ui.grid.chart == Some(idx)
+                };
+                let handle = if selected {
                     HANDLES
                         .iter()
                         .find(|h| handle_rect(r, **h).expand(2.0).contains(p))
@@ -506,9 +567,16 @@ impl App {
                 } else {
                     None
                 };
-                self.ui.grid.chart = Some(idx);
+                if object {
+                    self.ui.grid.object = Some(idx);
+                    self.ui.grid.chart = None;
+                } else {
+                    self.ui.grid.chart = Some(idx);
+                    self.ui.grid.object = None;
+                }
                 self.ui.grid.drag = Some(ChartDrag {
                     idx,
+                    object,
                     handle,
                     start: [p.x, p.y],
                     now: [p.x, p.y],
@@ -525,7 +593,42 @@ impl App {
         if !matches!(hit, Some(Hot::Chart { .. })) {
             self.ui.grid.chart = None;
         }
+        if !matches!(hit, Some(Hot::Object { .. })) {
+            self.ui.grid.object = None;
+        }
         match hit {
+            Some(Hot::Object { idx, .. }) => {
+                self.ui.grid.object = Some(idx);
+                true
+            }
+            Some(Hot::Checkbox { cell, .. }) => {
+                if resp.clicked() {
+                    if self.editing_cell.is_some() {
+                        self.commit_edit(None);
+                    }
+                    self.session.select(cell);
+                    let r = self.qualified(CellRange::single(cell));
+                    self.exec("cell.toggle_checkbox", json!({ "range": r }));
+                }
+                true
+            }
+            Some(Hot::Slicer { slicer, item, .. }) => {
+                if resp.clicked()
+                    && let Some(label) = item
+                {
+                    let toggle = resp.ctx.input(|i| i.modifiers.command || i.modifiers.ctrl);
+                    self.slicer_click(slicer, &label, toggle);
+                }
+                true
+            }
+            Some(Hot::SlicerClear { slicer, .. }) => {
+                if resp.clicked()
+                    && let Some(name) = self.slicer_name(slicer)
+                {
+                    self.exec("insert.slicer", json!({ "name": name, "clear": true }));
+                }
+                true
+            }
             Some(Hot::Chart { idx, .. }) => {
                 self.ui.grid.chart = Some(idx);
                 if resp.double_clicked() {
@@ -576,6 +679,20 @@ impl App {
 
     /// Delete / Escape while a chart is selected act on the chart.
     pub(crate) fn chart_key(&mut self, sc: &str) -> bool {
+        if let Some(idx) = self.ui.grid.object {
+            match sc {
+                "Delete" | "Backspace" => {
+                    self.exec("object.delete", json!({ "object": idx }));
+                    self.ui.grid.object = None;
+                    return true;
+                }
+                "Escape" => {
+                    self.ui.grid.object = None;
+                    return true;
+                }
+                _ => return false,
+            }
+        }
         let Some(idx) = self.ui.grid.chart else {
             return false;
         };
@@ -624,11 +741,98 @@ impl App {
     }
 }
 
-/// Grid view state that belongs to the shell: the selected chart and a drag in progress.
+/// Grid view state that belongs to the shell: the selected chart or object, a drag in
+/// progress, and whether the PivotTable Fields pane was closed.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GridUi {
     pub chart: Option<usize>,
+    pub object: Option<usize>,
+    pub hide_field_list: bool,
     #[serde(skip)]
     pub drag: Option<ChartDrag>,
+}
+
+/// A screen rectangle as `[x, y, w, h]` px at 100% zoom from A1 (the `object.format`
+/// `rect` param), measured like `chart::chart_rects`.
+pub(crate) fn screen_to_sheet_rect(
+    s: &sp_engine::Session,
+    cells_origin: Pos2,
+    r: Rect,
+) -> Option<[f64; 4]> {
+    let sheet = s.wb.sheet(s.sheet_index())?;
+    let zoom = s.view.zoom.clamp(0.1, 4.0);
+    let (origin, frozen) = crate::chart::pane_origin(s, sheet);
+    let base = cells_origin + frozen;
+    let ox = sp_render::chart::col_offset_px(sheet, 0, origin.col);
+    let oy = sp_render::chart::row_offset_px(sheet, 0, origin.row);
+    let x = f64::from(((r.min.x - base.x) / zoom + ox).max(0.0));
+    let y = f64::from(((r.min.y - base.y) / zoom + oy).max(0.0));
+    let w = f64::from((r.width() / zoom).max(1.0));
+    let h = f64::from((r.height() / zoom).max(1.0));
+    [x, y, w, h]
+        .iter()
+        .all(|v| v.is_finite())
+        .then_some([x, y, w, h])
+}
+
+impl App {
+    /// `Sheet!A1:B2` text for a range on the active sheet.
+    pub(crate) fn qualified(&self, r: CellRange) -> String {
+        let name = self
+            .session
+            .wb
+            .sheet(self.session.sheet_index())
+            .map(|s| sp_core::addr::quote_sheet_name(&s.name))
+            .unwrap_or_default();
+        format!("{name}!{}", r.to_a1())
+    }
+
+    fn slicer_name(&self, slicer: usize) -> Option<String> {
+        self.session
+            .wb
+            .sheet(self.session.sheet_index())?
+            .analysis
+            .slicers
+            .get(slicer)
+            .map(|s| s.name.clone())
+    }
+
+    /// A click on a slicer button: show only that item, or (`toggle`, Ctrl+click) add or
+    /// remove it from the selection. Runs `insert.slicer`, so it is undoable.
+    pub(crate) fn slicer_click(&mut self, slicer: usize, label: &str, toggle: bool) {
+        let Some(sheet) = self.session.wb.sheet(self.session.sheet_index()) else {
+            return;
+        };
+        let Some(sl) = sheet.analysis.slicers.get(slicer) else {
+            return;
+        };
+        let name = sl.name.clone();
+        let select: Vec<String> = if toggle {
+            let state = sheet
+                .analysis
+                .pivot(&sl.pivot)
+                .map(|pv| sp_engine::commands::pivot_cmds::slicer_state(pv, sl.field))
+                .unwrap_or_default();
+            let all_selected = state.iter().all(|it| it.selected);
+            state
+                .iter()
+                .filter(|it| {
+                    if it.label == label {
+                        // From "everything shown", Ctrl+click picks just this one.
+                        all_selected || !it.selected
+                    } else {
+                        it.selected && !all_selected
+                    }
+                })
+                .map(|it| it.label.clone())
+                .collect()
+        } else {
+            vec![label.to_string()]
+        };
+        if select.is_empty() {
+            return; // the last selected item stays selected
+        }
+        self.exec("insert.slicer", json!({ "name": name, "select": select }));
+    }
 }
