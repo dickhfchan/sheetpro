@@ -716,7 +716,9 @@ fn tbilleq(ev: &mut Ev<'_>, args: &[Expr]) -> R<f64> {
     if dsm <= 182.0 {
         return fin(365.0 * dsc / (360.0 - dsc * dsm));
     }
-    let t = dsm / 365.0;
+    // A full 366-day (leap) term counts as exactly one year, as in the target.
+    let year = if dsm > 365.0 { 366.0 } else { 365.0 };
+    let t = dsm / year;
     let disc = t * t - (2.0 * t - 1.0) * (1.0 - 100.0 / price);
     if disc < 0.0 {
         return Err(ErrorKind::Num);

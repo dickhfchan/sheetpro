@@ -268,3 +268,16 @@ fn db_truncates_month_and_ddb_takes_fractional_periods() {
     // Huge lives no longer loop once per period.
     assert!(num(&wb, "A6").is_finite());
 }
+
+#[test]
+fn tbilleq_counts_a_366_day_term_as_one_year() {
+    let wb = wb_with(&[
+        ("A1", "14640"),
+        ("B1", "=A1+366"),
+        ("C1", "=TBILLEQ(A1,B1,0.5)"),
+        ("B2", "=A1+365"),
+        ("C2", "=TBILLEQ(A1,B2,0.5)"),
+    ]);
+    assert!(close(num(&wb, "C1"), 0.852_296_131_249_170_1));
+    assert!(close(num(&wb, "C2"), 0.848_275_979_665_248_2));
+}

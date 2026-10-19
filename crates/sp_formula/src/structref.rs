@@ -189,8 +189,9 @@ pub fn parse_body(table: Option<String>, body: &str) -> Result<StructRef, String
         }
         return Ok(r);
     }
-    for (item, sep) in items(body)? {
-        let item = item.trim();
+    for (raw, sep) in items(body)? {
+        // Spaces inside a bracketed column name are part of it (`[the two ]`).
+        let item = raw.trim();
         if item.starts_with('#') {
             if sep == ':' {
                 return Err(err("keyword in a column span"));
@@ -203,12 +204,12 @@ pub fn parse_body(table: Option<String>, body: &str) -> Result<StructRef, String
             if r.col0.is_none() || r.col1.is_some() {
                 return Err(err("bad column span"));
             }
-            r.col1 = Some(unescape(item));
+            r.col1 = Some(unescape(&raw));
         } else {
             if r.col0.is_some() {
                 return Err(err("more than one column"));
             }
-            r.col0 = Some(unescape(item));
+            r.col0 = Some(unescape(&raw));
         }
     }
     Ok(r)
@@ -230,7 +231,8 @@ pub fn print(r: &StructRef) -> String {
     s.push('[');
     match (r.areas.as_slice(), &cols) {
         ([], None) => {}
-        ([], Some(_)) if r.col1.is_none() => {
+        // `T[Col]` unless edge spaces need the bracketed `T[[ Col ]]` to survive parsing.
+        ([], Some(_)) if r.col1.is_none() && r.col0.as_deref().is_some_and(|c| c == c.trim()) => {
             s.push_str(&escape(r.col0.as_deref().unwrap_or_default()));
         }
         ([], Some(c)) => s.push_str(c),
@@ -302,15 +304,25 @@ pub fn find_table<'w>(
     }
 }
 
+/// Table column named `name`: an exact (case-insensitive) match first, so names with edge
+/// spaces (`the two `) resolve, then the model's trimmed lookup.
+fn column_index(t: &Table, name: &str) -> Option<u32> {
+    t.columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case(name))
+        .and_then(|i| u32::try_from(i).ok())
+        .or_else(|| t.column_index(name))
+}
+
 /// Cell range a structured reference denotes. `cell = None` resolves `#This Row` to the
 /// whole data body (used for dependency tracking).
 pub fn resolve(t: &Table, r: &StructRef, cell: Option<CellAddr>) -> Result<CellRange, ErrorKind> {
     let (c0, c1) = match &r.col0 {
         None => (t.range.start.col, t.range.end.col),
         Some(a) => {
-            let i = t.column_index(a).ok_or(ErrorKind::Ref)?;
+            let i = column_index(t, a).ok_or(ErrorKind::Ref)?;
             let j = match &r.col1 {
-                Some(b) => t.column_index(b).ok_or(ErrorKind::Ref)?,
+                Some(b) => column_index(t, b).ok_or(ErrorKind::Ref)?,
                 None => i,
             };
             let x = t.sheet_col(i.min(j)).ok_or(ErrorKind::Ref)?;
@@ -547,5 +559,20 @@ mod recalc_tests {
         );
         assert_eq!(v(&wb, "D2"), Value::Number(40.0));
         assert_eq!(v(&wb, "F1"), Value::Number(72.0));
+    }
+
+    #[test]
+    fn column_names_keep_edge_spaces() {
+        let r = crate::structref::parse_body(Some("T".into()), "[#Totals],[the two ]").unwrap();
+        assert_eq!(r.col0.as_deref(), Some("the two "));
+        let r = crate::structref::parse_body(Some("T".into()), "[the two ]").unwrap();
+        assert_eq!(crate::structref::print(&r), "T[[the two ]]");
+        assert_eq!(
+            crate::structref::parse_body(Some("T".into()), "[Col]")
+                .unwrap()
+                .col0
+                .as_deref(),
+            Some("Col")
+        );
     }
 }
