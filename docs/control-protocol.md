@@ -14,7 +14,7 @@ and screenshot scripts (`sp screenshot --script steps.jsonl`).
 | `state` | | selection, active sheet, sheets, dirty, path, view state |
 | `commands` | | list of registered command specs (id, label, location, shortcut, params) |
 | `functions` | | list of supported worksheet function names |
-| `screenshot` | `out` (path) | desktop app / `sp screenshot` only: writes PNG |
+| `screenshot` | `out` (path) | desktop app / `sp screenshot` only: writes PNG (the desktop app replies at once and writes the file after the next frame) |
 | `quit` | | ends the session |
 
 Errors: `{"ok":false,"error":"<message>"}`; the session keeps running.

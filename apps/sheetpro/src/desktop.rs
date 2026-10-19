@@ -425,8 +425,14 @@ impl Desktop {
         while let Ok((line, reply)) = rx.try_recv() {
             any = true;
             let (out, action) = handle_line(&mut self.app.session, &line);
-            if action == Action::Quit {
-                quit = true;
+            match action {
+                Action::Quit => quit = true,
+                // Captured after the next frame; `save_screenshots` writes the file.
+                Action::Screenshot(path) => ctx.send_viewport_cmd_to(
+                    egui::ViewportId::ROOT,
+                    egui::ViewportCommand::Screenshot(egui::UserData::new(PathBuf::from(path))),
+                ),
+                _ => {}
             }
             let _ = reply.send(out);
         }
@@ -483,9 +489,42 @@ impl Desktop {
     }
 }
 
+/// Write the window captures requested by the control `screenshot` op (PNG).
+fn save_screenshots(ctx: &egui::Context) {
+    let shots: Vec<(PathBuf, std::sync::Arc<egui::ColorImage>)> = ctx.input(|i| {
+        i.raw
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                egui::Event::Screenshot {
+                    user_data, image, ..
+                } => user_data
+                    .data
+                    .as_ref()
+                    .and_then(|d| d.downcast_ref::<PathBuf>())
+                    .map(|p| (p.clone(), image.clone())),
+                _ => None,
+            })
+            .collect()
+    });
+    for (path, img) in shots {
+        let [w, h] = img.size;
+        let px: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
+        let saved = u32::try_from(w)
+            .ok()
+            .zip(u32::try_from(h).ok())
+            .and_then(|(w, h)| image::RgbaImage::from_raw(w, h, px))
+            .map(|im| im.save(&path));
+        if !matches!(saved, Some(Ok(()))) {
+            settings::log_line(&format!("screenshot: could not write {}", path.display()));
+        }
+    }
+}
+
 impl eframe::App for Desktop {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        save_screenshots(&ctx);
         self.control(&ctx);
         // Drawing preferences (gridline colour, R1C1 headings) follow the settings.
         sp_ui::shell_hook::apply_settings(&self.prefs);
