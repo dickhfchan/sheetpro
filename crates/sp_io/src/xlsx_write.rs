@@ -376,7 +376,8 @@ fn build_styles(wb: &Workbook) -> StylesXml {
             let _ = write!(al, r#" textRotation="{}""#, s.rotation);
         }
         let prot = !s.locked || s.hidden_formula;
-        if al.is_empty() && !prot {
+        let ext = crate::xlsx_drawings::checkbox_xf_ext(s);
+        if al.is_empty() && !prot && ext.is_empty() {
             xf.push_str("/>");
         } else {
             xf.push_str(r#" applyAlignment="1">"#);
@@ -391,6 +392,7 @@ fn build_styles(wb: &Workbook) -> StylesXml {
                     u8::from(s.hidden_formula)
                 );
             }
+            xf.push_str(ext);
             xf.push_str("</xf>");
         }
         xf_index.push(xfs.len());
@@ -494,7 +496,14 @@ fn write_sheet_data(
                 };
                 let mut cm = "";
                 let f_xml = match &cell.content {
-                    Content::Formula(f) if crate::xlsx_pivots::data_table_f(sheet, sp_core::CellAddr::new(r, *c), f).is_some() => {
+                    Content::Formula(f)
+                        if crate::xlsx_pivots::data_table_f(
+                            sheet,
+                            sp_core::CellAddr::new(r, *c),
+                            f,
+                        )
+                        .is_some() =>
+                    {
                         crate::xlsx_pivots::data_table_f(sheet, sp_core::CellAddr::new(r, *c), f)
                             .unwrap_or_default()
                     }
@@ -739,6 +748,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         "docProps/core.xml",
         "docProps/app.xml",
         "xl/metadata.xml",
+        crate::xlsx_drawings::FPB_PART,
     ]
     .iter()
     .map(|s| s.to_string())
@@ -889,6 +899,11 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         if let Some(el) = drawn.element {
             known.push(("drawing".to_string(), el));
         }
+        if let Some(el) =
+            crate::xlsx_drawings::background_element(sheet, &chart_plan.media, &mut rels)
+        {
+            known.push(("picture".to_string(), el));
+        }
         for (part, body, t) in pivot_plan.write_sheet(i, &mut rels) {
             if !t.is_empty() {
                 override_ct(&mut ct, &part, t);
@@ -985,6 +1000,32 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             &mut zip,
             "xl/metadata.xml",
             DYNAMIC_ARRAY_METADATA.as_bytes(),
+        )?;
+    }
+
+    // Images of pictures and sheet backgrounds; the checkbox feature property bag.
+    for (path, data, t) in chart_plan.media.files() {
+        override_ct(&mut ct, path, t);
+        put(&mut zip, path, data)?;
+    }
+    if crate::xlsx_drawings::uses_checkboxes(wb) {
+        wb_rels.push(RawRel {
+            id: wb_ids.take(),
+            rel_type: crate::xlsx_drawings::REL_FPB.to_string(),
+            target: crate::xlsx_drawings::FPB_PART
+                .trim_start_matches("xl/")
+                .to_string(),
+            external: false,
+        });
+        override_ct(
+            &mut ct,
+            crate::xlsx_drawings::FPB_PART,
+            crate::xlsx_drawings::CT_FPB,
+        );
+        put(
+            &mut zip,
+            crate::xlsx_drawings::FPB_PART,
+            crate::xlsx_drawings::checkbox_bag_xml().as_bytes(),
         )?;
     }
 

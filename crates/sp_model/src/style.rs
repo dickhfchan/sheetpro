@@ -97,6 +97,9 @@ pub struct Style {
     pub border_bottom: Border,
     pub locked: bool,
     pub hidden_formula: bool,
+    /// Cell checkbox: TRUE/FALSE values draw as a checked / unchecked box.
+    #[serde(default)]
+    pub checkbox: bool,
 }
 
 pub const DEFAULT_FONT: &str = "Calibri";
@@ -124,6 +127,7 @@ impl Default for Style {
             border_bottom: Border::default(),
             locked: true,
             hidden_formula: false,
+            checkbox: false,
         }
     }
 }

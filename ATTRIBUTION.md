@@ -11,6 +11,7 @@ the material in (see AGENTS.md › Golden rules).
 | Native file/message dialogs (`rfd` 0.17.2, pulls in `pollster` 0.4) | `apps/sheetpro` | [crates.io/crates/rfd](https://crates.io/crates/rfd), [pollster](https://crates.io/crates/pollster) | MIT; pollster Apache-2.0 OR MIT |
 | `winit` 0.30.13 (already used by eframe; direct dependency on macOS to turn off the default app menu) | `apps/sheetpro` | [crates.io/crates/winit](https://crates.io/crates/winit) | Apache-2.0 |
 | English word list for spelling (SCOWL 2020.12.07, size 60: American + English words, upper-case words, proper names, contractions, abbreviations; levels kept as `#NN` section lines, converted to UTF-8) | `crates/sp_engine/data/spelling/en_US.txt`, license beside it in `crates/sp_engine/data/spelling/LICENSE-SCOWL.txt` | [SCOWL](http://wordlist.aspell.net/) by Kevin Atkinson | SCOWL license (MIT-like permissive; parts public domain), see the license file |
+| Image decoding for pictures and sheet backgrounds (`image` 0.25.9 with PNG/JPEG/GIF/BMP only: `png` 0.18, `zune-jpeg` 0.5, `gif` 0.14 with `weezl`, `color_quant`) | `crates/sp_render` (decode), workspace feature list | [crates.io/crates/image](https://crates.io/crates/image) | MIT OR Apache-2.0 (`zune-jpeg` MIT OR Apache-2.0 OR Zlib; `color_quant` MIT) |
 | App icon (grid glyph drawn in code) | `apps/sheetpro/src/icon.rs`, generated `.icns` | original SheetPro work | MIT OR Apache-2.0 |
 
 No code, icons, templates, help text or other assets from the target application are used.

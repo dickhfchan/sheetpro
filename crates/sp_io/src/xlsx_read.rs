@@ -990,8 +990,17 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     let rich = read_rich_errors(&mut zip)?;
     let mut wb = Workbook::new();
     wb.sheets.clear();
+    let mut fpb_adopted = false;
     let xf_styles = match read_part(&mut zip, "xl/styles.xml")? {
-        Some(x) => read_styles(&x)?,
+        Some(x) => {
+            let mut v = read_styles(&x)?;
+            if let Some(t) = crate::xlsx_drawings::checkbox_bag_target(&wb_pass)
+                && let Some(bag) = read_part(&mut zip, &t)?
+            {
+                fpb_adopted = crate::xlsx_drawings::read_checkboxes(&x, &bag, &mut v);
+            }
+            v
+        }
         None => Vec::new(),
     };
     let xf_map: Vec<StyleId> = xf_styles.into_iter().map(|s| wb.styles.intern(s)).collect();
@@ -1064,6 +1073,10 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
     }
     wb.passthrough = wb_pass;
     capture.finish(&mut wb);
+    if fpb_adopted {
+        crate::xlsx_drawings::drop_checkbox_bag(&mut wb);
+    }
+    crate::xlsx_drawings::adopt_backgrounds(&mut wb);
     crate::xlsx_charts::adopt_captured_charts(&mut wb);
     crate::xlsx_pivots::adopt_captured_pivots(&mut wb);
     if let Some(dn) = wbdom.child("definedNames") {

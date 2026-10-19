@@ -68,6 +68,10 @@ fn regenerated(name: &str, content_type: &str) -> bool {
         "chartex+xml",
         "chartstyle+xml",
         "chartcolorstyle+xml",
+        // Adopted pictures and backgrounds are re-stored under fresh `xl/media` names;
+        // a checkbox-only feature property bag is regenerated.
+        "image/",
+        "featurepropertybag+xml",
     ];
     name.ends_with(".rels")
         || name == "[Content_Types].xml"

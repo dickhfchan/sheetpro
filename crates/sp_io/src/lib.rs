@@ -4,6 +4,7 @@ pub mod csv_io;
 pub mod pdf;
 pub mod xlsx_cf;
 pub mod xlsx_charts;
+pub mod xlsx_drawings;
 pub mod xlsx_extras;
 pub mod xlsx_passthrough;
 pub mod xlsx_pivots;

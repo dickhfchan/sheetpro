@@ -3,6 +3,7 @@
 pub mod chart_shift;
 pub mod edit;
 pub mod history;
+pub mod object_shift;
 pub mod pivot_shift;
 pub mod table_shift;
 

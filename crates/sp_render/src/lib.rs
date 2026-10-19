@@ -3,6 +3,7 @@
 
 pub mod chart;
 pub mod condfmt;
+pub mod objects;
 pub mod paginate;
 pub mod std14;
 pub mod tablestyle;
@@ -164,6 +165,9 @@ pub fn display_cell(
 ) -> DisplayCell {
     let (text, color, is_num) = if show_formulas && let Some(f) = formula {
         (format!("={f}"), None, false)
+    } else if style.checkbox && matches!(value, Value::Bool(_)) {
+        // Drawn as a box by the shell / page scene (`objects::checkbox_state`).
+        (String::new(), None, false)
     } else {
         let f = format_value(value, &style.num_fmt);
         (
