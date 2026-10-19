@@ -281,6 +281,11 @@ fn sizes(s: &mut Session, p: &Json, rows: bool, value: Option<f64>, label: &str)
     Ok(Json::Null)
 }
 
+/// Column width (characters) that fits `text` at `font_size` pt; approximate, from length.
+pub(crate) fn fit_width(text: &str, font_size: f64) -> f64 {
+    (text.chars().count() as f64 * font_size / 11.0 + 1.0).min(255.0)
+}
+
 /// Approximate column auto-fit from display text length.
 fn autofit_cols(s: &mut Session, p: &Json) -> CmdResult {
     let (sheet, r) = range(s, p, "range")?;
@@ -295,7 +300,7 @@ fn autofit_cols(s: &mut Session, p: &Json) -> CmdResult {
     for (a, c) in sh.cells_in(scan) {
         let st = s.wb.styles.get(c.style);
         let text = sp_core::numfmt::format_value(&c.value, &st.num_fmt).text;
-        let w = (text.chars().count() as f64 * st.font_size() / 11.0 + 1.0).min(255.0);
+        let w = fit_width(&text, st.font_size());
         let e = widths.entry(a.col).or_insert(0.0);
         *e = e.max(w);
     }

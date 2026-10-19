@@ -11,11 +11,11 @@ use serde_json::json;
 use sp_core::addr::{col_to_letters, quote_sheet_name, split_sheet_prefix};
 use sp_core::{CellAddr, CellRange, MAX_CELLS_PER_OP, MAX_COLS, MAX_ROWS, Value};
 use sp_formula::pivot::{CellKind, all_items, build_cache, item_key, item_label, layout};
+use sp_model::chart::Anchor;
 use sp_model::pivot::{
     Aggregate, DataField, FieldFilter, MAX_OBJECTS, MAX_RECORDS, PivotLayout, PivotTable, ShowAs,
     Slicer,
 };
-use sp_model::chart::Anchor;
 use sp_model::{Cell, Style, StyleId, Workbook};
 
 fn bad(m: impl Into<String>) -> CmdError {
@@ -54,7 +54,9 @@ pub fn parse_ref_text(wb: &Workbook, home: usize, text: &str) -> Option<(usize, 
         None => home,
     };
     wb.sheet(idx)?;
-    CellRange::parse(&body.replace('$', "")).ok().map(|r| (idx, r))
+    CellRange::parse(&body.replace('$', ""))
+        .ok()
+        .map(|r| (idx, r))
 }
 
 /// Resolve a pivot source: a reference or a table name (its header + data rows).
@@ -100,7 +102,10 @@ fn read_block(wb: &Workbook, sheet: usize, r: CellRange) -> Result<Vec<Vec<Value
         .map(|_| vec![Value::Empty; w])
         .collect();
     for (a, c) in sh.cells_in(r) {
-        let (i, j) = ((a.row - r.start.row) as usize, (a.col - r.start.col) as usize);
+        let (i, j) = (
+            (a.row - r.start.row) as usize,
+            (a.col - r.start.col) as usize,
+        );
         if let Some(slot) = block.get_mut(i).and_then(|row| row.get_mut(j)) {
             *slot = c.value.clone();
         }
@@ -118,7 +123,10 @@ fn style_for(
     percent: bool,
     num_fmt: &str,
 ) -> StyleId {
-    let bold = matches!(kind, CellKind::Header | CellKind::TotalLabel | CellKind::TotalValue);
+    let bold = matches!(
+        kind,
+        CellKind::Header | CellKind::TotalLabel | CellKind::TotalValue
+    );
     let indent = match kind {
         CellKind::Label(n) => n.min(15),
         _ => 0,
@@ -210,9 +218,7 @@ pub fn refresh_pivot(
     }
     let area = CellRange::new(at, CellAddr::new(end_row as u32, end_col as u32));
     let old = parse_ref_text(wb, sheet, &p.output).map(|(_, r)| r);
-    let sh = wb
-        .sheet(sheet)
-        .ok_or_else(|| "no such sheet".to_string())?;
+    let sh = wb.sheet(sheet).ok_or_else(|| "no such sheet".to_string())?;
     for (i, other) in sh.analysis.pivots.iter().enumerate() {
         if i == idx {
             continue;
@@ -274,8 +280,26 @@ pub fn refresh_pivot(
     for a in addrs {
         sh.remove(a);
     }
+    // Autofit on update (the file says useAutoFormatting="1"): widen output columns to fit
+    // their text; never narrow a column the user made wider.
+    let mut fit: std::collections::BTreeMap<u32, f64> = std::collections::BTreeMap::new();
+    for (a, c) in &styled {
+        let st = wb.styles.get(c.style);
+        let text = sp_core::numfmt::format_value(&c.value, &st.num_fmt).text;
+        let w = super::sheet_cmds::fit_width(&text, st.font_size());
+        let e = fit.entry(a.col).or_insert(0.0);
+        *e = e.max(w);
+    }
+    let sh = wb
+        .sheet_mut(sheet)
+        .ok_or_else(|| "no such sheet".to_string())?;
     for (a, c) in styled {
         sh.set(a, c);
+    }
+    for (col, w) in fit {
+        if w > sh.col_width(col) {
+            sh.col_widths.insert(col, w);
+        }
     }
     p.output = abs_ref(area);
     let name = p.name.clone();
@@ -360,9 +384,12 @@ fn set_hidden(p: &mut PivotTable, field: usize, hidden: Vec<Value>) {
 
 fn unique_pivot_name(wb: &Workbook, base: &str) -> String {
     let taken = |n: &str| {
-        wb.sheets
-            .iter()
-            .any(|s| s.analysis.pivots.iter().any(|p| p.name.eq_ignore_ascii_case(n)))
+        wb.sheets.iter().any(|s| {
+            s.analysis
+                .pivots
+                .iter()
+                .any(|p| p.name.eq_ignore_ascii_case(n))
+        })
     };
     (1u32..=100_000)
         .map(|n| format!("{base}{n}"))
@@ -421,14 +448,19 @@ fn define(pv: &mut PivotTable, p: &Json) -> Result<(), CmdError> {
     pv.values.clear();
     for e in list(p, "values")? {
         let f = field_of(&fields, e)?;
-        let func = match e.get("func").or_else(|| e.get("function")).and_then(Json::as_str) {
+        let func = match e
+            .get("func")
+            .or_else(|| e.get("function"))
+            .and_then(Json::as_str)
+        {
             Some(n) => Aggregate::from_name(n)
                 .ok_or_else(|| bad(format!("unknown summary function '{n}'")))?,
             None => default_func(pv, f),
         };
         let show_as = match e.get("show_as").and_then(Json::as_str) {
-            Some(n) => ShowAs::from_name(n)
-                .ok_or_else(|| bad(format!("unknown show-values-as '{n}'")))?,
+            Some(n) => {
+                ShowAs::from_name(n).ok_or_else(|| bad(format!("unknown show-values-as '{n}'")))?
+            }
             None => ShowAs::Normal,
         };
         let name = e
@@ -454,7 +486,8 @@ fn define(pv: &mut PivotTable, p: &Json) -> Result<(), CmdError> {
         });
     }
     if let Some(l) = str_opt(p, "layout") {
-        pv.layout = PivotLayout::from_name(l).ok_or_else(|| bad(format!("unknown layout '{l}'")))?;
+        pv.layout =
+            PivotLayout::from_name(l).ok_or_else(|| bad(format!("unknown layout '{l}'")))?;
     }
     if let Some(b) = bool_opt(p, "grand_totals") {
         pv.grand_total_row = b;
@@ -542,13 +575,14 @@ fn insert_pivot_table(s: &mut Session, p: &Json) -> CmdResult {
     // Destination: an explicit cell, else a new sheet.
     let dest = match str_opt(p, "dest").or_else(|| str_opt(p, "location")) {
         Some(t) => Some(
-            parse_ref_text(&s.wb, home, t)
-                .ok_or_else(|| bad(format!("not a reference: '{t}'")))?,
+            parse_ref_text(&s.wb, home, t).ok_or_else(|| bad(format!("not a reference: '{t}'")))?,
         ),
         None => None,
     };
     if let Some((ds, _)) = dest
-        && s.wb.sheet(ds).is_some_and(|sh| sh.analysis.pivots.len() >= MAX_OBJECTS)
+        && s.wb
+            .sheet(ds)
+            .is_some_and(|sh| sh.analysis.pivots.len() >= MAX_OBJECTS)
     {
         return Err(failed("too many PivotTables on this sheet"));
     }
@@ -564,7 +598,9 @@ fn insert_pivot_table(s: &mut Session, p: &Json) -> CmdResult {
             None => {
                 tx.touch_book();
                 let at = home.min(tx.wb.sheets.len());
-                tx.wb.sheets.insert(at, sp_model::Sheet::new(new_sheet_name));
+                tx.wb
+                    .sheets
+                    .insert(at, sp_model::Sheet::new(new_sheet_name));
                 for n in &mut tx.wb.names {
                     if let Some(sc) = n.scope.as_mut()
                         && *sc >= at
@@ -605,13 +641,12 @@ fn insert_pivot_table(s: &mut Session, p: &Json) -> CmdResult {
 // data.refresh_all
 
 fn refresh_all(s: &mut Session, _p: &Json) -> CmdResult {
-    let targets: Vec<(usize, usize)> = s
-        .wb
-        .sheets
-        .iter()
-        .enumerate()
-        .flat_map(|(i, sh)| (0..sh.analysis.pivots.len()).map(move |j| (i, j)))
-        .collect();
+    let targets: Vec<(usize, usize)> =
+        s.wb.sheets
+            .iter()
+            .enumerate()
+            .flat_map(|(i, sh)| (0..sh.analysis.pivots.len()).map(move |j| (i, j)))
+            .collect();
     if targets.is_empty() {
         s.recalc();
         return Ok(json!({"refreshed": 0, "errors": []}));
@@ -667,18 +702,18 @@ fn target_pivot(s: &Session, p: &Json) -> Result<(usize, usize), CmdError> {
         return Err(bad(format!("no PivotTable named '{n}'")));
     }
     let home = s.sheet_index();
-    let sh = s
-        .wb
-        .sheet(home)
-        .ok_or_else(|| failed("no active sheet"))?;
+    let sh = s.wb.sheet(home).ok_or_else(|| failed("no active sheet"))?;
     let at = s.sel.active;
-    let hit = sh.analysis.pivots.iter().position(|x| {
-        parse_ref_text(&s.wb, home, &x.output).is_some_and(|(_, r)| r.contains(at))
-    });
+    let hit =
+        sh.analysis.pivots.iter().position(|x| {
+            parse_ref_text(&s.wb, home, &x.output).is_some_and(|(_, r)| r.contains(at))
+        });
     match (hit, sh.analysis.pivots.len()) {
         (Some(j), _) => Ok((home, j)),
         (None, 1) => Ok((home, 0)),
-        _ => Err(failed("Select a cell in a PivotTable (or pass 'pivot') first.")),
+        _ => Err(failed(
+            "Select a cell in a PivotTable (or pass 'pivot') first.",
+        )),
     }
 }
 
@@ -709,18 +744,19 @@ fn insert_slicer(s: &mut Session, p: &Json) -> CmdResult {
     });
     let (sheet, slicer) = match existing {
         Some((i, j)) => {
-            let sl = s
-                .wb
-                .sheet(i)
-                .and_then(|sh| sh.analysis.slicers.get(j))
-                .cloned()
-                .ok_or_else(|| failed("no such slicer"))?;
+            let sl =
+                s.wb.sheet(i)
+                    .and_then(|sh| sh.analysis.slicers.get(j))
+                    .cloned()
+                    .ok_or_else(|| failed("no such slicer"))?;
             if bool_opt(p, "delete").unwrap_or(false) {
                 let name = sl.name.clone();
                 s.transact("Delete Slicer", |tx, _| {
                     tx.touch_sheet(i);
                     if let Some(sh) = tx.wb.sheet_mut(i) {
-                        sh.analysis.slicers.retain(|x| !x.name.eq_ignore_ascii_case(&name));
+                        sh.analysis
+                            .slicers
+                            .retain(|x| !x.name.eq_ignore_ascii_case(&name));
                     }
                     Ok(())
                 })?;
@@ -730,25 +766,35 @@ fn insert_slicer(s: &mut Session, p: &Json) -> CmdResult {
         }
         None => {
             let (ps, pj) = target_pivot(s, p)?;
-            let pv = s
-                .wb
-                .sheet(ps)
-                .and_then(|sh| sh.analysis.pivots.get(pj))
-                .ok_or_else(|| failed("no such PivotTable"))?;
-            let fv = p.get("field").ok_or_else(|| bad("missing string 'field'"))?;
+            let pv =
+                s.wb.sheet(ps)
+                    .and_then(|sh| sh.analysis.pivots.get(pj))
+                    .ok_or_else(|| failed("no such PivotTable"))?;
+            let fv = p
+                .get("field")
+                .ok_or_else(|| bad("missing string 'field'"))?;
             let field = field_of(&pv.cache.fields, fv)?;
             let fname = pv.field_name(field).to_string();
-            if s.wb.sheet(ps).is_some_and(|sh| sh.analysis.slicers.len() >= MAX_OBJECTS) {
+            if s.wb
+                .sheet(ps)
+                .is_some_and(|sh| sh.analysis.slicers.len() >= MAX_OBJECTS)
+            {
                 return Err(failed("too many slicers on this sheet"));
             }
-            let base: String = format!("Slicer_{}", fname.replace(|c: char| !c.is_alphanumeric(), "_"))
-                .chars()
-                .take(200)
-                .collect();
+            let base: String = format!(
+                "Slicer_{}",
+                fname.replace(|c: char| !c.is_alphanumeric(), "_")
+            )
+            .chars()
+            .take(200)
+            .collect();
             let taken = |n: &str| {
-                s.wb.sheets
-                    .iter()
-                    .any(|sh| sh.analysis.slicers.iter().any(|x| x.name.eq_ignore_ascii_case(n)))
+                s.wb.sheets.iter().any(|sh| {
+                    sh.analysis
+                        .slicers
+                        .iter()
+                        .any(|x| x.name.eq_ignore_ascii_case(n))
+                })
             };
             let name = match str_opt(p, "name") {
                 Some(n) if !n.trim().is_empty() && n.len() <= 255 => n.trim().to_string(),
@@ -761,10 +807,7 @@ fn insert_slicer(s: &mut Session, p: &Json) -> CmdResult {
             };
             let caption = str_opt(p, "caption")
                 .map_or_else(|| fname.clone(), |c| c.chars().take(255).collect());
-            let stacked = s
-                .wb
-                .sheet(ps)
-                .map_or(0, |sh| sh.analysis.slicers.len());
+            let stacked = s.wb.sheet(ps).map_or(0, |sh| sh.analysis.slicers.len());
             let anchor = default_slicer_anchor(&s.wb, ps, pv, stacked);
             (
                 ps,
@@ -791,16 +834,20 @@ fn insert_slicer(s: &mut Session, p: &Json) -> CmdResult {
         Some(_) => return Err(bad("'columns' must be 1-20")),
         None => None,
     };
-    let pj = s
-        .wb
-        .sheet(sheet)
-        .and_then(|sh| {
-            sh.analysis
-                .pivots
-                .iter()
-                .position(|x| x.name.eq_ignore_ascii_case(&slicer.pivot))
-        })
-        .ok_or_else(|| failed(format!("the slicer's PivotTable '{}' no longer exists", slicer.pivot)))?;
+    let pj =
+        s.wb.sheet(sheet)
+            .and_then(|sh| {
+                sh.analysis
+                    .pivots
+                    .iter()
+                    .position(|x| x.name.eq_ignore_ascii_case(&slicer.pivot))
+            })
+            .ok_or_else(|| {
+                failed(format!(
+                    "the slicer's PivotTable '{}' no longer exists",
+                    slicer.pivot
+                ))
+            })?;
     let select = match p.get("select").or_else(|| p.get("items")) {
         None | Some(Json::Null) => None,
         Some(Json::Array(a)) if a.len() <= 100_000 => Some(a.clone()),
@@ -829,11 +876,10 @@ fn insert_slicer(s: &mut Session, p: &Json) -> CmdResult {
     };
     if !is_new && !restyled && select.is_none() && !clear {
         // Nothing to change: report the slicer.
-        let pv = s
-            .wb
-            .sheet(sheet)
-            .and_then(|sh| sh.analysis.pivots.get(pj))
-            .ok_or_else(|| failed("no such PivotTable"))?;
+        let pv =
+            s.wb.sheet(sheet)
+                .and_then(|sh| sh.analysis.pivots.get(pj))
+                .ok_or_else(|| failed("no such PivotTable"))?;
         return Ok(slicer_json(&slicer, pv));
     }
     let slicer = sl.clone();
@@ -873,11 +919,10 @@ fn insert_slicer(s: &mut Session, p: &Json) -> CmdResult {
         }
         Ok(())
     })?;
-    let pv = s
-        .wb
-        .sheet(sheet)
-        .and_then(|sh| sh.analysis.pivots.get(pj))
-        .ok_or_else(|| failed("no such PivotTable"))?;
+    let pv =
+        s.wb.sheet(sheet)
+            .and_then(|sh| sh.analysis.pivots.get(pj))
+            .ok_or_else(|| failed("no such PivotTable"))?;
     Ok(slicer_json(&slicer, pv))
 }
 
@@ -1057,7 +1102,8 @@ pub fn pivot_at(wb: &Workbook, sheet: usize, at: CellAddr) -> Option<usize> {
 
 /// The pivot's definition as the Fields pane shows it.
 pub fn pivot_info(pv: &PivotTable) -> Json {
-    let names = |v: &[usize]| -> Vec<String> { v.iter().map(|f| pv.field_name(*f).to_string()).collect() };
+    let names =
+        |v: &[usize]| -> Vec<String> { v.iter().map(|f| pv.field_name(*f).to_string()).collect() };
     let fields: Vec<Json> = pv
         .cache
         .fields
@@ -1116,7 +1162,9 @@ fn edit_fields(pv: &mut PivotTable, p: &Json) -> Result<bool, CmdError> {
     let area = match str_opt(p, "area") {
         None => None,
         Some("none") | Some("remove") => Some(None),
-        Some(a) => Some(Some(Area::from_name(a).ok_or_else(|| bad(format!("unknown area '{a}'")))?)),
+        Some(a) => Some(Some(
+            Area::from_name(a).ok_or_else(|| bad(format!("unknown area '{a}'")))?,
+        )),
     };
     let position = crate::params::u32_opt(p, "position")?.map(|n| n as usize);
     let before = pv.clone();
@@ -1132,16 +1180,22 @@ fn edit_fields(pv: &mut PivotTable, p: &Json) -> Result<bool, CmdError> {
         }
         if let Some(d) = pv.values.get_mut(vi) {
             if let Some(n) = str_opt(p, "func").or_else(|| str_opt(p, "function")) {
-                d.func = Aggregate::from_name(n).ok_or_else(|| bad(format!("unknown summary function '{n}'")))?;
+                d.func = Aggregate::from_name(n)
+                    .ok_or_else(|| bad(format!("unknown summary function '{n}'")))?;
             }
             if let Some(n) = str_opt(p, "show_as") {
-                d.show_as = ShowAs::from_name(n).ok_or_else(|| bad(format!("unknown show-values-as '{n}'")))?;
+                d.show_as = ShowAs::from_name(n)
+                    .ok_or_else(|| bad(format!("unknown show-values-as '{n}'")))?;
             }
             if let Some(f) = str_opt(p, "num_fmt") {
                 if f.len() > 255 {
                     return Err(bad("number format too long"));
                 }
-                d.num_fmt = if f.eq_ignore_ascii_case("general") { String::new() } else { f.to_string() };
+                d.num_fmt = if f.eq_ignore_ascii_case("general") {
+                    String::new()
+                } else {
+                    f.to_string()
+                };
             }
             if let Some(n) = str_opt(p, "name") {
                 d.name = n.chars().take(255).collect();
@@ -1171,7 +1225,11 @@ fn edit_fields(pv: &mut PivotTable, p: &Json) -> Result<bool, CmdError> {
             || pv.filters.contains(&field)
             || pv.values.iter().any(|d| d.field == field);
         if check && !used {
-            let a = if field_is_numeric(pv, field) { Area::Values } else { Area::Rows };
+            let a = if field_is_numeric(pv, field) {
+                Area::Values
+            } else {
+                Area::Rows
+            };
             place(pv, field, a, None);
         } else if !check {
             remove_field(pv, field);
@@ -1223,15 +1281,15 @@ fn place(pv: &mut PivotTable, field: usize, a: Area, position: Option<usize>) {
 
 fn pivot_field(s: &mut Session, p: &Json) -> CmdResult {
     let (sheet, idx) = target_pivot(s, p)?;
-    let mut pv = s
-        .wb
-        .sheet(sheet)
-        .and_then(|sh| sh.analysis.pivots.get(idx))
-        .cloned()
-        .ok_or_else(|| failed("no such PivotTable"))?;
+    let mut pv =
+        s.wb.sheet(sheet)
+            .and_then(|sh| sh.analysis.pivots.get(idx))
+            .cloned()
+            .ok_or_else(|| failed("no such PivotTable"))?;
     let mut changed = edit_fields(&mut pv, p)?;
     if let Some(l) = str_opt(p, "layout") {
-        pv.layout = PivotLayout::from_name(l).ok_or_else(|| bad(format!("unknown layout '{l}'")))?;
+        pv.layout =
+            PivotLayout::from_name(l).ok_or_else(|| bad(format!("unknown layout '{l}'")))?;
         changed = true;
     }
     if let Some(b) = bool_opt(p, "grand_totals") {
@@ -1248,7 +1306,11 @@ fn pivot_field(s: &mut Session, p: &Json) -> CmdResult {
         return Ok(pivot_info(&pv));
     }
     let overwrite = bool_opt(p, "overwrite").unwrap_or(false);
-    let label = if changed { "PivotTable Field" } else { "Refresh" };
+    let label = if changed {
+        "PivotTable Field"
+    } else {
+        "Refresh"
+    };
     s.transact(label, move |tx, _| {
         tx.touch_sheet(sheet);
         if let Some(slot) = tx
@@ -1264,11 +1326,10 @@ fn pivot_field(s: &mut Session, p: &Json) -> CmdResult {
     if refresh {
         s.recalc();
     }
-    let pv = s
-        .wb
-        .sheet(sheet)
-        .and_then(|sh| sh.analysis.pivots.get(idx))
-        .ok_or_else(|| failed("no such PivotTable"))?;
+    let pv =
+        s.wb.sheet(sheet)
+            .and_then(|sh| sh.analysis.pivots.get(idx))
+            .ok_or_else(|| failed("no such PivotTable"))?;
     Ok(pivot_info(pv))
 }
 
@@ -1289,7 +1350,9 @@ fn consolidate(s: &mut Session, p: &Json) -> CmdResult {
         None => Aggregate::Sum,
     };
     let top = bool_opt(p, "top_row").unwrap_or(false);
-    let left = bool_opt(p, "left_col").or_else(|| bool_opt(p, "left_column")).unwrap_or(false);
+    let left = bool_opt(p, "left_col")
+        .or_else(|| bool_opt(p, "left_column"))
+        .unwrap_or(false);
     let srcs = match p.get("sources") {
         Some(Json::Array(a)) if !a.is_empty() && a.len() <= MAX_SOURCES => a,
         Some(Json::Array(_)) => return Err(bad("'sources' needs 1-255 references")),
@@ -1298,8 +1361,11 @@ fn consolidate(s: &mut Session, p: &Json) -> CmdResult {
     let mut blocks: Vec<Vec<Vec<Value>>> = Vec::with_capacity(srcs.len());
     let mut total: u64 = 0;
     for v in srcs {
-        let t = v.as_str().ok_or_else(|| bad("sources are reference texts"))?;
-        let (i, r) = resolve_source(&s.wb, home, t).map_err(|_| bad(format!("not a reference: '{t}'")))?;
+        let t = v
+            .as_str()
+            .ok_or_else(|| bad("sources are reference texts"))?;
+        let (i, r) =
+            resolve_source(&s.wb, home, t).map_err(|_| bad(format!("not a reference: '{t}'")))?;
         total = total.saturating_add(r.cell_count());
         if total > MAX_CELLS_PER_OP {
             return Err(failed("the source ranges are too large"));
@@ -1307,7 +1373,9 @@ fn consolidate(s: &mut Session, p: &Json) -> CmdResult {
         blocks.push(read_block(&s.wb, i, r).map_err(failed)?);
     }
     let (dsheet, dest) = match str_opt(p, "dest") {
-        Some(t) => parse_ref_text(&s.wb, home, t).ok_or_else(|| bad(format!("not a reference: '{t}'")))?,
+        Some(t) => {
+            parse_ref_text(&s.wb, home, t).ok_or_else(|| bad(format!("not a reference: '{t}'")))?
+        }
         None => (home, CellRange::single(s.sel.active)),
     };
     let at = dest.start;
@@ -1340,7 +1408,10 @@ fn consolidate(s: &mut Session, p: &Json) -> CmdResult {
             max_rows = max_rows.max(rk + 1);
             for (ci, v) in row.iter().enumerate().skip(usize::from(left)) {
                 let ck = if top {
-                    let lab = header.and_then(|h| h.get(ci)).cloned().unwrap_or(Value::Empty);
+                    let lab = header
+                        .and_then(|h| h.get(ci))
+                        .cloned()
+                        .unwrap_or(Value::Empty);
                     if lab.is_empty() {
                         continue;
                     }
@@ -1447,11 +1518,14 @@ mod tests {
     use sp_core::{CellAddr, Value};
 
     fn set(s: &mut Session, a: &str, v: &str) {
-        s.execute("cell.set", &json!({"cell": a, "input": v})).unwrap();
+        s.execute("cell.set", &json!({"cell": a, "input": v}))
+            .unwrap();
     }
 
     fn val(s: &Session, sheet: usize, a: &str) -> Value {
-        s.wb.sheets[sheet].value(CellAddr::parse(a).unwrap()).clone()
+        s.wb.sheets[sheet]
+            .value(CellAddr::parse(a).unwrap())
+            .clone()
     }
 
     pub(crate) fn sales() -> Session {
@@ -1492,7 +1566,11 @@ mod tests {
         assert_eq!(val(&s, 0, "G4"), Value::Number(105.0));
         assert_eq!(s.wb.sheets[0].analysis.pivots.len(), 1);
         // GETPIVOTDATA reads the model.
-        set(&mut s, "J1", "=GETPIVOTDATA(\"Sales\",F1,\"Region\",\"West\")");
+        set(
+            &mut s,
+            "J1",
+            "=GETPIVOTDATA(\"Sales\",F1,\"Region\",\"West\")",
+        );
         assert_eq!(val(&s, 0, "J1"), Value::Number(70.0));
         // One undo step removes output and model.
         s.execute("edit.undo", &json!({})).unwrap();
@@ -1549,6 +1627,36 @@ mod tests {
     }
 
     #[test]
+    fn pivot_columns_widen_to_fit_but_never_narrow() {
+        // Regression: headings printed as "Row Lab" / "Grand To" in default-width columns.
+        let mut s = sales();
+        s.wb.sheets[0].col_widths.insert(6, 30.0);
+        s.execute(
+            "insert.pivot_table",
+            &json!({"source": "A1:D6", "dest": "F1", "rows": ["Region"], "values": ["Sales"]}),
+        )
+        .unwrap();
+        let sh = &s.wb.sheets[0];
+        let fits = |col: u32, text: &str| {
+            sh.col_width(col) >= super::super::sheet_cmds::fit_width(text, 11.0)
+        };
+        assert!(
+            fits(5, "Grand Total") && fits(5, "Row Labels"),
+            "F is {}",
+            sh.col_width(5)
+        );
+        assert!(sh.col_width(5) > sp_model::DEFAULT_COL_WIDTH);
+        // G was made wider by the user; refresh keeps it.
+        assert_eq!(sh.col_width(6), 30.0);
+        s.execute("data.refresh_all", &json!({})).unwrap();
+        assert_eq!(s.wb.sheets[0].col_width(6), 30.0);
+        // One undo step takes the widths back with the pivot.
+        s.execute("edit.undo", &json!({})).unwrap();
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.wb.sheets[0].col_width(5), sp_model::DEFAULT_COL_WIDTH);
+    }
+
+    #[test]
     fn refresh_all_picks_up_source_edits() {
         let mut s = sales();
         s.execute(
@@ -1567,7 +1675,10 @@ mod tests {
         assert!(s.wb.sheets[0].analysis.pivots[0].values.is_empty());
         // Nothing to refresh is fine.
         let mut empty = Session::new();
-        assert_eq!(empty.execute("data.refresh_all", &json!({})).unwrap()["refreshed"], 0);
+        assert_eq!(
+            empty.execute("data.refresh_all", &json!({})).unwrap()["refreshed"],
+            0
+        );
     }
 
     #[test]
@@ -1583,16 +1694,23 @@ mod tests {
         assert_eq!(info["fields"].as_array().unwrap().len(), 4);
         assert_eq!(info["fields"][3]["numeric"], true);
         // Checking a text field adds it to Rows, a numeric one to Values.
-        s.execute("pivot.field", &json!({"field": "Region", "check": true})).unwrap();
-        let info = s.execute("pivot.field", &json!({"field": "Sales", "check": true})).unwrap();
+        s.execute("pivot.field", &json!({"field": "Region", "check": true}))
+            .unwrap();
+        let info = s
+            .execute("pivot.field", &json!({"field": "Sales", "check": true}))
+            .unwrap();
         assert_eq!(info["rows"], json!(["Region"]));
         assert_eq!(info["values"][0]["caption"], "Sum of Sales");
         assert_eq!(val(&s, 0, "F2"), Value::text("East"));
         assert_eq!(val(&s, 0, "G2"), Value::Number(35.0));
         // Drag Year to Columns, then Region from Rows to Filters at the top.
-        s.execute("pivot.field", &json!({"field": "Year", "area": "cols"})).unwrap();
+        s.execute("pivot.field", &json!({"field": "Year", "area": "cols"}))
+            .unwrap();
         let info = s
-            .execute("pivot.field", &json!({"field": "Region", "area": "filters", "position": 0}))
+            .execute(
+                "pivot.field",
+                &json!({"field": "Region", "area": "filters", "position": 0}),
+            )
             .unwrap();
         assert_eq!(info["filters"], json!(["Region"]));
         assert_eq!(info["rows"], json!([]));
@@ -1614,13 +1732,19 @@ mod tests {
             .count();
         assert!(fmt_cells > 0);
         // Show values as % of total, then move the value field to Rows (drops it).
-        s.execute("pivot.field", &json!({"value": 0, "show_as": "percentOfTotal"})).unwrap();
-        s.execute("pivot.field", &json!({"value": 0, "area": "rows"})).unwrap();
+        s.execute(
+            "pivot.field",
+            &json!({"value": 0, "show_as": "percentOfTotal"}),
+        )
+        .unwrap();
+        s.execute("pivot.field", &json!({"value": 0, "area": "rows"}))
+            .unwrap();
         let pv = &s.wb.sheets[0].analysis.pivots[0];
         assert!(pv.values.is_empty());
         assert_eq!(pv.rows, vec![3]);
         // Remove, refresh, undo.
-        s.execute("pivot.field", &json!({"field": "Sales", "area": "none"})).unwrap();
+        s.execute("pivot.field", &json!({"field": "Sales", "area": "none"}))
+            .unwrap();
         assert!(s.wb.sheets[0].analysis.pivots[0].rows.is_empty());
         s.execute("pivot.field", &json!({"refresh": true})).unwrap();
         s.execute("edit.undo", &json!({})).unwrap();
@@ -1645,35 +1769,68 @@ mod tests {
             &json!({"source": "A1:D6", "dest": "F1", "rows": ["Product"], "values": ["Sales"]}),
         )
         .unwrap();
-        let r = s.execute("insert.slicer", &json!({"field": "Region"})).unwrap();
+        let r = s
+            .execute("insert.slicer", &json!({"field": "Region"}))
+            .unwrap();
         let sl = s.wb.sheets[0].analysis.slicers[0].clone();
         // Placed to the right of the output (F1:G4 → from column I).
         assert_eq!(sl.anchor.from, CellAddr::new(0, 8));
         assert_eq!(r["anchor"], "I1:K6");
-        s.execute("insert.slicer", &json!({"name": "Slicer_Region", "anchor": "B10:C20"}))
-            .unwrap();
-        assert_eq!(s.wb.sheets[0].analysis.slicers[0].anchor.from, CellAddr::new(9, 1));
+        s.execute(
+            "insert.slicer",
+            &json!({"name": "Slicer_Region", "anchor": "B10:C20"}),
+        )
+        .unwrap();
+        assert_eq!(
+            s.wb.sheets[0].analysis.slicers[0].anchor.from,
+            CellAddr::new(9, 1)
+        );
         assert_eq!(s.history.undo_label(), Some("Move Slicer"));
         // A second slicer on Year, then filter Region to West: 2023 still has data, an
         // item with no remaining records shows as such.
-        s.execute("insert.slicer", &json!({"field": "Year"})).unwrap();
-        s.execute("insert.slicer", &json!({"name": "Slicer_Region", "select": ["West"]}))
+        s.execute("insert.slicer", &json!({"field": "Year"}))
             .unwrap();
-        s.execute("insert.slicer", &json!({"name": "Slicer_Year", "select": ["2024"]}))
-            .unwrap();
+        s.execute(
+            "insert.slicer",
+            &json!({"name": "Slicer_Region", "select": ["West"]}),
+        )
+        .unwrap();
+        s.execute(
+            "insert.slicer",
+            &json!({"name": "Slicer_Year", "select": ["2024"]}),
+        )
+        .unwrap();
         let pv = &s.wb.sheets[0].analysis.pivots[0];
         let region = super::slicer_state(pv, 0);
-        assert_eq!(region.iter().map(|i| i.selected).collect::<Vec<_>>(), vec![false, true]);
+        assert_eq!(
+            region.iter().map(|i| i.selected).collect::<Vec<_>>(),
+            vec![false, true]
+        );
         assert!(region.iter().all(|i| i.has_data));
         // Product B only exists in 2024: with Year = 2023 it would have no data.
-        s.execute("insert.slicer", &json!({"name": "Slicer_Year", "select": ["2023"]}))
-            .unwrap();
+        s.execute(
+            "insert.slicer",
+            &json!({"name": "Slicer_Year", "select": ["2023"]}),
+        )
+        .unwrap();
         let pv = &s.wb.sheets[0].analysis.pivots[0];
         let product = super::slicer_state(pv, 1);
         assert_eq!(product[1].label, "B");
         assert!(!product[1].has_data);
-        assert!(s.execute("insert.slicer", &json!({"name": "Slicer_Region", "anchor": 5})).is_err());
-        assert!(s.execute("insert.slicer", &json!({"name": "Slicer_Region", "columns": 0})).is_err());
+        assert!(
+            s.execute(
+                "insert.slicer",
+                &json!({"name": "Slicer_Region", "anchor": 5})
+            )
+            .is_err()
+        );
+        assert!(
+            s.execute(
+                "insert.slicer",
+                &json!({"name": "Slicer_Region", "columns": 0})
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1685,7 +1842,10 @@ mod tests {
         )
         .unwrap();
         let r = s
-            .execute("insert.slicer", &json!({"field": "Region", "select": ["West"]}))
+            .execute(
+                "insert.slicer",
+                &json!({"field": "Region", "select": ["West"]}),
+            )
             .unwrap();
         assert_eq!(r["name"], "Slicer_Region");
         assert_eq!(r["items"][0]["selected"], false);
@@ -1693,24 +1853,48 @@ mod tests {
         // Product A West = 30, B West = 40; grand total 70.
         assert_eq!(val(&s, 0, "G2"), Value::Number(30.0));
         assert_eq!(val(&s, 0, "G4"), Value::Number(70.0));
-        s.execute("insert.slicer", &json!({"name": "Slicer_Region", "clear": true}))
-            .unwrap();
+        s.execute(
+            "insert.slicer",
+            &json!({"name": "Slicer_Region", "clear": true}),
+        )
+        .unwrap();
         assert_eq!(val(&s, 0, "G4"), Value::Number(105.0));
         assert!(
-            s.execute("insert.slicer", &json!({"name": "Slicer_Region", "select": []}))
+            s.execute(
+                "insert.slicer",
+                &json!({"name": "Slicer_Region", "select": []})
+            )
+            .is_err()
+        );
+        s.execute(
+            "insert.slicer",
+            &json!({"name": "Slicer_Region", "delete": true}),
+        )
+        .unwrap();
+        assert!(s.wb.sheets[0].analysis.slicers.is_empty());
+        assert!(
+            s.execute("insert.slicer", &json!({"field": "Nope"}))
                 .is_err()
         );
-        s.execute("insert.slicer", &json!({"name": "Slicer_Region", "delete": true}))
-            .unwrap();
-        assert!(s.wb.sheets[0].analysis.slicers.is_empty());
-        assert!(s.execute("insert.slicer", &json!({"field": "Nope"})).is_err());
-        assert!(Session::new().execute("insert.slicer", &json!({"field": "Region"})).is_err());
+        assert!(
+            Session::new()
+                .execute("insert.slicer", &json!({"field": "Region"}))
+                .is_err()
+        );
     }
 
     #[test]
     fn consolidate_by_position_and_labels() {
         let mut s = Session::new();
-        for (a, v) in [("A1", "1"), ("B1", "2"), ("A2", "3"), ("D1", "10"), ("E1", "20"), ("D2", "30"), ("E2", "40")] {
+        for (a, v) in [
+            ("A1", "1"),
+            ("B1", "2"),
+            ("A2", "3"),
+            ("D1", "10"),
+            ("E1", "20"),
+            ("D2", "30"),
+            ("E2", "40"),
+        ] {
             set(&mut s, a, v);
         }
         s.execute(
@@ -1725,9 +1909,20 @@ mod tests {
 
         let mut s = Session::new();
         for (a, v) in [
-            ("A1", "Item"), ("B1", "Q1"), ("A2", "Pens"), ("B2", "5"), ("A3", "Ink"), ("B3", "2"),
-            ("D1", "Item"), ("E1", "Q2"), ("F1", "Q1"), ("D2", "ink"), ("E2", "7"), ("F2", "1"),
-            ("D3", "Paper"), ("E3", "4"),
+            ("A1", "Item"),
+            ("B1", "Q1"),
+            ("A2", "Pens"),
+            ("B2", "5"),
+            ("A3", "Ink"),
+            ("B3", "2"),
+            ("D1", "Item"),
+            ("E1", "Q2"),
+            ("F1", "Q1"),
+            ("D2", "ink"),
+            ("E2", "7"),
+            ("F2", "1"),
+            ("D3", "Paper"),
+            ("E3", "4"),
         ] {
             set(&mut s, a, v);
         }
@@ -1744,7 +1939,13 @@ mod tests {
         assert_eq!(val(&s, 0, "I3"), Value::Number(3.0));
         assert_eq!(val(&s, 0, "J3"), Value::Number(7.0));
         assert_eq!(val(&s, 0, "I4"), Value::Empty);
-        assert!(s.execute("data.consolidate", &json!({"sources": []})).is_err());
-        assert!(s.execute("data.consolidate", &json!({"sources": ["A1"], "func": "x"})).is_err());
+        assert!(
+            s.execute("data.consolidate", &json!({"sources": []}))
+                .is_err()
+        );
+        assert!(
+            s.execute("data.consolidate", &json!({"sources": ["A1"], "func": "x"}))
+                .is_err()
+        );
     }
 }
