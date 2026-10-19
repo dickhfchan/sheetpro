@@ -1,6 +1,13 @@
 //! Whole-sheet operations on sheets large enough to take the parallel formula paths
 //! (sort, insert rows): every formula must come out exactly as the serial rule says.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
 use serde_json::json;
 use sp_core::{CellAddr, Value};
 use sp_engine::Session;
