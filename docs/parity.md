@@ -6,9 +6,9 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 
 | Surface | Live | Total | % |
 |---|---|---|---|
-| Commands (ribbon + keyboard) | 296 | 304 | 97.4% |
+| Commands (ribbon + keyboard) | 304 | 304 | 100.0% |
 | Worksheet functions | 502 | 514 | 97.7% |
-| **All** | **798** | **818** | **97.6%** |
+| **All** | **806** | **818** | **98.5%** |
 
 ## Commands by tab
 
@@ -18,10 +18,10 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 | File | 15 | 15 | — |
 | Format Cells | 1 | 1 | — |
 | Formulas | 23 | 23 | — |
-| Home | 111 | 112 | `home.editing.flash_fill` |
-| Insert | 19 | 24 | `insert.picture` `insert.shapes` `insert.text_box` `insert.equation` `insert.checkbox` |
+| Home | 112 | 112 | — |
+| Insert | 24 | 24 | — |
 | Name Box | 1 | 1 | — |
-| Page Layout | 14 | 16 | `layout.themes` `layout.background` |
+| Page Layout | 16 | 16 | — |
 | Quick Access | 2 | 2 | — |
 | Review | 12 | 12 | — |
 | Sheet tabs | 3 | 3 | — |
@@ -51,6 +51,15 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 - command `format.cells`
 - command `edit.replace_current`
 - command `edit.find_all`
+- command `object.format`
+- command `object.delete`
+- command `object.bring_forward`
+- command `object.send_backward`
+- command `object.bring_to_front`
+- command `object.send_to_back`
+- command `object.list`
+- command `cell.toggle_checkbox`
 - command `table.design`
+- command `pivot.field`
 - command `app.report_problem`
 - function `TABLE`

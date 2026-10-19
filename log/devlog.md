@@ -197,4 +197,14 @@ Landed:
 - Floors raised: parity commands 296; oracle files 192, cells 72802. New nightly clippy lint
   (unnecessary_sort_by) fixed in xtask/src/corpus.rs.
 
-Still open: wave5/objects and wave5/pivotui not merged (uncommitted work in both worktrees).
+Part 2 (objects, pivotui), finished from stalled worktrees:
+- objects: insert picture/shapes/text box/equation/checkbox, object.format/arrange/delete,
+  sheet background; xlsx read/write of drawings and cell checkboxes. Fixed object.format and
+  insert-with-"cell" collapsing the object to 0x0 (regression test).
+- pivotui: flash fill, workbook themes (theme1.xml, theme colours in styles), pivot fields
+  pane (pivot.field), value-field number formats, floating slicers.
+- Commands 296→304/304; floor raised to 304. Merge: xlsx_read now reads the theme, then
+  styles with it, then adopts checkboxes.
+
+Still open: missing functions (12): IMAGE, STOCKHISTORY, Web & Cube (10). Layer violation:
+objects added the `image` crate to sp_render (L3), which layers.rs reserves for L6+.
