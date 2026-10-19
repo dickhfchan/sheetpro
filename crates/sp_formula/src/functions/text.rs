@@ -527,15 +527,28 @@ fn before_after(ev: &mut Ev<'_>, args: &[Expr], before: bool) -> EvalValue {
         (Ok(x), Ok(y)) => (x, y),
         (Err(e), _) | (_, Err(e)) => return EvalValue::err(e),
     };
+    // Fractional instances round down (-1.2 is the second match from the end).
     let n = match ev.num_or(args, 2, 1.0) {
-        Ok(n) => n.trunc() as i64,
+        Ok(n) if n.is_finite() && n.abs() < 1e15 => n.floor() as i64,
+        Ok(_) => return EvalValue::err(ErrorKind::Value),
         Err(e) => return EvalValue::err(e),
     };
     let ci = match ev.num_or(args, 3, 0.0) {
         Ok(m) => m != 0.0,
         Err(e) => return EvalValue::err(e),
     };
-    if n == 0 || d.is_empty() && n.unsigned_abs() as usize > s.len() + 1 {
+    let match_end = match ev.num_or(args, 4, 0.0) {
+        Ok(m) if m == 0.0 || m == 1.0 => m == 1.0,
+        Ok(_) => return EvalValue::err(ErrorKind::Value),
+        Err(e) => return EvalValue::err(e),
+    };
+    let len = s.chars().count();
+    let instance_given = !matches!(args.get(2), None | Some(Expr::Missing));
+    if n == 0
+        || n.unsigned_abs() as usize > len.max(1)
+            && !(d.is_empty() && n.unsigned_abs() as usize == len + 1)
+        || instance_given && d.chars().count() > len
+    {
         return EvalValue::err(ErrorKind::Value);
     }
     let (hay, needle) = if ci {
@@ -543,13 +556,25 @@ fn before_after(ev: &mut Ev<'_>, args: &[Expr], before: bool) -> EvalValue {
     } else {
         (s.clone(), d.clone())
     };
-    let idxs: Vec<usize> = if needle.is_empty() {
+    // Matches as (byte offset, byte length). With match_end the end of the text (counting
+    // forwards) or its start (counting backwards) acts as one more delimiter.
+    let mut idxs: Vec<(usize, usize)> = if needle.is_empty() {
         (0..=hay.len())
             .filter(|i| hay.is_char_boundary(*i))
+            .map(|i| (i, 0))
             .collect()
     } else {
-        hay.match_indices(&needle).map(|(i, _)| i).collect()
+        hay.match_indices(&needle)
+            .map(|(i, m)| (i, m.len()))
+            .collect()
     };
+    if match_end && !needle.is_empty() {
+        if n > 0 {
+            idxs.push((hay.len(), 0));
+        } else {
+            idxs.insert(0, (0, 0));
+        }
+    }
     let pick = if n > 0 {
         idxs.get((n - 1) as usize)
     } else {
@@ -557,18 +582,23 @@ fn before_after(ev: &mut Ev<'_>, args: &[Expr], before: bool) -> EvalValue {
             .checked_sub(n.unsigned_abs() as usize)
             .and_then(|i| idxs.get(i))
     };
-    let fallback = args.get(5);
     match pick {
-        Some(&i) => {
+        // Offsets index the (possibly lower-cased) haystack; fall back to it when case
+        // folding changed byte lengths.
+        Some(&(i, m)) => {
+            let src = if hay.len() == s.len() { &s } else { &hay };
             if before {
-                EvalValue::text(s.get(..i).unwrap_or(""))
+                EvalValue::text(src.get(..i).unwrap_or(""))
             } else {
-                EvalValue::text(s.get(i + d.len()..).unwrap_or(""))
+                EvalValue::text(src.get(i + m..).unwrap_or(""))
             }
         }
-        None => match fallback {
-            Some(e) => ev.eval(e),
-            None => EvalValue::err(ErrorKind::NA),
+        None => match args.get(5) {
+            Some(Expr::Missing) | None => EvalValue::err(ErrorKind::NA),
+            Some(e) => match ev.eval_scalar(e) {
+                Value::Empty => EvalValue::text(""),
+                v => EvalValue::Scalar(v),
+            },
         },
     }
 }

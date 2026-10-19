@@ -126,3 +126,36 @@ fn argument_errors_win_over_bad_counts_and_shapes() {
     assert_eq!(err(&wb, "B11"), ErrorKind::NA);
     assert_eq!(err(&wb, "B12"), ErrorKind::NA);
 }
+
+#[test]
+fn textbefore_textafter_instance_match_end_and_fallback() {
+    let wb = wb_with(&[
+        ("A1", "123 the 456 the 891"),
+        ("B1", "=TEXTAFTER(A1,\"the\",-1.2)"),
+        ("B2", "=TEXTBEFORE(A1,\"the\",-1.6)"),
+        ("B3", "=TEXTAFTER(A1,\"Hello\",1,1,1,\"F\")"),
+        ("B4", "=TEXTBEFORE(A1,\"Hello\",1,1,1,\"F\")"),
+        ("B5", "=TEXTAFTER(A1,\"Hello\",-1,1,1,\"F\")"),
+        ("B6", "=TEXTAFTER(A1,\"Hello\",2,1,1,\"F\")"),
+        ("B7", "=TEXTAFTER(A1,\"Hello\",-1,1,2,\"F\")"),
+        ("B8", "=TEXTAFTER(\"del\",\"deli\",1)"),
+        ("B9", "=TEXTAFTER(\"del\",\"deli\")"),
+        ("B10", "=TEXTAFTER(\"TRUE\",\"r\",1,0,0,Z99)"),
+        ("B11", "=TEXTAFTER(\"you@example.com\",\"- \",-1,,1)"),
+        ("B12", "=TEXTBEFORE(\"you@example.com\",\"- \",-1,,1)"),
+        ("B13", "=TEXTAFTER(A1,\"the\",0)"),
+    ]);
+    assert_eq!(text(&wb, "B1"), " 456 the 891");
+    assert_eq!(text(&wb, "B2"), "123 ");
+    assert_eq!(text(&wb, "B3"), "");
+    assert_eq!(text(&wb, "B4"), "123 the 456 the 891");
+    assert_eq!(text(&wb, "B5"), "123 the 456 the 891");
+    assert_eq!(text(&wb, "B6"), "F");
+    assert_eq!(err(&wb, "B7"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B8"), ErrorKind::Value);
+    assert_eq!(err(&wb, "B9"), ErrorKind::NA);
+    assert_eq!(text(&wb, "B10"), "");
+    assert_eq!(text(&wb, "B11"), "you@example.com");
+    assert_eq!(text(&wb, "B12"), "");
+    assert_eq!(err(&wb, "B13"), ErrorKind::Value);
+}
