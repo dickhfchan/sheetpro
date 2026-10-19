@@ -428,3 +428,29 @@ fn oddlprice_actual_360_and_365_use_actual_quasi_period_lengths() {
     assert!(close(num(&wb, "A1"), 122.367_058_394_175_25));
     assert!(close(num(&wb, "A2"), 116.471_020_121_363_68));
 }
+
+#[test]
+fn oddfprice_long_first_period_all_bases() {
+    let wb = wb_with(&[
+        (
+            "A1",
+            "=ODDFPRICE(43891,47543,43845,44256,0.075,0.05,120,2,1)",
+        ),
+        (
+            "A2",
+            "=ODDFPRICE(43891,47543,43845,44256,0.075,0.05,120,2,2)",
+        ),
+        (
+            "A3",
+            "=ODDFPRICE(43891,47543,43845,44256,0.075,0.05,120,2,3)",
+        ),
+        (
+            "A4",
+            "=ODDFPRICE(43891,47543,43845,44256,0.08,0.06,120,2,3)",
+        ),
+    ]);
+    assert!(close(num(&wb, "A1"), 131.556_968_693_401_22));
+    assert!(close(num(&wb, "A2"), 131.483_767_046_541_66));
+    assert!(close(num(&wb, "A3"), 131.530_204_810_012_26));
+    assert!(close(num(&wb, "A4"), 125.749_203_192_038_89));
+}

@@ -761,9 +761,21 @@ impl OddFirst {
         let base = 1.0 + yld / f;
         // Regular coupons after the first one.
         let regular = coupon(self.first, self.mat, f).map_or(0.0, |c| c.num);
-        let first_cpn = cpn * accrual_capped(self.issue, self.first, self.first, f, self.basis)?;
+        // Actual/365 counts the odd first coupon's quasi-periods uncapped (a 184-day half
+        // year is 184/182.5 of a period).
+        let first_periods = if self.basis == 3 {
+            accrual_periods(self.issue, self.first, self.first, f, self.basis)?
+        } else {
+            accrual_capped(self.issue, self.first, self.first, f, self.basis)?
+        };
+        let first_cpn = cpn * first_periods;
         // Periods from settlement to the first coupon (quasi-coupon periods).
-        let to_first = accrual_periods(self.settle, self.first, self.first, f, self.basis)?;
+        // Whole quasi-coupon periods count 1 each; the settlement's period counts DSC/E.
+        let to_first = {
+            let c = coupon(self.settle, self.first, f)?;
+            let dsc = coup_daysnc(&c, self.settle, f, self.basis)?;
+            (c.num - 1.0) + dsc / coup_days(&c, f, self.basis)
+        };
         let mut p = first_cpn / base.powf(to_first);
         for k in 1..=(regular as i64) {
             p += cpn / base.powf(to_first + k as f64);
