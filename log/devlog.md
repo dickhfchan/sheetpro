@@ -206,5 +206,5 @@ Part 2 (objects, pivotui), finished from stalled worktrees:
 - Commands 296→304/304; floor raised to 304. Merge: xlsx_read now reads the theme, then
   styles with it, then adopts checkboxes.
 
-Still open: missing functions (12): IMAGE, STOCKHISTORY, Web & Cube (10). Layer violation:
-objects added the `image` crate to sp_render (L3), which layers.rs reserves for L6+.
+Still open: missing functions (12): IMAGE, STOCKHISTORY, Web & Cube (10). `image` is no
+longer a UI-only crate in layers.rs (sp_render decodes pictures with it).

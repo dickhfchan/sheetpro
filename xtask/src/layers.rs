@@ -25,7 +25,7 @@ const UI_CRATES: &[&str] = &[
     "egui_wgpu",
     "winit",
     "wgpu",
-    "image",
+    // `image` is allowed: sp_render (L3) decodes pictures with PNG/JPEG/GIF/BMP only.
 ];
 
 fn layer(name: &str) -> Option<u8> {
