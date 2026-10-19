@@ -19,3 +19,5 @@ anyhow.workspace = true
 sha2.workspace = true
 sp_ops.workspace = true
 sp_render.workspace = true
+# Peak RSS for the 1M-row perf suite (getrusage).
+libc = "=0.2.190"

@@ -49,7 +49,7 @@ fn main() -> Result<()> {
                 only: value("--only"),
             })
         }
-        Some("perf") => perf::run(flag("--quick")),
+        Some("perf") => perf::run(flag("--quick"), flag("--million")),
         Some("scorecard") => scorecard::run(flag("--check")),
         Some("package") => package::run_package(),
         Some("panic-hunt") => cargo(&[
@@ -87,7 +87,7 @@ fn main() -> Result<()> {
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] [--dump out.tsv] [--only substr] | perf [--quick] | scorecard [--check] | panic-hunt | package | check>"
+                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] [--dump out.tsv] [--only substr] | perf [--quick | --million] | scorecard [--check] | panic-hunt | package | check>"
             );
             bail!("unknown task")
         }
