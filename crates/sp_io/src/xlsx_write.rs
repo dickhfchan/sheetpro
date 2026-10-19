@@ -3,7 +3,7 @@
 use crate::IoError;
 use crate::xlsx_passthrough as pass;
 use crate::xml::esc;
-use sp_core::{Value, col_to_letters};
+use sp_core::Value;
 use sp_formula::{Expr, parse, to_formula};
 use sp_model::passthrough::RawRel;
 use sp_model::{Border, BorderStyle, Content, HAlign, Style, VAlign, Visibility, Workbook};
@@ -437,10 +437,14 @@ fn build_styles(wb: &Workbook) -> StylesXml {
     StylesXml { xml: x, xf_index }
 }
 
-fn fmt_num(n: f64) -> String {
-    // Shortest representation that round-trips.
-    let s = format!("{n}");
-    if s.contains('e') { format!("{n:E}") } else { s }
+/// Append the shortest round-tripping text of `n` (exponent form as `1E+20`).
+fn push_num(x: &mut String, n: f64) {
+    let start = x.len();
+    let _ = write!(x, "{n}");
+    if x.get(start..).is_some_and(|t| t.contains('e')) {
+        x.truncate(start);
+        let _ = write!(x, "{n:E}");
+    }
 }
 
 /// Shared-string table being built while writing cells.
@@ -449,6 +453,173 @@ struct Sst {
     list: Vec<String>,
     idx: HashMap<String, usize>,
     count: usize,
+}
+
+/// Rows per block of parallel formula conversion in [`write_sheet_data`].
+const FORMULA_BLOCK_ROWS: usize = 16_384;
+
+/// How each formula cell of `rows` (row-major) is saved: `None` for a data-table cell,
+/// which [`write_cell`] spells itself. Converted on all cores for large blocks.
+fn file_formulas(sheet: &sp_model::Sheet, rows: &[u32]) -> Vec<Option<FileFormula>> {
+    let cells: Vec<(sp_core::CellAddr, &str)> = rows
+        .iter()
+        .filter_map(|r| sheet.cells.get(r).map(|row| (*r, row)))
+        .flat_map(|(r, row)| {
+            row.iter().filter_map(move |(c, cell)| {
+                Some((sp_core::CellAddr::new(r, *c), cell.formula_src()?))
+            })
+        })
+        .collect();
+    let convert = |(at, src): &(sp_core::CellAddr, &str)| {
+        crate::xlsx_pivots::data_table_f(sheet, *at, src)
+            .is_none()
+            .then(|| formula_for_cell(src, sheet, *at))
+    };
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(16));
+    if threads < 2 || cells.len() < 4_096 {
+        return cells.iter().map(convert).collect();
+    }
+    let per = cells.len().div_ceil(threads);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = cells
+            .chunks(per)
+            .map(|chunk| scope.spawn(move || chunk.iter().map(convert).collect::<Vec<_>>()))
+            .collect();
+        let mut out = Vec::with_capacity(cells.len());
+        for (h, chunk) in handles.into_iter().zip(cells.chunks(per)) {
+            match h.join() {
+                Ok(v) => out.extend(v),
+                // A worker never panics on valid input; convert its chunk here if it did.
+                Err(_) => out.extend(chunk.iter().map(convert)),
+            }
+        }
+        out
+    })
+}
+
+/// Append `A1`-style address of (`row`, `col`) without allocating.
+fn push_addr(x: &mut String, row: u32, col: u32) {
+    let mut letters = [0u8; 4];
+    let mut n = u64::from(col) + 1;
+    let mut i = letters.len();
+    while n > 0 && i > 0 {
+        i -= 1;
+        if let Some(b) = letters.get_mut(i) {
+            *b = b'A' + ((n - 1) % 26) as u8;
+        }
+        n = (n - 1) / 26;
+    }
+    for b in letters.iter().skip(i) {
+        x.push(char::from(*b));
+    }
+    let _ = write!(x, "{}", u64::from(row) + 1);
+}
+
+/// One `<c>` element. `ff` is the cell's converted formula (see [`file_formulas`]).
+/// Returns whether it is a dynamic array formula.
+#[allow(clippy::too_many_arguments)]
+fn write_cell(
+    x: &mut String,
+    sheet: &sp_model::Sheet,
+    styles: &StylesXml,
+    sst: &mut Sst,
+    r: u32,
+    c: u32,
+    cell: &sp_model::Cell,
+    ff: Option<FileFormula>,
+) -> bool {
+    let at = sp_core::CellAddr::new(r, c);
+    let s = styles
+        .xf_index
+        .get(cell.style.0 as usize)
+        .copied()
+        .unwrap_or(0);
+    let mut dynamic = false;
+    let f_xml = match &cell.content {
+        Content::Formula(f) => match ff {
+            Some(ff) => match ff.array {
+                Some((rf, dy)) => {
+                    dynamic = dy;
+                    format!(r#"<f t="array" ref="{rf}">{}</f>"#, esc(&ff.text))
+                }
+                None => format!("<f>{}</f>", esc(&ff.text)),
+            },
+            None => crate::xlsx_pivots::data_table_f(sheet, at, f)
+                .unwrap_or_else(|| format!("<f>{}</f>", esc(&file_formula(f)))),
+        },
+        Content::Value(_) => String::new(),
+    };
+    let is_formula = !f_xml.is_empty();
+    let open = |x: &mut String, t: &str| {
+        x.push_str(r#"<c r=""#);
+        push_addr(x, r, c);
+        x.push('"');
+        if s != 0 {
+            let _ = write!(x, r#" s="{s}""#);
+        }
+        if dynamic {
+            x.push_str(r#" cm="1""#);
+        }
+        x.push_str(t);
+    };
+    match &cell.value {
+        Value::Empty if !is_formula => {
+            open(x, "");
+            x.push_str("/>");
+        }
+        Value::Empty => {
+            open(x, ">");
+            x.push_str(&f_xml);
+            x.push_str("</c>");
+        }
+        Value::Number(n) => {
+            open(x, ">");
+            x.push_str(&f_xml);
+            x.push_str("<v>");
+            push_num(x, *n);
+            x.push_str("</v></c>");
+        }
+        Value::Bool(b) => {
+            open(x, r#" t="b">"#);
+            let _ = write!(x, "{f_xml}<v>{}</v></c>", u8::from(*b));
+        }
+        Value::Error(e) => {
+            open(x, r#" t="e">"#);
+            // Newer error kinds need rich-value metadata; a formula's cached result is saved
+            // as the classic equivalent.
+            let v = match e {
+                sp_core::ErrorKind::Spill
+                | sp_core::ErrorKind::Calc
+                | sp_core::ErrorKind::Circ
+                | sp_core::ErrorKind::GettingData
+                    if is_formula =>
+                {
+                    "#VALUE!"
+                }
+                other => other.as_str(),
+            };
+            let _ = write!(x, "{f_xml}<v>{v}</v></c>");
+        }
+        Value::Text(t) if is_formula => {
+            open(x, r#" t="str">"#);
+            let _ = write!(x, "{f_xml}<v>{}</v></c>", esc(t));
+        }
+        Value::Text(t) => {
+            let idx = match sst.idx.get(&**t) {
+                Some(i) => *i,
+                None => {
+                    sst.list.push(t.to_string());
+                    let i = sst.list.len() - 1;
+                    sst.idx.insert(t.to_string(), i);
+                    i
+                }
+            };
+            sst.count += 1;
+            open(x, r#" t="s">"#);
+            let _ = write!(x, "<v>{idx}</v></c>");
+        }
+    }
+    dynamic
 }
 
 /// `<sheetData>…</sheetData>` for one sheet; returns whether a dynamic array was written.
@@ -470,119 +641,32 @@ fn write_sheet_data(
         .collect();
     rows.sort_unstable();
     rows.dedup();
-    for r in rows {
-        let _ = write!(x, r#"<row r="{}""#, r + 1);
-        if let Some(h) = sheet.row_heights.get(&r) {
-            let _ = write!(x, r#" ht="{h}" customHeight="1""#);
-        }
-        if sheet.hidden_rows.contains(&r) {
-            x.push_str(r#" hidden="1""#);
-        }
-        x.push_str(&crate::xlsx_extras::outline_attr(sheet, r, true));
-        x.push('>');
-        if let Some(cells) = sheet.cells.get(&r) {
-            for (c, cell) in cells.iter() {
-                let addr = format!("{}{}", col_to_letters(*c), r + 1);
-                let s = styles
-                    .xf_index
-                    .get(cell.style.0 as usize)
-                    .copied()
-                    .unwrap_or(0);
-                let s_attr = if s == 0 {
-                    String::new()
-                } else {
-                    format!(r#" s="{s}""#)
-                };
-                let mut cm = "";
-                let f_xml = match &cell.content {
-                    Content::Formula(f)
-                        if crate::xlsx_pivots::data_table_f(
-                            sheet,
-                            sp_core::CellAddr::new(r, *c),
-                            f,
-                        )
-                        .is_some() =>
-                    {
-                        crate::xlsx_pivots::data_table_f(sheet, sp_core::CellAddr::new(r, *c), f)
-                            .unwrap_or_default()
-                    }
-                    Content::Formula(f) => {
-                        let ff = formula_for_cell(f, sheet, sp_core::CellAddr::new(r, *c));
-                        match ff.array {
-                            Some((rf, dynamic)) => {
-                                if dynamic {
-                                    cm = r#" cm="1""#;
-                                    uses_dynamic = true;
-                                }
-                                format!(r#"<f t="array" ref="{rf}">{}</f>"#, esc(&ff.text))
-                            }
-                            None => format!("<f>{}</f>", esc(&ff.text)),
-                        }
-                    }
-                    Content::Value(_) => String::new(),
-                };
-                let s_attr = format!("{s_attr}{cm}");
-                let is_formula = !f_xml.is_empty();
-                match &cell.value {
-                    Value::Empty if !is_formula => {
-                        let _ = write!(x, r#"<c r="{addr}"{s_attr}/>"#);
-                    }
-                    Value::Empty => {
-                        let _ = write!(x, r#"<c r="{addr}"{s_attr}>{f_xml}</c>"#);
-                    }
-                    Value::Number(n) => {
-                        let _ = write!(
-                            x,
-                            r#"<c r="{addr}"{s_attr}>{f_xml}<v>{}</v></c>"#,
-                            fmt_num(*n)
-                        );
-                    }
-                    Value::Bool(b) => {
-                        let _ = write!(
-                            x,
-                            r#"<c r="{addr}"{s_attr} t="b">{f_xml}<v>{}</v></c>"#,
-                            u8::from(*b)
-                        );
-                    }
-                    Value::Error(e) => {
-                        let _ = write!(
-                            x,
-                            r#"<c r="{addr}"{s_attr} t="e">{f_xml}<v>{}</v></c>"#,
-                            // Newer error kinds need rich-value metadata; a formula's
-                            // cached result is saved as the classic equivalent.
-                            match e {
-                                sp_core::ErrorKind::Spill
-                                | sp_core::ErrorKind::Calc
-                                | sp_core::ErrorKind::Circ
-                                | sp_core::ErrorKind::GettingData
-                                    if is_formula =>
-                                {
-                                    "#VALUE!"
-                                }
-                                other => other.as_str(),
-                            }
-                        );
-                    }
-                    Value::Text(t) if is_formula => {
-                        let _ = write!(
-                            x,
-                            r#"<c r="{addr}"{s_attr} t="str">{f_xml}<v>{}</v></c>"#,
-                            esc(t)
-                        );
-                    }
-                    Value::Text(t) => {
-                        let list = &mut sst.list;
-                        let idx = *sst.idx.entry(t.to_string()).or_insert_with(|| {
-                            list.push(t.to_string());
-                            list.len() - 1
-                        });
-                        sst.count += 1;
-                        let _ = write!(x, r#"<c r="{addr}"{s_attr} t="s"><v>{idx}</v></c>"#);
-                    }
+    // Formula text conversion (parse + file spelling) dominates large sheets: it runs in
+    // parallel, one block of rows at a time (bounded memory), then cells are written in order.
+    for block in rows.chunks(FORMULA_BLOCK_ROWS) {
+        let formulas = file_formulas(sheet, block);
+        let mut formulas = formulas.into_iter();
+        for &r in block {
+            let _ = write!(x, r#"<row r="{}""#, r + 1);
+            if let Some(h) = sheet.row_heights.get(&r) {
+                let _ = write!(x, r#" ht="{h}" customHeight="1""#);
+            }
+            if sheet.hidden_rows.contains(&r) {
+                x.push_str(r#" hidden="1""#);
+            }
+            x.push_str(&crate::xlsx_extras::outline_attr(sheet, r, true));
+            x.push('>');
+            if let Some(cells) = sheet.cells.get(&r) {
+                for (c, cell) in cells.iter() {
+                    let ff = match &cell.content {
+                        Content::Formula(_) => formulas.next().flatten(),
+                        Content::Value(_) => None,
+                    };
+                    uses_dynamic |= write_cell(x, sheet, styles, sst, r, *c, cell, ff);
                 }
             }
+            x.push_str("</row>");
         }
-        x.push_str("</row>");
     }
     x.push_str("</sheetData>");
 
@@ -1181,6 +1265,69 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn addresses_without_allocating() {
+        for (row, col, want) in [
+            (0, 0, "A1"),
+            (9, 25, "Z10"),
+            (99, 26, "AA100"),
+            (1_048_575, 16_383, "XFD1048576"),
+        ] {
+            let mut x = String::new();
+            push_addr(&mut x, row, col);
+            assert_eq!(x, want);
+        }
+        let mut x = String::new();
+        push_num(&mut x, 0.1);
+        push_num(&mut x, -3.0);
+        assert_eq!(x, "0.1-3");
+    }
+
+    /// Enough formulas for the parallel conversion path; every kind of cached value and
+    /// formula spelling must come back exactly.
+    #[test]
+    fn large_sheet_round_trips_through_parallel_formula_conversion() {
+        use sp_core::{CellAddr, ErrorKind};
+        use sp_model::Cell;
+        let mut wb = Workbook::new();
+        let s = &mut wb.sheets[0];
+        let n = 6_000u32;
+        for r in 0..n {
+            let row = r + 1;
+            s.set(
+                CellAddr::new(r, 0),
+                Cell::constant(Value::Number(f64::from(r) + 0.5)),
+            );
+            s.set(
+                CellAddr::new(r, 1),
+                Cell::constant(Value::text(format!("t{}", r % 7))),
+            );
+            let mut f = Cell::formula(format!("A{row}*2"));
+            f.value = Value::Number(f64::from(r) * 2.0 + 1.0);
+            s.set(CellAddr::new(r, 2), f);
+            let mut f = Cell::formula(format!("IF(A{row}>10,\"big\",\"small\")"));
+            f.value = Value::text(if r > 9 { "big" } else { "small" });
+            s.set(CellAddr::new(r, 3), f);
+            let mut f = Cell::formula(format!("CONCAT(B{row},\"x\")"));
+            f.value = Value::Bool(r % 2 == 0);
+            s.set(CellAddr::new(r, 4), f);
+            let mut f = Cell::formula(format!("1/(A{row}-A{row})"));
+            f.value = Value::Error(ErrorKind::Div0);
+            s.set(CellAddr::new(r, 5), f);
+        }
+        let mut buf = std::io::Cursor::new(Vec::new());
+        write_xlsx(&wb, &mut buf).unwrap();
+        buf.set_position(0);
+        let (back, _) = crate::xlsx_read::read_xlsx(buf).unwrap();
+        let (a, b) = (&wb.sheets[0], &back.sheets[0]);
+        assert_eq!(a.cell_count(), b.cell_count());
+        for (addr, c) in a.iter() {
+            let d = b.get(addr).unwrap();
+            assert_eq!(c.content, d.content, "{}", addr.to_a1());
+            assert_eq!(c.value, d.value, "{}", addr.to_a1());
+        }
+    }
 
     #[test]
     fn dynamic_arrays_round_trip() {
