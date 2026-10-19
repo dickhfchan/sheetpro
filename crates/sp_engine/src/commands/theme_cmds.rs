@@ -118,7 +118,7 @@ fn run(s: &mut Session, p: &Json) -> CmdResult {
     }
     if t.colors_name != t.name || t.fonts_name != t.name {
         // A mix of schemes is a custom theme.
-        if !builtin_themes().iter().any(|b| *b == t) {
+        if !builtin_themes().contains(&t) {
             t.name = str_opt(p, "name").unwrap_or("Custom").chars().take(64).collect();
         }
     }

@@ -272,6 +272,8 @@ pub struct OutCell {
     pub kind: CellKind,
     /// Value shown as a percentage (show-values-as).
     pub percent: bool,
+    /// Index of the data field (in `PivotTable::values`) a value cell shows.
+    pub data: Option<usize>,
 }
 
 /// The computed output block.
@@ -307,7 +309,7 @@ impl PivotOutput {
         }
     }
 
-    fn set_value(&mut self, r: usize, c: usize, value: Value, kind: CellKind, percent: bool) {
+    fn set_value(&mut self, r: usize, c: usize, value: Value, kind: CellKind, percent: bool, data: usize) {
         if r < self.rows
             && c < self.cols
             && let Some(cell) = self.cells.get_mut(r * self.cols + c)
@@ -315,6 +317,7 @@ impl PivotOutput {
             cell.value = value;
             cell.kind = kind;
             cell.percent = percent;
+            cell.data = Some(data);
         }
     }
 }
@@ -785,7 +788,7 @@ pub fn layout(p: &PivotTable) -> Result<PivotOutput, String> {
                 } else {
                     CellKind::Value
                 };
-                out.set_value(r, c, v, kind, pct);
+                out.set_value(r, c, v, kind, pct, d);
             }
         }
     }

@@ -391,11 +391,19 @@ fn parse_table(xml: &str, def: &CacheDef, records: Vec<Vec<Value>>) -> Option<(P
             if name == format!("{} of {field_name}", func.caption()) {
                 name.clear();
             }
+            // Built-in number formats only (custom ids live in styles.xml).
+            let num_fmt = df
+                .attr("numFmtId")
+                .and_then(|v| v.parse::<u32>().ok())
+                .filter(|id| *id != 0 && !(show_as != ShowAs::Normal && *id == 10))
+                .and_then(crate::xlsx_read::builtin_numfmt)
+                .map_or(String::new(), str::to_string);
             p.values.push(DataField {
                 field: f,
                 func,
                 show_as,
                 name,
+                num_fmt,
             });
         }
     }
@@ -1102,7 +1110,14 @@ fn generate(wb: &Workbook, sheet: usize, p: &PivotTable) -> Option<(String, Stri
                 } else {
                     format!(r#" showDataAs="{}""#, d.show_as.name())
                 },
-                if d.show_as == ShowAs::Normal { "" } else { r#" numFmtId="10""# }
+                match (0..=49u32).find(|id| {
+                    !d.num_fmt.is_empty()
+                        && crate::xlsx_read::builtin_numfmt(*id) == Some(d.num_fmt.as_str())
+                }) {
+                    Some(id) => format!(r#" numFmtId="{id}""#),
+                    None if d.show_as != ShowAs::Normal => r#" numFmtId="10""#.to_string(),
+                    None => String::new(),
+                }
             );
         }
         t.push_str("</dataFields>");
@@ -1237,7 +1252,7 @@ mod tests {
             filters: vec![],
             values: vec![
                 DataField { field: 2, func: Aggregate::Sum, ..DataField::default() },
-                DataField { field: 2, func: Aggregate::Max, show_as: ShowAs::PercentOfTotal, name: "Top".into() },
+                DataField { field: 2, func: Aggregate::Max, show_as: ShowAs::PercentOfTotal, name: "Top".into(), num_fmt: String::new() },
             ],
             layout: PivotLayout::Tabular,
             grand_total_row: false,

@@ -5,6 +5,7 @@
 //! Every reference is stored as formula text (`Sheet1!$A$1:$D$20`, `$F$3`) so row/column
 //! insert/delete and sheet renames rewrite them like any other formula (`sp_ops::pivot_shift`).
 
+use crate::chart::Anchor;
 use serde::{Deserialize, Serialize};
 use sp_core::Value;
 use std::sync::Arc;
@@ -181,6 +182,9 @@ pub struct DataField {
     pub show_as: ShowAs,
     /// Caption; empty = generated (`Sum of Sales`).
     pub name: String,
+    /// Number format of the values; empty = General (percentages for show-values-as).
+    #[serde(default)]
+    pub num_fmt: String,
 }
 
 /// Row/column label arrangement.
@@ -346,7 +350,8 @@ impl PivotTable {
     }
 }
 
-/// A slicer: a button list filtering one field of a pivot table.
+/// A slicer: a button list filtering one field of a pivot table, drawn as a floating
+/// object.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Slicer {
     pub name: String,
@@ -355,6 +360,42 @@ pub struct Slicer {
     pub pivot: String,
     /// Field index in that pivot's cache.
     pub field: usize,
+    /// Where it floats on the sheet.
+    #[serde(default)]
+    pub anchor: Anchor,
+    /// Slicer cache name in the file (`Slicer_Region`); empty = derived from `name`.
+    #[serde(default)]
+    pub cache_name: String,
+    /// Style name kept for the file (`SlicerStyleLight1`); empty = default.
+    #[serde(default)]
+    pub style: String,
+    /// Button columns (1 = a single column).
+    #[serde(default = "one")]
+    pub columns: u32,
+}
+
+fn one() -> u32 {
+    1
+}
+
+impl Slicer {
+    /// The cache name written to the file.
+    pub fn cache(&self) -> String {
+        if !self.cache_name.is_empty() {
+            return self.cache_name.clone();
+        }
+        let base: String = self
+            .name
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+            .take(200)
+            .collect();
+        if base.starts_with("Slicer_") {
+            base
+        } else {
+            format!("Slicer_{base}")
+        }
+    }
 }
 
 /// A saved set of input values (Scenario Manager).
