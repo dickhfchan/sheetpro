@@ -296,7 +296,11 @@ mod million {
     }
 
     fn exec(s: &mut Session, id: &str, p: serde_json::Value) -> Result<serde_json::Value> {
-        s.execute(id, &p).map_err(|e| anyhow!("{id}: {e}"))
+        let r = s.execute(id, &p).map_err(|e| anyhow!("{id}: {e}"));
+        if std::env::var_os("SP_PERF_VERBOSE").is_some() {
+            println!("    {id}: last recalc {:?}", s.last_recalc);
+        }
+        r
     }
 
     fn layout(s: &Session, top: CellAddr) -> sp_render::GridView {
@@ -314,13 +318,18 @@ mod million {
     }
 
     pub fn suite(results: &mut BTreeMap<String, f64>) -> Result<()> {
+        // Each step also prints the RSS high-water mark so far (where the memory goes).
         let mut put = |k: &str, v: f64| {
-            println!("  {k:<26} {v:>9.1} {}", super::unit_of(k));
+            println!(
+                "  {k:<26} {v:>9.1} {}   (peak rss {:.0} MB)",
+                super::unit_of(k),
+                peak_rss_mb()
+            );
             results.insert(k.to_string(), v);
         };
         println!("1M-row suite ({ROWS} rows x 10 cols):");
         let (ms, mut wb) = time(workbook);
-        println!("  (build {ms:.0} ms)");
+        println!("  (build {ms:.0} ms, peak rss {:.0} MB)", peak_rss_mb());
 
         let mut cache = sp_formula::AstCache::default();
         let opts = sp_formula::RecalcOptions::default();
