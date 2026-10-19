@@ -193,7 +193,13 @@ pub fn run_package() -> Result<()> {
         println!("package: smoke test skipped (SP_SKIP_SMOKE)");
         return Ok(());
     }
-    crate::smoke::run(&crate::smoke::packaged_binary(&root))
+    crate::smoke::run(
+        &crate::smoke::packaged_binary(&root),
+        &crate::smoke::Opts {
+            full: false,
+            only: None,
+        },
+    )
 }
 
 #[cfg(test)]

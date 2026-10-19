@@ -35,7 +35,8 @@ cargo run -p sp -- screenshot --out shot.png [--open book.xlsx] [--script steps.
 | `cargo xtask perf [--quick \| --million]` | Benchmarks vs `perf/budgets.toml`: `--quick` 20k rows (CI); default 100k rows + the 1M-row suite (writes `perf/baseline.json`); `--million` only the 1M suite (`SP_PERF_VERBOSE=1` prints recalc stats) |
 | `cargo xtask scorecard` | Regenerates `docs/scorecard.md` (`--check` fails if stale) |
 | `cargo xtask package` | Release build bundled for trial users → `dist/` (see Trial builds), then `smoke` on it |
-| `cargo xtask smoke [--bin path]` | Drive a built app end to end over its control port (formulas, editing, objects, pivot, save/reopen, PDF); default: the `dist/` build |
+| `cargo xtask smoke [--bin path] [--only area]` | Test a built app end to end over its control port: 11 scenario areas, ~20 s; default binary: the `dist/` build |
+| `cargo xtask smoke --full` | Also every command (rendered, undone), all 259 corpus files saved and reopened, and 100k-row timings; ~4 min |
 | `cargo xtask check` | Everything above that runs offline, in CI order |
 
 ## Trial builds
@@ -46,6 +47,16 @@ cargo xtask package
 
 Builds `sheetpro` in release mode, lays it out in `dist/` (gitignored), then runs
 `cargo xtask smoke` on the bundled binary (it opens app windows; `SP_SKIP_SMOKE=1` skips it):
+
+The smoke areas are `launch`, `formulas`, `workflow`, `editing`, `formatting`, `data`,
+`sheets`, `files`, `print`, `hostile` and `render` (real window captures); `--full` adds
+`sweep`, `corpus` and `perf`. Each area launches its own app with `SHEETPRO_HOME` in
+`target/smoke/<area>/home`, so your settings and recent files are untouched and areas don't
+affect each other; a crash report written
+there fails the run. Outputs (saved files, PDFs, window captures, `app.log`) stay in
+`target/smoke/`. A `KNOWN` line is a tracked difference from the target that doesn't fail
+the run; when one starts passing the run fails until it becomes a normal check.
+
 
 - **macOS**: `dist/SheetPro.app` (Info.plist, `Contents/MacOS/sheetpro`, an `.icns` drawn by
   `sheetpro --write-icon` and packed with `iconutil`, README/ATTRIBUTION in `Resources`), plus

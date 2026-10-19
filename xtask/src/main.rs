@@ -60,7 +60,18 @@ fn main() -> Result<()> {
                 .and_then(|i| args.get(i + 1))
                 .map(PathBuf::from)
                 .unwrap_or_else(|| smoke::packaged_binary(&root()));
-            smoke::run(&bin)
+            let only = args
+                .iter()
+                .position(|a| a == "--only")
+                .and_then(|i| args.get(i + 1))
+                .cloned();
+            smoke::run(
+                &bin,
+                &smoke::Opts {
+                    full: flag("--full"),
+                    only,
+                },
+            )
         }
         Some("panic-hunt") => cargo(&[
             "test",
@@ -97,7 +108,7 @@ fn main() -> Result<()> {
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] [--dump out.tsv] [--only substr] | perf [--quick | --million] | scorecard [--check] | panic-hunt | package | smoke [--bin path] | check>"
+                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] [--dump out.tsv] [--only substr] | perf [--quick | --million] | scorecard [--check] | panic-hunt | package | smoke [--bin path] [--full] [--only area] | check>"
             );
             bail!("unknown task")
         }
