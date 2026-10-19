@@ -2,7 +2,12 @@
 //! clicks toggle (undoably), slicer buttons filter, the PivotTable Fields pane edits the
 //! pivot, and objects select / move / delete with the mouse and keyboard.
 
-#![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 use egui::{Pos2, Vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
