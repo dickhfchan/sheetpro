@@ -925,6 +925,19 @@ pub fn encode_png(width: u32, height: u32, rgba: Vec<u8>) -> Option<Vec<u8>> {
     Some(buf)
 }
 
+/// Encode RGB pixels as a baseline JPEG file (sample images, tests); `None` on a size
+/// mismatch.
+pub fn encode_jpeg(width: u32, height: u32, rgb: Vec<u8>) -> Option<Vec<u8>> {
+    let img = image::RgbImage::from_raw(width, height, rgb)?;
+    let mut buf = Vec::new();
+    img.write_to(
+        &mut std::io::Cursor::new(&mut buf),
+        image::ImageFormat::Jpeg,
+    )
+    .ok()?;
+    Some(buf)
+}
+
 /// Nearest-neighbour downscale so neither side exceeds `max_side` (returns a clone when
 /// already small enough).
 pub fn downscale(d: &Decoded, max_side: u32) -> Decoded {
@@ -960,6 +973,392 @@ pub fn fit_size(img: &ImageData, max: f64) -> (f64, f64) {
     let (w, h) = (f64::from(img.width.max(1)), f64::from(img.height.max(1)));
     let s = (max / w.max(h)).min(1.0);
     (w * s, h * s)
+}
+
+// ---------------------------------------------------------------------------------------
+// Object scenes (shared by the grid painter and the page scene)
+
+/// One primitive of an object, in output units (screen px or page pt), with the object's
+/// rotation and flip applied.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ObjPrim {
+    /// A filled outline; may be concave (fill non-zero, or [`triangulate`] first).
+    Fill {
+        pts: Vec<(f32, f32)>,
+        color: Color,
+        alpha: f32,
+    },
+    /// A stroked outline; `width` and `dash` lengths in output units.
+    Stroke {
+        pts: Vec<(f32, f32)>,
+        closed: bool,
+        color: Color,
+        alpha: f32,
+        width: f32,
+        dash: Option<(f32, f32)>,
+    },
+    /// The picture mapped onto a parallelogram: where its top-left, top-right,
+    /// bottom-right and bottom-left corners land.
+    Image { corners: [(f32, f32); 4] },
+}
+
+/// An object's text: laid out unrotated inside `rect`, then turned `rotation` degrees
+/// clockwise about `center` (text is not mirrored by flips).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjText {
+    pub rect: (f32, f32, f32, f32),
+    pub center: (f32, f32),
+    pub rotation: f64,
+    pub paras: Vec<TextPara>,
+    pub v_align: VAlign,
+    pub wrap: bool,
+}
+
+/// Everything to draw for one object, bottom to top: `prims`, then `text`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ObjScene {
+    pub prims: Vec<ObjPrim>,
+    pub text: Option<ObjText>,
+}
+
+fn finite_or(v: f32, d: f32) -> f32 {
+    if v.is_finite() { v } else { d }
+}
+
+/// Lay out `o` in the box `(x, y, w, h)` (output units). `scale` is output units per px
+/// at 100% (the zoom on screen, pt per px on paper) and sizes line widths and arrow heads.
+/// Hidden objects produce an empty scene.
+pub fn object_scene(o: &DrawObject, (x, y, w, h): (f32, f32, f32, f32), scale: f32) -> ObjScene {
+    let mut sc = ObjScene::default();
+    if o.hidden {
+        return sc;
+    }
+    let (x, y) = (
+        finite_or(x, 0.0).clamp(-1e7, 1e7),
+        finite_or(y, 0.0).clamp(-1e7, 1e7),
+    );
+    let (w, h) = (
+        finite_or(w, 0.0).clamp(0.0, 1e6),
+        finite_or(h, 0.0).clamp(0.0, 1e6),
+    );
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale.min(100.0)
+    } else {
+        1.0
+    };
+    let paint = object_paint(o);
+    let tf = |pts: &[(f32, f32)]| transform(pts, (w, h), o.rotation, o.flip_h, o.flip_v, (x, y));
+    let stroke = |pts: Vec<(f32, f32)>, closed: bool, s: &Stroke| {
+        let width = s.width * scale;
+        ObjPrim::Stroke {
+            pts,
+            closed,
+            color: s.color,
+            alpha: s.alpha,
+            width,
+            dash: s.dash.map(|(on, off)| (on * width, off * width)),
+        }
+    };
+    match &o.kind {
+        ObjectKind::Picture(_) => {
+            let c = tf(&[(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]);
+            if let [a, b, cc, d] = c.as_slice() {
+                sc.prims.push(ObjPrim::Image {
+                    corners: [*a, *b, *cc, *d],
+                });
+            }
+            if let Some(s) = &paint.line {
+                sc.prims.push(stroke(c, true, s));
+            }
+        }
+        ObjectKind::Shape(s) => {
+            let paths = preset_paths(&s.preset, &s.adjust, w, h);
+            for p in &paths {
+                let pts = tf(&p.pts);
+                if p.filled
+                    && let Some((c, a)) = paint.fill
+                {
+                    sc.prims.push(ObjPrim::Fill {
+                        pts: pts.clone(),
+                        color: c,
+                        alpha: a,
+                    });
+                }
+                if let Some(st) = &paint.line {
+                    sc.prims.push(stroke(pts, p.closed, st));
+                }
+            }
+            // Arrow heads on open outlines (`head` at the start, `tail` at the end).
+            if let Some(st) = &paint.line {
+                for p in paths.iter().filter(|p| !p.closed) {
+                    let pts = tf(&p.pts);
+                    let n = pts.len();
+                    let ends = [
+                        (s.line.head.as_deref(), pts.get(1), pts.first()),
+                        (
+                            s.line.tail.as_deref(),
+                            n.checked_sub(2).and_then(|i| pts.get(i)),
+                            pts.last(),
+                        ),
+                    ];
+                    for (kind, from, tip) in ends {
+                        if let (Some(k), Some(f), Some(t)) = (kind, from, tip)
+                            && let Some(head) = arrow_head(k, *f, *t, st.width * scale)
+                        {
+                            sc.prims.push(ObjPrim::Fill {
+                                pts: head.pts,
+                                color: st.color,
+                                alpha: st.alpha,
+                            });
+                        }
+                    }
+                }
+            }
+            if let Some(t) = &s.text
+                && t.paras.iter().any(|p| !p.text().is_empty())
+            {
+                let (l, tp, r, b) = text_insets(t);
+                let (l, tp, r, b) = (l * scale, tp * scale, r * scale, b * scale);
+                sc.text = Some(ObjText {
+                    rect: (x + l, y + tp, (w - l - r).max(0.0), (h - tp - b).max(0.0)),
+                    center: (x + w / 2.0, y + h / 2.0),
+                    rotation: if o.rotation.is_finite() {
+                        o.rotation
+                    } else {
+                        0.0
+                    },
+                    paras: text_paras(t, paint.text),
+                    v_align: text_v_align(t),
+                    wrap: text_wraps(t),
+                });
+            }
+        }
+    }
+    sc
+}
+
+/// Draw order of a sheet's charts and objects, bottom to top. Object `i` sits above the
+/// first `after_charts` charts (clamped to the chart count).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZItem {
+    Chart(usize),
+    Object(usize),
+}
+
+pub fn z_order(sheet: &Sheet) -> Vec<ZItem> {
+    let n = sheet.drawings.charts.len();
+    let mut objs: Vec<(usize, usize)> = sheet
+        .objects
+        .iter()
+        .enumerate()
+        .map(|(i, o)| (o.after_charts.min(n), i))
+        .collect();
+    objs.sort_by_key(|(after, i)| (*after, *i));
+    let mut out = Vec::with_capacity(n + objs.len());
+    let mut it = objs.into_iter().peekable();
+    for c in 0..=n {
+        while let Some((_, i)) = it.next_if(|(after, _)| *after <= c) {
+            out.push(ZItem::Object(i));
+        }
+        if c < n {
+            out.push(ZItem::Chart(c));
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------------------
+// Slicer layout
+
+/// Where a slicer's parts go inside its box, in output units.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SlicerLayout {
+    /// Caption strip.
+    pub header: (f32, f32, f32, f32),
+    /// "Clear filter" button at the right of the header.
+    pub clear: (f32, f32, f32, f32),
+    /// One button per item that fits, in item order (left to right, then down).
+    pub buttons: Vec<(f32, f32, f32, f32)>,
+}
+
+/// Lay out a slicer with `n` items in `columns` columns inside `(x, y, w, h)`; `scale` is
+/// output units per px at 100%. Items that don't fit are left out.
+pub fn slicer_layout(
+    (x, y, w, h): (f32, f32, f32, f32),
+    n: usize,
+    columns: u32,
+    scale: f32,
+) -> SlicerLayout {
+    let s = if scale.is_finite() && scale > 0.0 {
+        scale.min(100.0)
+    } else {
+        1.0
+    };
+    let (w, h) = (finite_or(w, 0.0).max(0.0), finite_or(h, 0.0).max(0.0));
+    let (pad, head_h, btn_h, gap) = (6.0 * s, 26.0 * s, 22.0 * s, 4.0 * s);
+    let head_h = head_h.min(h);
+    let side = (18.0 * s).min(head_h);
+    let header = (x, y, w, head_h);
+    let clear = (
+        x + w - pad - side,
+        y + (head_h - side) / 2.0,
+        side.min(w),
+        side,
+    );
+    let cols = columns.clamp(1, 20) as usize;
+    let inner_w = (w - 2.0 * pad).max(0.0);
+    let bw = ((inner_w - gap * (cols as f32 - 1.0)) / cols as f32).max(1.0);
+    let bottom = y + h - pad;
+    let mut buttons = Vec::new();
+    for i in 0..n.min(10_000) {
+        let (r, c) = (i / cols, i % cols);
+        let by = y + head_h + r as f32 * (btn_h + gap);
+        if by + btn_h > bottom + 0.01 {
+            break;
+        }
+        buttons.push((x + pad + c as f32 * (bw + gap), by, bw, btn_h));
+    }
+    SlicerLayout {
+        header,
+        clear,
+        buttons,
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Images for PDF
+
+/// An image ready for a PDF image XObject.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PdfImage {
+    pub width: u32,
+    pub height: u32,
+    /// 1 (gray) or 3 (RGB) colour components.
+    pub colors: u8,
+    /// `data` is a baseline/progressive JPEG file (`/DCTDecode`); otherwise a zlib stream
+    /// of PNG-predicted rows (`/FlateDecode` with `/Predictor 15`).
+    pub dct: bool,
+    pub data: Vec<u8>,
+    /// Soft mask (alpha), as a 1-component predicted zlib stream; `None` when opaque.
+    pub alpha: Option<Vec<u8>>,
+}
+
+/// Size and component count from a JPEG's start-of-frame marker (8-bit precision only).
+pub fn jpeg_info(bytes: &[u8]) -> Option<(u32, u32, u8)> {
+    if !bytes.starts_with(&[0xFF, 0xD8]) {
+        return None;
+    }
+    let mut i = 2usize;
+    let at = |i: usize| bytes.get(i).copied();
+    while i < bytes.len() {
+        if at(i)? != 0xFF {
+            return None;
+        }
+        let mut m = at(i + 1)?;
+        while m == 0xFF {
+            i += 1;
+            m = at(i + 1)?;
+        }
+        i += 2;
+        if m == 0xD8 || m == 0x01 || (0xD0..=0xD7).contains(&m) {
+            continue; // markers without a length
+        }
+        if m == 0xD9 || m == 0xDA {
+            return None; // end of image / scan before any frame header
+        }
+        let len = usize::from(u16::from_be_bytes([at(i)?, at(i + 1)?]));
+        if len < 2 {
+            return None;
+        }
+        let is_sof = matches!(m, 0xC0..=0xCF) && !matches!(m, 0xC4 | 0xC8 | 0xCC);
+        if is_sof {
+            let precision = at(i + 2)?;
+            let height = u32::from(u16::from_be_bytes([at(i + 3)?, at(i + 4)?]));
+            let width = u32::from(u16::from_be_bytes([at(i + 5)?, at(i + 6)?]));
+            let comps = at(i + 7)?;
+            if precision != 8 || width == 0 || height == 0 {
+                return None;
+            }
+            return Some((width, height, comps));
+        }
+        i = i.checked_add(len)?;
+    }
+    None
+}
+
+/// Zlib stream of 8-bit rows with PNG row filters (what PDF `/FlateDecode` with
+/// `/Predictor 15` reads), made by the PNG encoder. `channels` is 1 or 3.
+pub fn predicted_zlib(width: u32, height: u32, channels: u8, data: &[u8]) -> Option<Vec<u8>> {
+    use image::ImageEncoder;
+    use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+    let ct = match channels {
+        1 => image::ExtendedColorType::L8,
+        3 => image::ExtendedColorType::Rgb8,
+        _ => return None,
+    };
+    let need = u64::from(width) * u64::from(height) * u64::from(channels);
+    if width == 0 || height == 0 || need != data.len() as u64 {
+        return None;
+    }
+    let mut png = Vec::new();
+    PngEncoder::new_with_quality(&mut png, CompressionType::Default, FilterType::Adaptive)
+        .write_image(data, width, height, ct)
+        .ok()?;
+    // Concatenate the IDAT chunks: together they are one zlib stream.
+    let mut out = Vec::new();
+    let mut i = 8usize;
+    while let Some(Ok(head)) = png.get(i..i + 8).map(<[u8; 8]>::try_from) {
+        let [l0, l1, l2, l3, t0, t1, t2, t3] = head;
+        let len = u32::from_be_bytes([l0, l1, l2, l3]) as usize;
+        let body = png.get(i + 8..(i + 8).checked_add(len)?)?;
+        if [t0, t1, t2, t3] == *b"IDAT" {
+            out.extend_from_slice(body);
+        }
+        i = i.checked_add(12 + len)?;
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Largest side of an image embedded in a PDF (larger pictures are downscaled).
+pub const PDF_MAX_IMAGE_SIDE: u32 = 4096;
+
+/// Prepare an embedded image for PDF: 8-bit gray/RGB JPEGs pass through as-is, anything
+/// else is decoded (bounded) to RGB plus an alpha mask when not opaque.
+pub fn pdf_image(img: &ImageData) -> Option<PdfImage> {
+    if img.format == ImageFormat::Jpeg
+        && let Some((width, height, comps)) = jpeg_info(&img.bytes)
+        && (comps == 1 || comps == 3)
+    {
+        return Some(PdfImage {
+            width,
+            height,
+            colors: comps,
+            dct: true,
+            data: img.bytes.to_vec(),
+            alpha: None,
+        });
+    }
+    let d = downscale(&decode(img, MAX_DECODE_PIXELS).ok()?, PDF_MAX_IMAGE_SIDE);
+    let n = (d.width as usize).checked_mul(d.height as usize)?;
+    let mut rgb = Vec::with_capacity(n.checked_mul(3)?);
+    let mut alpha = Vec::with_capacity(n);
+    for [r, g, b, a] in d.rgba.as_chunks::<4>().0 {
+        rgb.extend_from_slice(&[*r, *g, *b]);
+        alpha.push(*a);
+    }
+    let opaque = alpha.iter().all(|a| *a == 255);
+    Some(PdfImage {
+        width: d.width,
+        height: d.height,
+        colors: 3,
+        dct: false,
+        data: predicted_zlib(d.width, d.height, 3, &rgb)?,
+        alpha: if opaque {
+            None
+        } else {
+            Some(predicted_zlib(d.width, d.height, 1, &alpha)?)
+        },
+    })
 }
 
 #[cfg(test)]
@@ -1146,5 +1545,146 @@ mod tests {
         assert!(shape_paint(&line).fill.is_none());
         assert!(arrow_head("triangle", (0.0, 0.0), (10.0, 0.0), 1.0).is_some());
         assert!(arrow_head("triangle", (0.0, 0.0), (0.0, 0.0), 1.0).is_none());
+    }
+
+    fn obj(kind: ObjectKind) -> DrawObject {
+        DrawObject {
+            kind,
+            ..DrawObject::default()
+        }
+    }
+
+    #[test]
+    fn scenes_for_shapes_pictures_and_lines() {
+        let rect = obj(ObjectKind::Shape(Shape {
+            preset: "rect".into(),
+            style: Some(sp_model::objects::StyleRefs::shape_default()),
+            text: Some(TextBody::from_plain("Hi", &RunFont::default(), None)),
+            ..Shape::default()
+        }));
+        let sc = object_scene(&rect, (10.0, 20.0, 100.0, 50.0), 2.0);
+        assert!(matches!(sc.prims[0], ObjPrim::Fill { .. }));
+        match &sc.prims[1] {
+            ObjPrim::Stroke { width, closed, .. } => {
+                assert!(*closed);
+                assert!((width - 2.0 * 12700.0 / 9525.0).abs() < 1e-3, "{width}");
+            }
+            p => panic!("{p:?}"),
+        }
+        let t = sc.text.unwrap();
+        assert_eq!(t.paras[0].text, "Hi");
+        assert_eq!(t.center, (60.0, 45.0));
+        assert!(t.rect.0 > 10.0 && t.rect.2 < 100.0);
+        // Hidden objects draw nothing.
+        let mut hidden = rect.clone();
+        hidden.hidden = true;
+        assert_eq!(
+            object_scene(&hidden, (0.0, 0.0, 9.0, 9.0), 1.0),
+            ObjScene::default()
+        );
+        // Pictures: corners follow rotation and flips.
+        let mut pic = obj(ObjectKind::Picture(sp_model::objects::Picture::default()));
+        pic.rotation = 90.0;
+        let sc = object_scene(&pic, (0.0, 0.0, 10.0, 10.0), 1.0);
+        let ObjPrim::Image { corners } = sc.prims[0] else {
+            panic!("no image")
+        };
+        assert!((corners[0].0 - 10.0).abs() < 1e-4 && corners[0].1.abs() < 1e-4);
+        pic.rotation = 0.0;
+        pic.flip_h = true;
+        let sc = object_scene(&pic, (0.0, 0.0, 10.0, 10.0), 1.0);
+        let ObjPrim::Image { corners } = sc.prims[0] else {
+            panic!("no image")
+        };
+        assert_eq!(corners[0], (10.0, 0.0));
+        // A connector with an end arrow: line, then a filled head at (w, h).
+        let line = obj(ObjectKind::Shape(Shape {
+            preset: "straightConnector1".into(),
+            connector: true,
+            style: Some(sp_model::objects::StyleRefs::line_default()),
+            line: LineFormat {
+                tail: Some("triangle".into()),
+                ..LineFormat::default()
+            },
+            ..Shape::default()
+        }));
+        let sc = object_scene(&line, (0.0, 0.0, 40.0, 0.0), 1.0);
+        assert_eq!(sc.prims.len(), 2, "{:?}", sc.prims);
+        let ObjPrim::Fill { pts, .. } = &sc.prims[1] else {
+            panic!("no head")
+        };
+        assert_eq!(pts[0], (40.0, 0.0));
+        // Hostile boxes don't panic.
+        let _ = object_scene(&rect, (f32::NAN, f32::INFINITY, -5.0, f32::MAX), f32::NAN);
+    }
+
+    #[test]
+    fn z_order_interleaves_charts() {
+        let mut sh = Sheet::new("S");
+        sh.drawings.charts = vec![Default::default(), Default::default()];
+        let a = DrawObject {
+            after_charts: 1,
+            ..DrawObject::default()
+        };
+        let b = DrawObject {
+            after_charts: 9,
+            ..DrawObject::default()
+        };
+        sh.objects = vec![DrawObject::default(), a, b];
+        assert_eq!(
+            z_order(&sh),
+            vec![
+                ZItem::Object(0),
+                ZItem::Chart(0),
+                ZItem::Object(1),
+                ZItem::Chart(1),
+                ZItem::Object(2)
+            ]
+        );
+    }
+
+    #[test]
+    fn slicer_buttons_fit_the_box() {
+        let l = slicer_layout((0.0, 0.0, 150.0, 120.0), 10, 2, 1.0);
+        // 26 header, rows of 22 + 4, 6 padding: three rows fit in 120.
+        assert_eq!(l.buttons.len(), 6);
+        let (x0, y0, w0, _) = l.buttons[0];
+        let (x1, y1, _, _) = l.buttons[1];
+        assert_eq!(y0, y1, "items run left to right first");
+        assert!(x1 > x0 + w0);
+        for (x, y, w, h) in &l.buttons {
+            assert!(*x >= 0.0 && x + w <= 150.01 && *y >= 26.0 && y + h <= 120.0);
+        }
+        assert!(l.clear.0 + l.clear.2 <= 150.0);
+        let _ = slicer_layout((0.0, 0.0, f32::NAN, -1.0), usize::MAX, 0, 0.0);
+    }
+
+    #[test]
+    fn pdf_images_pass_jpeg_and_encode_others() {
+        // PNG with transparency: RGB + soft mask, zlib streams.
+        let png = image_data(png_2x1()).unwrap();
+        let p = pdf_image(&png).unwrap();
+        assert_eq!((p.width, p.height, p.colors, p.dct), (2, 1, 3, false));
+        assert_eq!(p.data.first(), Some(&0x78), "zlib header");
+        assert!(p.alpha.is_some());
+        // JPEG: passes through untouched.
+        let mut jpg = Vec::new();
+        image::RgbImage::from_pixel(5, 3, image::Rgb([10, 200, 30]))
+            .write_to(
+                &mut std::io::Cursor::new(&mut jpg),
+                image::ImageFormat::Jpeg,
+            )
+            .unwrap();
+        assert_eq!(jpeg_info(&jpg), Some((5, 3, 3)));
+        let j = pdf_image(&image_data(jpg.clone()).unwrap()).unwrap();
+        assert!(j.dct && j.alpha.is_none());
+        assert_eq!(j.data, jpg);
+        // Garbage and truncation never panic.
+        for n in 0..jpg.len() {
+            let _ = jpeg_info(&jpg[..n]);
+        }
+        assert_eq!(jpeg_info(b"\xFF\xD8\xFF\xC0\x00\x01"), None);
+        assert!(predicted_zlib(2, 2, 3, &[0; 5]).is_none());
+        assert!(predicted_zlib(0, 2, 1, &[]).is_none());
     }
 }

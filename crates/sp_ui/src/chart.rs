@@ -115,9 +115,8 @@ fn draw_prims(p: &Painter, o: Pos2, prims: &[Prim]) {
     }
 }
 
-/// Draw the active sheet's sparklines (in their cells) and charts (at their anchors),
-/// clipped to the cell area.
-pub fn paint_objects(
+/// Draw the active sheet's sparklines (in their cells), clipped to the cell area.
+pub fn paint_sparklines(
     painter: &Painter,
     s: &Session,
     view: &GridView,
@@ -128,9 +127,6 @@ pub fn paint_objects(
     let Some(sheet) = s.wb.sheet(si) else {
         return;
     };
-    if sheet.drawings.is_empty() {
-        return;
-    }
     let zoom = s.view.zoom.clamp(0.1, 4.0);
     let p = painter.with_clip_rect(cell_area.intersect(painter.clip_rect()));
     // Sparklines: only cells on screen.
@@ -156,21 +152,25 @@ pub fn paint_objects(
             );
         }
     }
-    for (i, r) in chart_rects(s, cells_origin) {
-        if !r.intersects(cell_area) || r.width() < 2.0 || r.height() < 2.0 {
-            continue;
-        }
-        let Some(c) = sheet.drawings.charts.get(i) else {
-            continue;
-        };
-        let data = chart_data(&s.wb, si, c);
-        let prims = chart_scene(&data, r.width(), r.height(), zoom);
-        draw_prims(&p, r.min, &prims);
+}
+
+/// Draw chart `i` of the active sheet in its screen rectangle `r` (see [`chart_rects`]).
+pub fn paint_chart(p: &Painter, s: &Session, i: usize, r: Rect, cell_area: Rect) {
+    let si = s.sheet_index();
+    let Some(c) = s.wb.sheet(si).and_then(|sh| sh.drawings.charts.get(i)) else {
+        return;
+    };
+    if !r.intersects(cell_area) || r.width() < 2.0 || r.height() < 2.0 {
+        return;
     }
+    let zoom = s.view.zoom.clamp(0.1, 4.0);
+    let data = chart_data(&s.wb, si, c);
+    let prims = chart_scene(&data, r.width(), r.height(), zoom);
+    draw_prims(p, r.min, &prims);
 }
 
 /// Top-left cell of the scrollable pane and the frozen panes' size in px (at `zoom`).
-fn pane_origin(s: &Session, sheet: &sp_model::Sheet) -> (CellAddr, Vec2) {
+pub(crate) fn pane_origin(s: &Session, sheet: &sp_model::Sheet) -> (CellAddr, Vec2) {
     let zoom = s.view.zoom.clamp(0.1, 4.0);
     let freeze = sheet.freeze.unwrap_or_default();
     let origin = CellAddr::new(

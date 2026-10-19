@@ -74,6 +74,23 @@ pub struct Theme {
     pub ribbon_separator: Color32,
     /// Text on accent-filled buttons.
     pub accent_text: Color32,
+    /// Cell checkbox outline and check mark (when the cell has no font colour).
+    pub checkbox: Color32,
+    /// Picture that could not be decoded: placeholder fill and cross.
+    pub picture_missing_bg: Color32,
+    pub picture_missing_mark: Color32,
+    /// Slicer: frame, caption, item buttons (selected / unselected / without data).
+    pub slicer_bg: Color32,
+    pub slicer_border: Color32,
+    pub slicer_caption: Color32,
+    pub slicer_selected_bg: Color32,
+    pub slicer_selected_border: Color32,
+    pub slicer_item_bg: Color32,
+    pub slicer_item_border: Color32,
+    pub slicer_item_text: Color32,
+    pub slicer_nodata_text: Color32,
+    pub slicer_clear: Color32,
+    pub slicer_clear_disabled: Color32,
 }
 
 pub const LIGHT: Theme = Theme {
@@ -138,6 +155,20 @@ pub const LIGHT: Theme = Theme {
     ribbon_tab_text: Color32::WHITE,
     ribbon_separator: Color32::from_rgb(208, 208, 208),
     accent_text: Color32::WHITE,
+    checkbox: Color32::from_rgb(64, 64, 64),
+    picture_missing_bg: Color32::from_rgb(236, 236, 236),
+    picture_missing_mark: Color32::from_rgb(170, 170, 170),
+    slicer_bg: Color32::WHITE,
+    slicer_border: Color32::from_rgb(190, 190, 190),
+    slicer_caption: Color32::from_rgb(50, 50, 50),
+    slicer_selected_bg: Color32::from_rgb(204, 226, 245),
+    slicer_selected_border: Color32::from_rgb(120, 170, 220),
+    slicer_item_bg: Color32::WHITE,
+    slicer_item_border: Color32::from_rgb(200, 200, 200),
+    slicer_item_text: Color32::from_rgb(30, 30, 30),
+    slicer_nodata_text: Color32::from_rgb(170, 170, 170),
+    slicer_clear: Color32::from_rgb(200, 60, 50),
+    slicer_clear_disabled: Color32::from_rgb(190, 190, 190),
 };
 
 /// Default colours for chart series and sparklines, in order (cycled past the end).

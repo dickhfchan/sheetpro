@@ -9,10 +9,12 @@
 //! both draw these scenes.
 
 use crate::chart::{self, ChartData, HAnchor, Paint, Prim, VAnchor};
+use crate::objects::{self as geo, ObjPrim, ZItem};
 use crate::std14::{self, Face};
 use crate::{Align, BorderSeg, DisplayCell, INDENT_PX, col_width_px, layout_lines, row_height_px};
 use sp_core::addr::split_sheet_prefix;
 use sp_core::{CellAddr, CellRange, MAX_COLS, MAX_ROWS, col_to_letters};
+use sp_model::objects::ImageData;
 use sp_model::{BorderStyle, Color, Orientation, PageSetup, Sheet, VAlign, Workbook};
 use std::collections::{BTreeSet, HashMap};
 
@@ -212,11 +214,32 @@ fn builtin<'a>(wb: &'a Workbook, sheet: usize, name: &str) -> Option<&'a str> {
         .map(|n| n.formula.as_str())
 }
 
-/// Used range grown to cover charts (printing includes floating objects).
+/// Used range grown to cover charts and objects (printing includes floating objects).
 pub fn content_range(sheet: &Sheet) -> Option<CellRange> {
     let mut r = sheet.used_range();
-    for c in &sheet.drawings.charts {
-        let a = CellRange::new(c.anchor.from, c.anchor.to);
+    let objects = sheet.objects.iter().filter(|o| !o.hidden).map(|o| {
+        let (x, y, w, h) = geo::object_rect_abs(sheet, &o.anchor);
+        let (c0, _) = chart::col_at_px(sheet, 0, x);
+        let (r0, _) = chart::row_at_px(sheet, 0, y);
+        let (c1, _) = chart::col_at_px(
+            sheet,
+            c0,
+            (x + w - 0.5).max(x) - chart::col_offset_px(sheet, 0, c0) as f64,
+        );
+        let (r1, _) = chart::row_at_px(
+            sheet,
+            r0,
+            (y + h - 0.5).max(y) - chart::row_offset_px(sheet, 0, r0) as f64,
+        );
+        CellRange::new(CellAddr::new(r0, c0), CellAddr::new(r1, c1))
+    });
+    let anchors = sheet
+        .drawings
+        .charts
+        .iter()
+        .map(|c| CellRange::new(c.anchor.from, c.anchor.to))
+        .chain(objects);
+    for a in anchors {
         r = Some(match r {
             Some(u) => CellRange::new(
                 CellAddr::new(u.start.row.min(a.start.row), u.start.col.min(a.start.col)),
@@ -731,6 +754,17 @@ pub enum Item {
         color: Color,
         angle: f32,
     },
+    /// A filled outline that may be concave (non-zero winding).
+    Area {
+        pts: Vec<(f32, f32)>,
+        color: Color,
+    },
+    /// An embedded picture mapped onto a parallelogram: where its top-left, top-right,
+    /// bottom-right and bottom-left corners land.
+    Image {
+        image: ImageData,
+        corners: [(f32, f32); 4],
+    },
     /// Items clipped to a rectangle.
     Clip {
         x: f32,
@@ -790,6 +824,7 @@ const GRIDLINE: Color = Color(170, 170, 170);
 const HEADING_FILL: Color = Color(242, 242, 242);
 const HEADING_LINE: Color = Color(160, 160, 160);
 const WHITE: Color = Color(255, 255, 255);
+const CHECKBOX: Color = Color(64, 64, 64);
 
 /// Colour of a chart paint role on paper.
 pub fn paint_color(p: Paint) -> Color {
@@ -1121,8 +1156,16 @@ fn draw_quadrant(
             cell_text(&mut items, d, r, r, k, cx.scale);
         }
     }
+    for d in &view.cells {
+        if let (Some(checked), Some(r)) = (
+            geo::checkbox_state(cx.wb, cx.sheet, d.addr),
+            rect_of(d.addr),
+        ) {
+            checkbox_items(cx, &mut items, d, r, checked);
+        }
+    }
     if body {
-        chart_items(cx, &mut items, rows, cols, (x0, y0, qw, qh));
+        drawing_items(cx, &mut items, rows, cols, (x0, y0, qw, qh));
     }
     out.push(Item::Clip {
         x: x0,
@@ -1165,8 +1208,48 @@ fn sparkline_items(
     }
 }
 
-/// Charts whose anchors overlap the block, positioned relative to its first row/col.
-fn chart_items(
+/// A cell checkbox: outline square and, when checked, the check mark.
+fn checkbox_items(
+    cx: &Ctx,
+    items: &mut Vec<Item>,
+    d: &DisplayCell,
+    r: (f32, f32, f32, f32),
+    checked: bool,
+) {
+    let align = cx.sheet.get(d.addr).map_or(sp_model::HAlign::General, |c| {
+        cx.wb.styles.get(c.style).h_align
+    });
+    let (x, y, w, h) = geo::checkbox_rect(r, cx.k, align);
+    let color = d.color.unwrap_or(CHECKBOX);
+    let width = (0.75 * cx.scale).max(0.3);
+    items.push(Item::Line {
+        pts: vec![(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
+        width,
+        color,
+        dash: None,
+        closed: true,
+    });
+    if checked {
+        items.push(Item::Line {
+            pts: geo::check_mark((x, y, w, h)),
+            width: width * 1.6,
+            color,
+            dash: None,
+            closed: false,
+        });
+    }
+}
+
+/// Mix a colour with white paper by `alpha` (PDF output has no transparency).
+fn on_paper(c: Color, alpha: f32) -> Color {
+    let a = alpha.clamp(0.0, 1.0);
+    let mix = |v: u8| (f32::from(v) * a + 255.0 * (1.0 - a)).round() as u8;
+    Color(mix(c.0), mix(c.1), mix(c.2))
+}
+
+/// Charts and objects overlapping the block, in z-order, positioned relative to its first
+/// row/col.
+fn drawing_items(
     cx: &Ctx,
     items: &mut Vec<Item>,
     rows: &[(u32, f32, f32)],
@@ -1179,22 +1262,149 @@ fn chart_items(
     let k = cx.k;
     let bx = chart::col_offset_px(cx.sheet, 0, first_c.0);
     let by = chart::row_offset_px(cx.sheet, 0, first_r.0);
-    for (i, c) in cx.sheet.drawings.charts.iter().enumerate() {
-        let (ax, ay, aw, ah) = chart::anchor_rect(cx.sheet, CellAddr::default(), &c.anchor);
-        if aw < 2.0 || ah < 2.0 {
-            continue;
+    let place = |(ax, ay, aw, ah): (f32, f32, f32, f32)| {
+        let (px, py, w, h) = (x0 + (ax - bx) * k, y0 + (ay - by) * k, aw * k, ah * k);
+        // Rotated objects can reach past their box: test the circumscribed square.
+        let reach = (w * w + h * h).sqrt();
+        let (cx_, cy_) = (px + w / 2.0, py + h / 2.0);
+        let outside =
+            cx_ + reach < x0 || cy_ + reach < y0 || cx_ - reach > x0 + qw || cy_ - reach > y0 + qh;
+        (!outside).then_some((px, py, w, h))
+    };
+    for z in geo::z_order(cx.sheet) {
+        match z {
+            ZItem::Chart(i) => {
+                let Some(c) = cx.sheet.drawings.charts.get(i) else {
+                    continue;
+                };
+                let r = chart::anchor_rect(cx.sheet, CellAddr::default(), &c.anchor);
+                if r.2 < 2.0 || r.3 < 2.0 {
+                    continue;
+                }
+                let (Some((px, py, w, h)), Some(d)) = (place(r), cx.data.charts.get(i)) else {
+                    continue;
+                };
+                let prims = chart::chart_scene(d, w, h, k);
+                prim_items(items, &prims, px, py);
+            }
+            ZItem::Object(i) => {
+                let Some(o) = cx.sheet.objects.get(i) else {
+                    continue;
+                };
+                let r = geo::object_rect(cx.sheet, CellAddr::default(), &o.anchor);
+                if o.hidden {
+                    continue;
+                }
+                if let Some(b) = place(r) {
+                    object_items(cx, items, o, b);
+                }
+            }
         }
-        let px = x0 + (ax - bx) * k;
-        let py = y0 + (ay - by) * k;
-        let (w, h) = (aw * k, ah * k);
-        if px + w < x0 || py + h < y0 || px > x0 + qw || py > y0 + qh {
-            continue;
+    }
+}
+
+/// One picture, shape, text box or line in the box `b` (pt).
+fn object_items(
+    cx: &Ctx,
+    out: &mut Vec<Item>,
+    o: &sp_model::objects::DrawObject,
+    b: (f32, f32, f32, f32),
+) {
+    let sc = geo::object_scene(o, b, cx.k);
+    for p in sc.prims {
+        match p {
+            ObjPrim::Fill { pts, color, alpha } => out.push(Item::Area {
+                pts,
+                color: on_paper(color, alpha),
+            }),
+            ObjPrim::Stroke {
+                pts,
+                closed,
+                color,
+                alpha,
+                width,
+                dash,
+            } => out.push(Item::Line {
+                pts,
+                width: width.max(0.1),
+                color: on_paper(color, alpha),
+                dash,
+                closed,
+            }),
+            ObjPrim::Image { corners } => {
+                if let Some(pic) = o.picture() {
+                    out.push(Item::Image {
+                        image: pic.image.clone(),
+                        corners,
+                    });
+                }
+            }
         }
-        let Some(d) = cx.data.charts.get(i) else {
-            continue;
+    }
+    let Some(t) = sc.text else {
+        return;
+    };
+    let (x, y, w, h) = t.rect;
+    let lines: Vec<(String, Face, f32, Color, Align, bool)> = t
+        .paras
+        .iter()
+        .flat_map(|p| {
+            let face = Face::for_font(&p.font, p.bold, p.italic);
+            let size = (p.size * cx.scale).max(1.0);
+            let wrapped = if t.wrap {
+                wrap_text(&p.text, face, size, w.max(1.0))
+            } else {
+                vec![p.text.clone()]
+            };
+            wrapped
+                .into_iter()
+                .map(move |l| (l, face, size, p.color, p.align, p.underline))
+        })
+        .collect();
+    let total: f32 = lines.iter().map(|l| l.2 * 1.2).sum();
+    let mut top = match t.v_align {
+        VAlign::Top => y,
+        VAlign::Center => y + (h - total) / 2.0,
+        VAlign::Bottom => y + h - total,
+    };
+    for (text, face, size, color, align, underline) in lines {
+        let line_h = size * 1.2;
+        let (asc, desc) = face.ascent_descent();
+        let tw = std14::text_width(face, &text, size);
+        let tx = match align {
+            Align::Left => x,
+            Align::Center => x + (w - tw) / 2.0,
+            Align::Right => x + w - tw,
         };
-        let prims = chart::chart_scene(d, w, h, k);
-        prim_items(items, &prims, px, py);
+        let base = top + (line_h - (asc + desc) * size) / 2.0 + asc * size;
+        top += line_h;
+        if text.is_empty() {
+            continue;
+        }
+        let (px, py) = geo::rotate_point((tx, base), t.center, t.rotation);
+        out.push(Item::Text {
+            x: px,
+            y: py,
+            text,
+            face,
+            size,
+            color,
+            // Item angles turn counter-clockwise; object rotation is clockwise.
+            angle: -(t.rotation as f32),
+        });
+        if underline {
+            let dy = size * 0.12;
+            out.push(Item::Line {
+                pts: vec![
+                    geo::rotate_point((tx, base + dy), t.center, t.rotation),
+                    geo::rotate_point((tx + tw, base + dy), t.center, t.rotation),
+                ],
+                width: (size / 18.0).max(0.3),
+                color,
+                dash: None,
+                closed: false,
+            });
+        }
     }
 }
 
@@ -1873,5 +2083,110 @@ mod tests {
         let a4 = paper_size(9);
         assert!((a4.0 - 595.28).abs() < 0.1 && (a4.1 - 841.89).abs() < 0.1);
         assert_eq!(paper_size(9999), (612.0, 792.0));
+    }
+
+    #[test]
+    fn objects_and_checkboxes_print() {
+        use sp_model::objects::{DrawObject, ObjectKind, Picture, Shape, StyleRefs, TextBody};
+        let mut wb = Workbook::new();
+        let cb = wb.styles.intern(Style {
+            checkbox: true,
+            ..Style::default()
+        });
+        let png = crate::objects::encode_png(2, 2, vec![255; 16]).unwrap();
+        let img = crate::objects::image_data(png).unwrap();
+        if let Some(sh) = wb.sheet_mut(0) {
+            let mut c = Cell::constant(Value::Bool(true));
+            c.style = cb;
+            sh.set(CellAddr::new(0, 0), c);
+            let anchor = |x: f64, y: f64| {
+                crate::objects::anchor_from_rect(
+                    &Sheet::new("x"),
+                    sp_model::objects::AnchorKind::TwoCell,
+                    sp_model::objects::Placement::Move,
+                    (x, y, 100.0, 60.0),
+                )
+            };
+            sh.objects.push(DrawObject {
+                anchor: anchor(200.0, 100.0),
+                kind: ObjectKind::Shape(Shape {
+                    preset: "star5".into(),
+                    style: Some(StyleRefs::shape_default()),
+                    text: Some(TextBody::from_plain(
+                        "Star text",
+                        &Default::default(),
+                        Some("ctr"),
+                    )),
+                    ..Shape::default()
+                }),
+                rotation: 30.0,
+                ..DrawObject::default()
+            });
+            sh.objects.push(DrawObject {
+                anchor: anchor(400.0, 300.0),
+                kind: ObjectKind::Picture(Picture {
+                    image: img,
+                    ..Picture::default()
+                }),
+                ..DrawObject::default()
+            });
+            sh.objects.push(DrawObject {
+                anchor: anchor(10.0, 10.0),
+                hidden: true,
+                kind: ObjectKind::Shape(Shape {
+                    preset: "rect".into(),
+                    text: Some(TextBody::from_plain("hidden", &Default::default(), None)),
+                    ..Shape::default()
+                }),
+                ..DrawObject::default()
+            });
+        }
+        // The print range grows to cover the objects (the used range is just A1).
+        let r = content_range(&wb.sheets[0]).unwrap();
+        assert!(r.end.col >= 7 && r.end.row >= 17, "{r:?}");
+        let pg = paginate(&wb, 0, &PrintOptions::default());
+        let sc = page_scene(
+            &wb,
+            &pg,
+            &pg.pages[0],
+            &PrintData::default(),
+            &HfContext::default(),
+        );
+        fn walk<'a>(items: &'a [Item], out: &mut Vec<&'a Item>) {
+            for it in items {
+                if let Item::Clip { items, .. } = it {
+                    walk(items, out);
+                } else {
+                    out.push(it);
+                }
+            }
+        }
+        let mut all = Vec::new();
+        walk(&sc.items, &mut all);
+        let areas = all
+            .iter()
+            .filter(|i| matches!(i, Item::Area { .. }))
+            .count();
+        let images = all
+            .iter()
+            .filter(|i| matches!(i, Item::Image { .. }))
+            .count();
+        assert_eq!((areas, images), (1, 1), "star fill + picture");
+        let star = all.iter().find_map(|i| match i {
+            Item::Text { text, angle, .. } if text == "Star text" => Some(*angle),
+            _ => None,
+        });
+        assert_eq!(star, Some(-30.0), "text turns with the shape");
+        assert!(!sc.texts().iter().any(|t| t == "hidden"));
+        // Checked box: an outline square and a check mark.
+        let lines = all
+            .iter()
+            .filter(|i| matches!(i, Item::Line { closed: true, pts, .. } if pts.len() == 4))
+            .count();
+        assert!(lines >= 1);
+        assert!(
+            all.iter()
+                .any(|i| matches!(i, Item::Line { closed: false, pts, .. } if pts.len() == 3))
+        );
     }
 }

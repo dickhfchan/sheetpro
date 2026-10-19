@@ -12,9 +12,11 @@
 //! lengths, page count); tests use it on every export.
 
 use sp_model::Color;
+use sp_model::objects::ImageData;
+use sp_render::objects::{PdfImage, pdf_image};
 use sp_render::paginate::{Item, PageScene};
 use sp_render::std14::{self, Face};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
 
 /// Number in a content stream: at most 3 decimals, no exponent, non-finite → 0.
@@ -70,11 +72,46 @@ fn text_string(text: &str) -> String {
     s
 }
 
+/// Most distinct images embedded in one document (later ones are left out).
+const MAX_IMAGES: usize = 10_000;
+
+/// Images used by the document, each encoded once (by image identity) and written as an
+/// image XObject `/Im<n>`.
+#[derive(Default)]
+struct Images {
+    /// Image key → index in `list` (`None`: could not be encoded; not drawn).
+    by_key: HashMap<(usize, usize), Option<usize>>,
+    list: Vec<PdfImage>,
+    /// Keeps each image's bytes alive so its key stays unique.
+    keep: Vec<ImageData>,
+}
+
+impl Images {
+    fn index(&mut self, img: &ImageData) -> Option<usize> {
+        let key = img.key();
+        if let Some(i) = self.by_key.get(&key) {
+            return *i;
+        }
+        let i = if self.list.len() < MAX_IMAGES {
+            pdf_image(img).map(|p| {
+                self.list.push(p);
+                self.list.len() - 1
+            })
+        } else {
+            None
+        };
+        self.by_key.insert(key, i);
+        self.keep.push(img.clone());
+        i
+    }
+}
+
 /// Content-stream writer for one page (flips y to PDF's bottom-left origin).
 struct Content<'a> {
     out: String,
     height: f32,
     fonts: &'a mut BTreeSet<usize>,
+    images: &'a mut Images,
 }
 
 impl Content<'_> {
@@ -131,13 +168,32 @@ impl Content<'_> {
                 self.path(pts);
                 self.out.push_str(if *closed { "s\n" } else { "S\n" });
             }
-            Item::Poly { pts, color } => {
+            Item::Poly { pts, color } | Item::Area { pts, color } => {
                 if pts.len() < 3 {
                     return;
                 }
                 let _ = writeln!(self.out, "{} rg", rgb(*color));
                 self.path(pts);
                 self.out.push_str("h f\n");
+            }
+            Item::Image { image, corners } => {
+                let Some(i) = self.images.index(image) else {
+                    return;
+                };
+                // Image space is the unit square, (0, 0) at the picture's bottom-left.
+                let [tl, _, br, bl] = *corners;
+                let p = |q: (f32, f32)| (q.0, self.height - q.1);
+                let (o, r, t) = (p(bl), p(br), p(tl));
+                let _ = writeln!(
+                    self.out,
+                    "q {} {} {} {} {} {} cm /Im{i} Do Q",
+                    num(r.0 - o.0),
+                    num(r.1 - o.1),
+                    num(t.0 - o.0),
+                    num(t.1 - o.1),
+                    num(o.0),
+                    num(o.1)
+                );
             }
             Item::Circle { x, y, r, color } => {
                 if *r <= 0.0 {
@@ -224,12 +280,14 @@ pub fn write_pdf(pages: &[PageScene], title: &str) -> Vec<u8> {
 /// content stream is written, so long jobs don't hold every scene in memory).
 pub fn write_pdf_pages(pages: impl IntoIterator<Item = PageScene>, title: &str) -> Vec<u8> {
     let mut fonts = BTreeSet::new();
+    let mut images = Images::default();
     let mut streams: Vec<(f32, f32, String)> = Vec::new();
     for p in pages {
         let mut c = Content {
             out: String::new(),
             height: p.height,
             fonts: &mut fonts,
+            images: &mut images,
         };
         c.items(&p.items, 0);
         streams.push((p.width, p.height, c.out));
@@ -237,14 +295,20 @@ pub fn write_pdf_pages(pages: impl IntoIterator<Item = PageScene>, title: &str) 
     if streams.is_empty() {
         streams.push((612.0, 792.0, String::new()));
     }
-    // Object numbers: 1 catalog, 2 page tree, 3 info, 4 resources, then fonts, then a
-    // (page, content) pair per page.
+    // Object numbers: 1 catalog, 2 page tree, 3 info, 4 resources, then fonts, then images
+    // (each followed by its soft mask, if any), then a (page, content) pair per page.
     let faces: Vec<Face> = Face::all()
         .into_iter()
         .filter(|f| fonts.contains(&f.index()))
         .collect();
     let font_obj = |i: usize| 5 + i;
-    let first_page = 5 + faces.len();
+    let mut image_objs = Vec::with_capacity(images.list.len());
+    let mut next = 5 + faces.len();
+    for im in &images.list {
+        image_objs.push(next);
+        next += if im.alpha.is_some() { 2 } else { 1 };
+    }
+    let first_page = next;
     let page_obj = |i: usize| first_page + 2 * i;
     let mut objs: Vec<Vec<u8>> = Vec::new();
     objs.push(b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
@@ -272,9 +336,19 @@ pub fn write_pdf_pages(pages: impl IntoIterator<Item = PageScene>, title: &str) 
         .enumerate()
         .map(|(i, f)| format!("/F{} {} 0 R", f.index(), font_obj(i)))
         .collect();
+    let xobjects = if image_objs.is_empty() {
+        String::new()
+    } else {
+        let refs: Vec<String> = image_objs
+            .iter()
+            .enumerate()
+            .map(|(i, n)| format!("/Im{i} {n} 0 R"))
+            .collect();
+        format!(" /XObject << {} >>", refs.join(" "))
+    };
     objs.push(
         format!(
-            "<< /Font << {} >> /ProcSet [/PDF /Text] >>",
+            "<< /Font << {} >>{xobjects} /ProcSet [/PDF /Text /ImageB /ImageC] >>",
             font_refs.join(" ")
         )
         .into_bytes(),
@@ -287,6 +361,41 @@ pub fn write_pdf_pages(pages: impl IntoIterator<Item = PageScene>, title: &str) 
             )
             .into_bytes(),
         );
+    }
+    for (im, n) in images.list.iter().zip(&image_objs) {
+        let smask = im
+            .alpha
+            .as_ref()
+            .map(|_| format!(" /SMask {} 0 R", n + 1))
+            .unwrap_or_default();
+        let space = if im.colors == 1 {
+            "/DeviceGray"
+        } else {
+            "/DeviceRGB"
+        };
+        let filter = if im.dct {
+            "/Filter /DCTDecode".to_string()
+        } else {
+            predictor(im.width, im.colors)
+        };
+        objs.push(image_object(
+            &format!(
+                "/Width {} /Height {} /ColorSpace {space} /BitsPerComponent 8 {filter}{smask}",
+                im.width, im.height
+            ),
+            &im.data,
+        ));
+        if let Some(a) = &im.alpha {
+            objs.push(image_object(
+                &format!(
+                    "/Width {} /Height {} /ColorSpace /DeviceGray /BitsPerComponent 8 {}",
+                    im.width,
+                    im.height,
+                    predictor(im.width, 1)
+                ),
+                a,
+            ));
+        }
     }
     for (i, (w, h, content)) in streams.iter().enumerate() {
         objs.push(
@@ -326,11 +435,52 @@ pub fn write_pdf_pages(pages: impl IntoIterator<Item = PageScene>, title: &str) 
     out
 }
 
+/// `/FlateDecode` with PNG predictors for rows of `width` pixels of `colors` components.
+fn predictor(width: u32, colors: u8) -> String {
+    format!(
+        "/Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors {colors} /BitsPerComponent 8 /Columns {width} >>"
+    )
+}
+
+/// An image XObject stream with dictionary entries `dict` and binary `data`.
+fn image_object(dict: &str, data: &[u8]) -> Vec<u8> {
+    let mut s = format!(
+        "<< /Type /XObject /Subtype /Image {dict} /Length {} >>\nstream\n",
+        data.len()
+    )
+    .into_bytes();
+    s.extend_from_slice(data);
+    s.extend_from_slice(b"\nendstream");
+    s
+}
+
 /// What [`validate`] found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PdfSummary {
     pub objects: usize,
     pub pages: usize,
+    /// Image XObjects (soft masks included).
+    pub images: usize,
+}
+
+/// `/Im<n>` names in `hay` followed by `suffix` (e.g. `" Do"` or `" "`).
+fn image_names(hay: &[u8], suffix: &[u8]) -> BTreeSet<usize> {
+    let mut out = BTreeSet::new();
+    let mut from = 0;
+    while let Some(at) = find(hay, b"/Im", from) {
+        let digits = hay
+            .get(at + 3..)
+            .map_or(0, |t| t.iter().take_while(|b| b.is_ascii_digit()).count());
+        let end = at + 3 + digits;
+        if digits > 0
+            && hay.get(end..).is_some_and(|t| t.starts_with(suffix))
+            && let Some(n) = hay.get(at + 3..end).and_then(ascii_num)
+        {
+            out.insert(n);
+        }
+        from = end.max(at + 1);
+    }
+    out
 }
 
 /// Balanced dictionaries/arrays (outside literal strings) and in-range `n 0 R` references.
@@ -431,7 +581,10 @@ pub fn validate(bytes: &[u8]) -> Result<PdfSummary, String> {
         .ok_or("bad xref count")?;
     let mut pos = line_end + 1;
     let mut pages = 0usize;
+    let mut images = 0usize;
     let mut declared = None;
+    let mut xobjects: BTreeSet<usize> = BTreeSet::new();
+    let mut used: BTreeSet<usize> = BTreeSet::new();
     for i in 0..count {
         let entry = bytes.get(pos..pos + 20).ok_or("truncated xref")?;
         pos += 20;
@@ -462,6 +615,28 @@ pub fn validate(bytes: &[u8]) -> Result<PdfSummary, String> {
         if body.starts_with(b"<< /Type /Page ") {
             pages += 1;
         }
+        if body.starts_with(b"<< /Font ") {
+            xobjects.extend(image_names(dict, b" "));
+        }
+        if dict.starts_with(b"<< /Type /XObject /Subtype /Image ") {
+            images += 1;
+            for key in [
+                &b"/Width "[..],
+                b"/Height ",
+                b"/ColorSpace ",
+                b"/BitsPerComponent 8",
+                b"/Filter ",
+            ] {
+                if find(dict, key, 0).is_none() {
+                    return Err(format!(
+                        "image object {i} lacks {}",
+                        String::from_utf8_lossy(key).trim()
+                    ));
+                }
+            }
+        } else if let Some(sp) = find(body, b"\nstream\n", 0) {
+            used.extend(image_names(body.get(sp..).unwrap_or_default(), b" Do"));
+        }
         if body.starts_with(b"<< /Type /Pages ") {
             let c = find(body, b"/Count ", 0).ok_or("no /Count")? + 7;
             let ce = find(body, b" ", c).ok_or("bad /Count")?;
@@ -488,9 +663,15 @@ pub fn validate(bytes: &[u8]) -> Result<PdfSummary, String> {
     if declared != Some(pages) {
         return Err(format!("/Count {declared:?} but {pages} page objects"));
     }
+    if let Some(n) = used.difference(&xobjects).next() {
+        return Err(format!(
+            "content draws /Im{n}, which the resources don't define"
+        ));
+    }
     Ok(PdfSummary {
         objects: count.saturating_sub(1),
         pages,
+        images,
     })
 }
 
@@ -560,6 +741,105 @@ mod tests {
         assert!(text.contains("re f"));
         assert!(text.contains("[2 1] 0 d"));
         assert!(text.contains("612 792"));
+    }
+
+    fn png_with_alpha() -> sp_model::objects::ImageData {
+        let px = vec![
+            200, 30, 30, 255, 0, 0, 0, 0, 30, 200, 30, 128, 30, 30, 200, 255,
+        ];
+        let png = sp_render::objects::encode_png(2, 2, px).unwrap();
+        sp_render::objects::image_data(png).unwrap()
+    }
+
+    fn jpeg() -> sp_model::objects::ImageData {
+        let rgb: Vec<u8> = (0..8 * 4 * 3).map(|i| (i * 7) as u8).collect();
+        let jpg = sp_render::objects::encode_jpeg(8, 4, rgb).unwrap();
+        sp_render::objects::image_data(jpg).unwrap()
+    }
+
+    fn image_scene(
+        png: &sp_model::objects::ImageData,
+        jpg: &sp_model::objects::ImageData,
+    ) -> PageScene {
+        let corners = [(10.0, 10.0), (110.0, 10.0), (110.0, 60.0), (10.0, 60.0)];
+        PageScene {
+            width: 612.0,
+            height: 792.0,
+            items: vec![
+                Item::Area {
+                    pts: vec![
+                        (0.0, 0.0),
+                        (40.0, 0.0),
+                        (20.0, 10.0),
+                        (40.0, 30.0),
+                        (0.0, 30.0),
+                    ],
+                    color: Color(255, 192, 0),
+                },
+                Item::Image {
+                    image: png.clone(),
+                    corners,
+                },
+                Item::Image {
+                    image: jpg.clone(),
+                    corners,
+                },
+                // The same picture again: embedded once.
+                Item::Image {
+                    image: png.clone(),
+                    corners,
+                },
+                // Undecodable bytes: skipped, not referenced.
+                Item::Image {
+                    image: sp_model::objects::ImageData {
+                        bytes: std::sync::Arc::from(&b"\x89PNG\r\n\x1a\nbroken"[..]),
+                        ..Default::default()
+                    },
+                    corners,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn pictures_embed_as_image_xobjects() {
+        let (png, j) = (png_with_alpha(), jpeg());
+        let pdf = write_pdf(&[image_scene(&png, &j), image_scene(&png, &j)], "pics");
+        let s = validate(&pdf).unwrap_or_else(|e| panic!("{e}"));
+        // PNG (RGB + soft mask) and JPEG, shared by both pages.
+        assert_eq!((s.pages, s.images), (2, 3));
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(text.contains("/Filter /DCTDecode"));
+        assert!(text.contains("/Predictor 15 /Colors 3"));
+        assert!(text.contains("/SMask "));
+        assert!(text.contains("/XObject << /Im0 "));
+        assert_eq!(text.matches("/Im0 Do").count(), 4);
+        assert_eq!(text.matches("/Im1 Do").count(), 2);
+        assert!(!text.contains("/Im2"));
+        // Unit square → the 100 × 50 pt box, y flipped (bottom-left at 792 - 60).
+        assert!(text.contains("q 100 0 0 50 10 732 cm /Im0 Do Q"), "{text}");
+        // Concave area: one filled path.
+        assert!(text.contains("1 0.753 0 rg"));
+        // The JPEG passes through byte for byte.
+        assert!(pdf.windows(j.bytes.len()).any(|w| w == &j.bytes[..]));
+    }
+
+    #[test]
+    fn validator_checks_images() {
+        let pdf = write_pdf(&[image_scene(&png_with_alpha(), &jpeg())], "pics");
+        assert!(validate(&pdf).is_ok());
+        let swap = |from: &[u8], to: &[u8]| {
+            let mut b = pdf.clone();
+            let at = find(&b, from, 0).unwrap();
+            b.splice(at..at + from.len(), to.iter().copied());
+            b
+        };
+        // Drawing an image the resources don't name.
+        let bad = swap(b"/Im1 Do", b"/Im7 Do");
+        assert!(validate(&bad).unwrap_err().contains("/Im7"));
+        // An image without a size.
+        let bad = swap(b"/Width ", b"/Wxdth ");
+        assert!(validate(&bad).unwrap_err().contains("lacks /Width"));
     }
 
     #[test]

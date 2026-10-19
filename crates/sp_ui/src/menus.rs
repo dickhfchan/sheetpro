@@ -156,6 +156,13 @@ impl App {
             self.activate_command("table.design");
             ui.close();
         }
+        if self.active_pivot().is_some()
+            && self.ui.grid.hide_field_list
+            && ui.button("Show Field List").clicked()
+        {
+            self.ui.grid.hide_field_list = false;
+            ui.close();
+        }
         self.menu_cmd(ui, "formulas.insert_function", "Insert Function…");
         self.menu_cmd(ui, "formulas.define_name", "Define Name…");
         ui.separator();

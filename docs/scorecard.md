@@ -151,6 +151,3 @@ Model/view fields with no reader in `sp_render` or `sp_ui`, and app settings (`S
 - `Sheet.validations`
 - `Sheet.spills`
 - `Sheet.passthrough`
-- `Sheet.analysis`
-- `Sheet.objects`
-- `Sheet.background`
