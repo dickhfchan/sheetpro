@@ -4,6 +4,7 @@ pub mod autofill;
 pub mod chart_shift;
 pub mod clipboard;
 pub mod edit;
+pub mod find;
 pub mod flash_fill;
 pub mod history;
 pub mod object_shift;

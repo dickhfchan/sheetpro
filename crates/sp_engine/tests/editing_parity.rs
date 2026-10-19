@@ -1132,7 +1132,7 @@ fn find_within_sheet_or_workbook() {
         json!({"what": "apple", "whole": true}),
     );
     assert_eq!(r["cell"], "A1");
-    assert_eq!(s.wb.active, 0);
+    assert_eq!(s.wb.sheets[s.wb.active].name, "Sheet1");
     let r = exec(
         &mut s,
         "home.editing.find",
@@ -1160,8 +1160,8 @@ fn find_by_rows_or_columns() {
     assert_eq!(r["cell"], "A2");
     let r = exec(&mut s, "home.editing.find", json!({"what": "apple"}));
     assert_eq!(
-        r["cell"], "B1",
-        "by rows from A2... wraps to next row-major hit"
+        r["cell"], "A1",
+        "by rows nothing follows A2, so the search wraps"
     );
 }
 
@@ -1189,6 +1189,7 @@ fn replace_inside_formulas_keeps_them_valid() {
     assert_eq!(num(&mut s, "B1"), 7.0);
     assert_eq!(num(&mut s, "B2"), 5.0);
     one_undo_step(&mut s, &before);
+    exec(&mut s, "edit.undo", json!({}));
     // A replacement that would break a formula is skipped, not applied.
     let r = exec(
         &mut s,
@@ -1288,4 +1289,45 @@ fn each_edit_is_one_undo_step() {
         let _ = depth;
         one_undo_step(&mut s, &before);
     }
+}
+
+#[test]
+fn cut_moves_validation_cf_and_merges_and_undo_restores() {
+    let mut s = Session::new();
+    sets(&mut s, &[("A1", "10"), ("A2", "1"), ("A3", "7")]);
+    exec(
+        &mut s,
+        "data.validation",
+        json!({"range": "A1:A3", "type": "whole", "operator": "greaterThan", "min": 0}),
+    );
+    exec(
+        &mut s,
+        "home.styles.cf.highlight_rules",
+        json!({"range": "A1:A3", "rule": "greater_than", "value": 5}),
+    );
+    exec(&mut s, "home.align.merge_cells", json!({"range": "B1:C1"}));
+    exec(&mut s, "home.clipboard.cut", json!({"range": "A1:C1"}));
+    let before = s.wb.clone();
+    exec(&mut s, "home.clipboard.paste", json!({"cell": "E5"}));
+    let sh = &s.wb.sheets[0];
+    assert!(sh.validation_at(a("E5")).is_some());
+    assert!(sh.validation_at(a("A1")).is_none());
+    assert!(
+        sh.validation_at(a("A2")).is_some(),
+        "the rest of the rule stays"
+    );
+    assert!(sh.cond_formats.iter().any(|c| c.covers(a("E5"))));
+    assert!(!sh.cond_formats.iter().any(|c| c.covers(a("A1"))));
+    assert!(sh.cond_formats.iter().any(|c| c.covers(a("A3"))));
+    assert!(sh.merges.contains(&r("F5:G5")) && !sh.merges.contains(&r("B1:C1")));
+    one_undo_step(&mut s, &before);
+}
+
+#[test]
+fn cut_then_paste_special_is_refused() {
+    let mut s = Session::new();
+    set(&mut s, "A1", "1");
+    exec(&mut s, "home.clipboard.cut", json!({"range": "A1"}));
+    refused(&mut s, "home.clipboard.paste_values", json!({"cell": "B1"}));
+    assert_eq!(input(&mut s, "A1"), "1");
 }
