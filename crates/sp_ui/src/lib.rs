@@ -9,6 +9,7 @@ mod menus;
 pub mod objdraw;
 pub mod overlays;
 pub mod page_view;
+pub mod pivot_pane;
 pub mod ribbon;
 pub mod shell_hook;
 pub mod theme;
@@ -228,6 +229,18 @@ impl App {
                     .inner_margin(egui::Margin::symmetric(4, 2)),
             )
             .show(ui, |ui| self.sheet_tabs(ui));
+        if self.field_list_visible() {
+            egui::Panel::right("pivot_fields")
+                .resizable(false)
+                .exact_size(pivot_pane::PANE_WIDTH)
+                .frame(
+                    egui::Frame::NONE
+                        .fill(T.dialog_bg)
+                        .stroke(Stroke::new(1.0, T.dialog_border))
+                        .inner_margin(egui::Margin::same(8)),
+                )
+                .show(ui, |ui| self.pivot_pane(ui));
+        }
         egui::CentralPanel::no_frame().show(ui, |ui| self.grid_area(ui));
         self.keyboard(ui);
         let ctx = ui.ctx().clone();

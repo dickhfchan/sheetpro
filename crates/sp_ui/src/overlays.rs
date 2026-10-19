@@ -538,13 +538,16 @@ impl App {
             }
             return true;
         }
-        let grabbed = match pos.and_then(top_hit) {
+        // A drag starts where the button went down (egui reports it once the pointer has
+        // moved past the drag threshold).
+        let press = resp.ctx.input(|i| i.pointer.press_origin()).or(pos);
+        let grabbed = match press.and_then(top_hit) {
             Some(Hot::Chart { idx, .. }) => Some((idx, false)),
             Some(Hot::Object { idx, .. }) => Some((idx, true)),
             _ => None,
         };
         if resp.drag_started()
-            && let Some(p) = pos
+            && let Some(p) = press
             && let Some((idx, object)) = grabbed
         {
             let rects = if object {
@@ -800,7 +803,7 @@ impl App {
 
     /// A click on a slicer button: show only that item, or (`toggle`, Ctrl+click) add or
     /// remove it from the selection. Runs `insert.slicer`, so it is undoable.
-    pub(crate) fn slicer_click(&mut self, slicer: usize, label: &str, toggle: bool) {
+    pub fn slicer_click(&mut self, slicer: usize, label: &str, toggle: bool) {
         let Some(sheet) = self.session.wb.sheet(self.session.sheet_index()) else {
             return;
         };
