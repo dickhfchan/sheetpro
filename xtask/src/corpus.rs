@@ -188,6 +188,9 @@ fn values_match(expected: &Value, got: &Value) -> bool {
         (Value::Text(a), Value::Text(b)) => a == b,
         (Value::Bool(a), Value::Bool(b)) => a == b,
         (Value::Error(a), Value::Error(b)) => a == b,
+        // Some corpus files were saved by a writer that caches error results as strings
+        // (`t="str"` with `<v>#NUM!</v>`); the target itself caches them as errors.
+        (Value::Text(a), Value::Error(b)) => &**a == b.as_str(),
         // The target stores empty-string results as text; a formula yielding "" may come back
         // either way.
         (Value::Text(a), Value::Empty) | (Value::Empty, Value::Text(a)) => a.is_empty(),
