@@ -17,6 +17,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ```sh
 cargo run -p sp -- control                       # JSON-lines session on stdin/stdout
+cargo run -p sp -- mcp                           # MCP server on stdio (see control-protocol.md)
 cargo run -p sp -- eval "=SUM(1,2,3)"            # evaluate a formula in an empty book
 cargo run -p sp -- recalc in.xlsx --out out.xlsx # load, recalc, save
 cargo run -p sp -- screenshot --out shot.png [--open book.xlsx] [--script steps.jsonl]

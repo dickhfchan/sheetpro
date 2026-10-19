@@ -217,6 +217,10 @@ pub struct Session {
     pub quit_requested: bool,
     /// Set while a typing command runs: data validation applies to the cells it changes.
     pub validate_entry: bool,
+    /// Macro recorder/runner state (`view.macros`).
+    pub macros: commands::macro_cmds::MacroState,
+    /// Spelling ignore lists (`review.spelling`).
+    pub spelling: commands::spell_cmds::SpellState,
 }
 
 impl Default for Session {
@@ -250,6 +254,8 @@ impl Session {
             last_command: None,
             quit_requested: false,
             validate_entry: false,
+            macros: Default::default(),
+            spelling: Default::default(),
         };
         s.recalc();
         s
@@ -275,6 +281,9 @@ impl Session {
         let r = (cmd.spec.run)(self, params);
         self.validate_entry = false;
         settings::record_command(id, r.is_ok());
+        if r.is_ok() {
+            commands::macro_cmds::record(self, id, params);
+        }
         if r.is_ok()
             && id != "edit.repeat"
             && id != "edit.undo"

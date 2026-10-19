@@ -40,6 +40,8 @@ pub struct Settings {
     pub gridline_color: String,
     /// Recent-files list length.
     pub recent_count: usize,
+    /// Words the spelling checker accepts in addition to the bundled list.
+    pub user_dictionary: Vec<String>,
 }
 
 impl Default for Settings {
@@ -53,6 +55,7 @@ impl Default for Settings {
             r1c1: false,
             gridline_color: DEFAULT_GRIDLINE.into(),
             recent_count: 10,
+            user_dictionary: Vec::new(),
         }
     }
 }
@@ -171,6 +174,7 @@ impl Settings {
         }
         self.recent_count = self.recent_count.min(MAX_RECENT);
         self.recent_files.truncate(self.recent_count);
+        self.user_dictionary.truncate(10_000);
         self
     }
 

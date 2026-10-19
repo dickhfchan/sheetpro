@@ -14,6 +14,7 @@ pub mod file_cmds;
 pub mod filter_cmds;
 pub mod format_cmds;
 pub mod layout_cmds;
+pub mod macro_cmds;
 pub mod misc_cmds;
 pub mod nav_cmds;
 pub mod outline_cmds;
@@ -21,6 +22,7 @@ pub mod pivot_cmds;
 pub mod print_cmds;
 pub mod protect_cmds;
 pub mod sheet_cmds;
+pub mod spell_cmds;
 pub mod table_cmds;
 pub mod ui_cmds;
 pub mod validation_cmds;
@@ -56,5 +58,7 @@ pub fn all_specs() -> Vec<CommandSpec> {
     v.extend(print_cmds::specs());
     v.extend(app_cmds::specs());
     v.extend(ui_cmds::specs());
+    v.extend(macro_cmds::specs());
+    v.extend(spell_cmds::specs());
     v
 }
