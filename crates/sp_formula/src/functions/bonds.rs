@@ -254,7 +254,7 @@ fn period_len(a: f64, b: f64, freq: f64, basis: i32) -> f64 {
 /// Σ (days of `[from, to]` inside each quasi-coupon period) / (period length), with
 /// periods anchored at `anchor`. Negative when `to < from`.
 fn accrual_periods(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<f64> {
-    accrual_core(from, to, anchor, freq, basis, false)
+    accrual_core(from, to, anchor, freq, basis, false, false)
 }
 
 /// Like [`accrual_periods`], but a quasi-coupon period never contributes more than 1.
@@ -280,12 +280,26 @@ fn accrual_capped(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<f
 /// Accrual as ACCRINT counts it: periods wholly covered before the one holding `to` count
 /// exactly 1, and actual/actual uses the length of the period ending at the anchor.
 fn accrual_accrint(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<f64> {
-    accrual_core(from, to, anchor, freq, basis, true)
+    accrual_core(from, to, anchor, freq, basis, true, true)
 }
 
-fn accrual_core(from: f64, to: f64, anchor: f64, freq: f64, basis: i32, whole: bool) -> R<f64> {
+/// Like [`accrual_periods`], but actual/actual divides every period by the length of the
+/// one ending at the anchor (ACCRINT with calc_method FALSE).
+fn accrual_nl1(from: f64, to: f64, anchor: f64, freq: f64, basis: i32) -> R<f64> {
+    accrual_core(from, to, anchor, freq, basis, false, true)
+}
+
+fn accrual_core(
+    from: f64,
+    to: f64,
+    anchor: f64,
+    freq: f64,
+    basis: i32,
+    whole: bool,
+    use_nl1: bool,
+) -> R<f64> {
     if to < from {
-        return accrual_core(to, from, anchor, freq, basis, whole).map(|x| -x);
+        return accrual_core(to, from, anchor, freq, basis, whole, use_nl1).map(|x| -x);
     }
     let s = Schedule::new(anchor, freq)?;
     let nl1 = s.date(0)? - s.date(-1)?;
@@ -301,7 +315,7 @@ fn accrual_core(from: f64, to: f64, anchor: f64, freq: f64, basis: i32, whole: b
         if whole && from <= a && b < to {
             total += 1.0;
         } else if hi > lo {
-            let nl = if whole && basis == 1 {
+            let nl = if use_nl1 && basis == 1 {
                 nl1
             } else {
                 period_len(a, b, freq, basis)
@@ -542,7 +556,7 @@ fn accrint(ev: &mut Ev<'_>, args: &[Expr]) -> R<f64> {
         if from_issue {
             accrual_accrint(a, b, first, freq, basis)
         } else {
-            accrual_periods(a, b, first, freq, basis)
+            accrual_nl1(a, b, first, freq, basis)
         }
     };
     let periods = if issue >= p {
@@ -555,7 +569,9 @@ fn accrint(ev: &mut Ev<'_>, args: &[Expr]) -> R<f64> {
         let g = if settle >= p {
             fwd(p, settle)?
         } else {
-            -day_diff(settle, p, basis)? / period_len(p, first, freq, basis)
+            // Counted backwards from the period start, as the target does (30/360 day
+            // adjustments then apply to `p`, not to settlement).
+            day_diff(p, settle, basis)? / period_len(p, first, freq, basis)
         };
         issue_frac + g + if from_issue { whole } else { 0.0 }
     };

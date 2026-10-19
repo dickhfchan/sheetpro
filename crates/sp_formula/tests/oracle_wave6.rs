@@ -402,3 +402,19 @@ fn forecast_ets_exact_on_linear_and_constant_series() {
     assert_eq!(err(&wb, "D4"), ErrorKind::Num);
     assert_eq!(err(&wb, "D5"), ErrorKind::NA);
 }
+
+#[test]
+fn accrint_counts_back_from_period_start_and_calc_method_false_uses_first_period() {
+    let wb = wb_with(&[
+        ("A1", "=ACCRINT(39508,39691,39569,0.1,1000,4)"),
+        ("A2", "=ACCRINT(44348,44531,44621,0.025,5000,2,1,FALSE)"),
+        ("A3", "=ACCRINT(44348,44531,44805,0.075,100,2,1,FALSE)"),
+        ("A4", "=ACCRINT(44804,45351,45047,0.075,100,2,0,TRUE)"),
+        ("A5", "=ACCRINT(44804,45351,45047,0.075,100,2,0,FALSE)"),
+    ]);
+    assert!(close(num(&wb, "A1"), 16.944_444_444_444_446));
+    assert!(close(num(&wb, "A2"), 93.237_704_918_032_79));
+    assert!(close(num(&wb, "A3"), 9.364_754_098_360_656));
+    assert!(close(num(&wb, "A4"), 5.020_833_333_333_334));
+    assert!(close(num(&wb, "A5"), -2.479_166_666_666_666_5));
+}
