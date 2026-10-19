@@ -11,16 +11,16 @@ oracle results (`cargo xtask test-corpus`), the scorecard, and the honest assess
 |---|---|---|
 | M0 Skeleton | ✅ | workspace, gates (layers / parity / scorecard / corpus / perf / panic-hunt), CI |
 | M1 Foundation | ✅ | core types, sparse model, transactional undo/redo |
-| M2 Formula engine v1 | ✅ | parser, evaluator, incremental recalc, 502/514 functions; oracle 99.4% of cells (192/218 files) |
+| M2 Formula engine v1 | ✅ | parser, evaluator, incremental recalc, 502/514 functions; oracle 99.97% of cells (209/218 files) |
 | M3 .xlsx v1 | 🟡 | values, formulas (incl. shared), styles subset, sheets, names; 259/259 corpus round-trip |
 | M4 Shell v1 | ✅ | ribbon from catalog, formula bar, grid, tabs, status bar, dialogs, context menus |
-| M5 Editing parity | 🟡 | commands exist (clipboard + paste special, fill/series, flash fill, insert/delete rows, find/replace); behaviour vs the target not audited |
+| M5 Editing parity | 🟡 | audited with 50 workflow tests: cut is a move with ref fixups, tiling, Paste Special ops/transpose, AutoFill series, find/replace options, one undo step each; gaps: fill patterns like Q1..Q4, table auto-grow on paste |
 | M6 Formatting parity | 🟡 | full Format Cells, number-format engine parity, borders, conditional formatting, workbook themes |
 | M7 Dynamic arrays | 🟡 | spill, `#SPILL!`, FILTER/SORT/UNIQUE/SEQUENCE, LAMBDA family |
 | M8 Data tools | 🟡 | sort, AutoFilter + dropdowns, validation lists, tables + dialogs, what-if (goal seek, data tables, scenarios), consolidate, forecast sheet |
-| M9 Charts & objects | 🟡 | charts (mouse select/move/resize), sparklines, comment/note cards; pictures/shapes/text boxes/cell checkboxes in model, commands and .xlsx, but **not drawn** on screen or in PDF |
+| M9 Charts & objects | 🟡 | charts (mouse select/move/resize), sparklines, comment/note cards; pictures, shapes, text boxes, lines, cell checkboxes and backgrounds drawn on screen and in PDF, mouse select/move/delete |
 | M10 Print & PDF | 🟡 | pagination, PDF export (standard-14 fonts), header/footer, page break preview, page layout view; no OS print dialog |
-| M11 Pivot tables | 🟡 | model, layout, refresh, fields via `pivot.field`, value number formats, slicers with anchors (model + commands only: no field-list pane, slicers not drawn), GETPIVOTDATA/GROUPBY/PIVOTBY, .xlsx adopt-or-pass-through |
+| M11 Pivot tables | 🟡 | model, layout, refresh, PivotTable Fields pane (menus, no drag-and-drop), value number formats, clickable slicers (not printed, not movable), GETPIVOTDATA/GROUPBY/PIVOTBY, .xlsx adopt-or-pass-through |
 | M12 Automation | ✅ | control channel, `sp mcp` server (10 tools), macros commands; DoD met: agent workflow tasks pass in the gate |
 
 ## Honest parity assessment (2026-10-19)
@@ -46,12 +46,15 @@ round-trip; all perf budgets met at 20k rows (quick run).
 3. Editing ergonomics: clipboard, fill, undo, keyboard navigation feel.
 4. Grid performance at 1M rows.
 
-## Current focus (wave 6)
+## Current focus (wave 7)
+
+Wave 6 (2026-10-19) landed: objects/slicers/pivot pane drawn, oracle 209/218, M5 audit, 1M-row
+perf suite (`cargo xtask perf --million`). The assessment above predates it.
 
 1. Real-user trial: hand out `cargo xtask package` builds, turn every bug into a regression test
    and a scorecard row.
-2. Draw what wave 5 modelled: pictures, shapes, text boxes and cell checkboxes in the grid and
-   in PDF; slicers; a pivot field-list pane over `pivot.field`.
-3. Oracle: the last 26 failing calc files (~440 cells); add oracle cases for pivots,
-   FORECAST.ETS and PDF output.
-4. Editing parity audit (M5) against the target, and a 1M-row perf scenario.
+2. Memory at 1M rows (7.2 GB peak): share one parse tree across filled-down formulas, evaluate
+   with an offset. Also cuts cold recalc, load, save, sort and insert time.
+3. Remaining oracle: XIRR/IRR iteration (13 cells), table-filter state for SUBTOTAL (7 cells).
+4. Polish from wave 6: slicers in PDF and movable, italic font face, rotated hit-testing,
+   drag-and-drop in the fields pane.

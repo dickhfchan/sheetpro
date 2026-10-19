@@ -28,6 +28,10 @@ pub struct FindReplace {
     pub whole: bool,
     /// Look in: values instead of formulas.
     pub in_values: bool,
+    /// Within: the whole workbook instead of the active sheet.
+    pub in_workbook: bool,
+    /// Search: by columns instead of by rows.
+    pub by_columns: bool,
     pub show_options: bool,
     pub hits: Vec<Hit>,
     pub selected: Option<usize>,
@@ -45,13 +49,37 @@ impl FindReplace {
         }
     }
 
-    fn find_params(&self) -> Json {
+    /// Options shared by Find and Replace.
+    fn search_params(&self) -> Json {
         json!({
             "what": self.what,
             "match_case": self.match_case,
             "whole": self.whole,
-            "formulas": !self.in_values,
+            "within": if self.in_workbook { "workbook" } else { "sheet" },
+            "search": if self.by_columns { "columns" } else { "rows" },
         })
+    }
+
+    fn find_params(&self) -> Json {
+        let mut p = self.search_params();
+        if let Some(m) = p.as_object_mut() {
+            m.insert(
+                "look_in".into(),
+                json!(if self.in_values { "values" } else { "formulas" }),
+            );
+        }
+        p
+    }
+
+    fn replace_params(&self, all: bool) -> Json {
+        let mut p = self.search_params();
+        if let Some(m) = p.as_object_mut() {
+            m.insert("with".into(), json!(self.with));
+            if all {
+                m.insert("all".into(), json!(true));
+            }
+        }
+        p
     }
 
     pub fn find_next(&mut self, app: &mut App) {
@@ -141,12 +169,42 @@ impl FindReplace {
                         ui.checkbox(&mut self.whole, "Match entire cell contents");
                     });
                     ui.add_space(24.0);
-                    label(ui, "Look in:");
-                    egui::ComboBox::new("find-lookin", "")
-                        .selected_text(if self.in_values { "Values" } else { "Formulas" })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.in_values, false, "Formulas");
-                            ui.selectable_value(&mut self.in_values, true, "Values");
+                    egui::Grid::new("find-options")
+                        .num_columns(2)
+                        .spacing([8.0, 4.0])
+                        .show(ui, |ui| {
+                            label(ui, "Within:");
+                            egui::ComboBox::new("find-within", "")
+                                .selected_text(if self.in_workbook {
+                                    "Workbook"
+                                } else {
+                                    "Sheet"
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.in_workbook, false, "Sheet");
+                                    ui.selectable_value(&mut self.in_workbook, true, "Workbook");
+                                });
+                            ui.end_row();
+                            label(ui, "Search:");
+                            egui::ComboBox::new("find-search", "")
+                                .selected_text(if self.by_columns {
+                                    "By Columns"
+                                } else {
+                                    "By Rows"
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.by_columns, false, "By Rows");
+                                    ui.selectable_value(&mut self.by_columns, true, "By Columns");
+                                });
+                            ui.end_row();
+                            label(ui, "Look in:");
+                            egui::ComboBox::new("find-lookin", "")
+                                .selected_text(if self.in_values { "Values" } else { "Formulas" })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut self.in_values, false, "Formulas");
+                                    ui.selectable_value(&mut self.in_values, true, "Values");
+                                });
+                            ui.end_row();
                         });
                 });
             }
@@ -227,10 +285,7 @@ impl FindReplace {
             Some("all") => self.find_all(app),
             Some("replace") => {
                 self.error = None;
-                match app.try_exec(
-                    "edit.replace_current",
-                    json!({"what": self.what, "with": self.with, "match_case": self.match_case}),
-                ) {
+                match app.try_exec("edit.replace_current", self.replace_params(false)) {
                     Ok(r) => {
                         self.status = Some(if r.get("replaced") == Some(&json!(true)) {
                             "Replaced 1 cell".into()
@@ -243,12 +298,12 @@ impl FindReplace {
             }
             Some("replace_all") => {
                 self.error = None;
-                match app.try_exec(
-                    "home.editing.replace",
-                    json!({"what": self.what, "with": self.with, "match_case": self.match_case, "all": true}),
-                ) {
+                match app.try_exec("home.editing.replace", self.replace_params(true)) {
                     Ok(n) => {
-                        self.status = Some(format!("All done. Made {} replacement(s).", n.as_u64().unwrap_or(0)));
+                        self.status = Some(format!(
+                            "All done. Made {} replacement(s).",
+                            n.as_u64().unwrap_or(0)
+                        ));
                         self.hits.clear();
                     }
                     Err(e) => self.error = Some(e),

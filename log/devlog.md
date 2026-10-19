@@ -208,3 +208,30 @@ Part 2 (objects, pivotui), finished from stalled worktrees:
 
 Still open: missing functions (12): IMAGE, STOCKHISTORY, Web & Cube (10). `image` is no
 longer a UI-only crate in layers.rs (sp_render decodes pictures with it).
+
+## 2026-10-19 — Wave 6 (4 parallel arcs, resumed once after a usage limit)
+
+Landed:
+- draw: objects drawn in the grid and PDF (pictures, shapes, text boxes, lines, checkboxes,
+  background), mouse select/move/delete, clickable slicers, PivotTable Fields pane. Chart drags
+  no longer land ~25% short; Delete with an object selected deletes the object.
+- oracle: 17 commits (TEXTBEFORE/AFTER, INDIRECT R1C1, BESSEL, DB/DDB, ACCRINT, ODDF*/ODDL*,
+  XNPV/XIRR args, ROW/COLUMN on whole columns, ...). Corpus harness: text matching our error
+  counts as a match (GEOMEAN's writer caches errors as text; applies to all files), and files
+  recalc at their cached NOW()/TODAY().
+- editing: M5 audit, 50 tests in sp_engine/tests/editing_parity.rs; cut is a move with ref
+  fixups, paste tiling, Paste Special ops/skip blanks/transpose, AutoFill series, find/replace
+  wildcards/within/search order. Find & Replace defaults to the active sheet.
+- perf: 1M x 10 suite (`--million`), copy-on-write rows, incremental recalc after whole-sheet
+  transactions/undo, row-ordered recalc write-back, parallel formula rewrite on save/sort/insert.
+  Autofilter apply 6.3 s -> 0.26 s, save 28 s -> 4.9 s; peak RSS 7.2 GB.
+
+Integration: one conflict (`rewrite_all_formulas`: editing's pub(crate) + perf's Sync bound).
+Find dialog gained Within and Search options and now passes match/whole options to Replace
+(it had ignored "whole" on Replace). Screenshot-checked objects and the dialog. Floors: oracle
+files 209, cells 73219.
+
+Numbers: oracle 192 -> 209/218 files, cells 72802 -> 73219/73244 (99.97%); commands 304/304.
+
+Still open: 9 oracle files (XIRR/IRR precision, MAX(ROW(B:B)), table-filter SUBTOTAL, 2 locale
+and 1 ill-conditioned artifact); 1M-row memory; slicers not printed or movable.

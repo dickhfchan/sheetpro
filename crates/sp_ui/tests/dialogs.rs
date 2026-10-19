@@ -283,3 +283,24 @@ fn ui_state_round_trips_through_json() {
     assert!(app.open_dialog("nope").is_err());
     assert!(app.open_dialog("find {bad json").is_err());
 }
+
+#[test]
+fn find_all_searches_sheet_or_workbook() {
+    use sp_ui::dialogs::find::FindReplace;
+    let mut s = session();
+    s.execute("home.cells.insert_sheet", &json!({"name": "Two"}))
+        .unwrap();
+    s.execute("cell.set", &json!({"cell": "C5", "input": "apple pie"}))
+        .unwrap();
+    let mut app = App::new(s);
+    // Make sure the first sheet is active whatever insert_sheet did.
+    app.try_exec("home.editing.goto", json!({"reference": "Sheet1!A1"}))
+        .unwrap();
+    let mut d = FindReplace::new(false);
+    d.what = "apple".into();
+    d.find_all(&mut app);
+    assert_eq!(d.hits.len(), 1, "sheet only: {:?}", d.hits);
+    d.in_workbook = true;
+    d.find_all(&mut app);
+    assert_eq!(d.hits.len(), 2, "workbook: {:?}", d.hits);
+}
