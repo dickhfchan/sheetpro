@@ -1,46 +1,131 @@
 {
-  "date": "2026-10-14",
+  "date": "2026-10-19",
   "quick": false,
   "results": {
+    "autofilter_apply_1m": [
+      261.453583,
+      500.0,
+      "1M rows: AutoFilter one category of 17 (941k rows hidden; no full recalc)"
+    ],
+    "autofilter_clear_1m": [
+      75.064667,
+      150.0,
+      "1M rows: turn the AutoFilter off (unhide 941k rows)"
+    ],
+    "edit_chain_1m": [
+      1012.5450000000001,
+      1800.0,
+      "1M rows: type into A2, which feeds a 1M-long running total (~1M dependents)"
+    ],
     "edit_one_cell": [
-      1.900583,
+      1.9505830000000002,
       50.0,
       "Type one value into a 100k-row sheet (undo record + recalc). Target app: instant."
     ],
+    "edit_one_cell_1m": [
+      10.703958,
+      25.0,
+      "1M rows: type into a cell nothing depends on (undo record + recalc)"
+    ],
+    "find_all_1m": [
+      868.1052500000001,
+      1600.0,
+      "1M rows: Find All over 10M cells"
+    ],
+    "grid_layout_filtered_1m": [
+      0.174625,
+      4.0,
+      "1M rows: lay out a screen at row 900k with 941k rows filtered out (frame budget)"
+    ],
     "grid_layout_screen": [
-      0.161084,
+      0.14216700000000002,
       8.0,
       "Lay out one 1600x1000 screen at row 50k (must fit in a frame)"
     ],
+    "grid_layout_screen_1m": [
+      0.172292,
+      4.0,
+      "1M rows: lay out one 1600x1000 screen at row 900k (frame budget)"
+    ],
+    "insert_row_1m": [
+      5565.973,
+      9500.0,
+      "1M rows: insert a row at the top (rewrite 4M formulas + recalc)"
+    ],
+    "jump_end_1m": [
+      49.937792,
+      100.0,
+      "1M rows: Ctrl+Down from A1 to the last row, plus laying out that screen"
+    ],
     "pdf_export": [
-      186.193458,
+      185.593917,
       600.0,
       "Export a 10k-row x 10-col report to PDF (paginate, lay out pages, write file)"
     ],
+    "peak_rss_1m_mb": [
+      7182.96875,
+      8192.0,
+      "1M rows: peak resident memory of the whole 1M suite, in MB"
+    ],
     "recalc_full_cold": [
-      220.570917,
+      191.61,
       1500.0,
       "Full recalculation, cold AST cache (parse + evaluate 200k formulas)"
     ],
+    "recalc_full_cold_1m": [
+      4764.379083,
+      8000.0,
+      "1M rows: full recalculation, cold AST cache (parse + evaluate 4M formulas)"
+    ],
     "recalc_full_warm": [
-      125.012042,
+      111.873458,
       800.0,
       "Full recalculation, warm AST cache"
     ],
+    "recalc_full_warm_1m": [
+      3306.9873749999997,
+      5500.0,
+      "1M rows: full recalculation, warm AST cache"
+    ],
+    "scroll_frame_1m": [
+      0.126083,
+      4.0,
+      "1M rows: worst of 120 scroll frames (3 rows/frame) from row 900k (frame budget)"
+    ],
     "sort_rows": [
-      667.0483750000001,
+      485.15524999999997,
       2000.0,
       "Sort 100k rows x 4 cols descending by column A"
     ],
+    "sort_rows_1m": [
+      6245.024,
+      10000.0,
+      "1M rows: sort 1M x 10 cols descending (shift 4M formulas + recalc)"
+    ],
+    "undo_edit_chain_1m": [
+      1000.3555,
+      1800.0,
+      "1M rows: undo that edit (incremental: ~1M dependents)"
+    ],
     "xlsx_load": [
-      160.94549999999998,
+      157.853416,
       1500.0,
       "Load 400k cells from .xlsx"
     ],
+    "xlsx_load_1m": [
+      4683.903792,
+      8000.0,
+      "1M rows: load the 80 MB .xlsx back"
+    ],
     "xlsx_save": [
-      359.377958,
+      239.717125,
       1500.0,
       "Save 400k cells to .xlsx"
+    ],
+    "xlsx_save_1m": [
+      4945.187209000001,
+      8500.0,
+      "1M rows: save 10M cells (4M formulas) to .xlsx"
     ]
   }
 }

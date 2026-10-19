@@ -44,20 +44,37 @@ Largest gaps (cells failing):
 | `calc_tests/STATISTICAL/LOGNORM.xlsx` | 146/147 | LOGNORM.DIST LOGNORM.INV!F26 =LOGNORM.INV(E26,B26,C26) → expected 3.999765881, got 3.999705157 |
 | `calc_tests/simple_functions.xlsx` | 198/199 | LOOKUP!D15 =@LOOKUP(C15,$A$2:$A$6,$B$2:$B$6) → expected #DIV/0!, got #N/A |
 
-## Performance (100k rows)
+## Performance (100k rows; `*_1m`: 1M rows x 10 columns)
 
-Measured 2026-10-14 (release build).
+Measured 2026-10-19 (release build).
 
 | Benchmark | Measured | Budget | Status | What |
 |---|---|---|---|---|
-| `edit_one_cell` | 1.9 ms | 50 ms | ok | Type one value into a 100k-row sheet (undo record + recalc). Target app: instant. |
-| `grid_layout_screen` | 0.2 ms | 8 ms | ok | Lay out one 1600x1000 screen at row 50k (must fit in a frame) |
-| `pdf_export` | 186.2 ms | 600 ms | ok | Export a 10k-row x 10-col report to PDF (paginate, lay out pages, write file) |
-| `recalc_full_cold` | 220.6 ms | 1500 ms | ok | Full recalculation, cold AST cache (parse + evaluate 200k formulas) |
-| `recalc_full_warm` | 125.0 ms | 800 ms | ok | Full recalculation, warm AST cache |
-| `sort_rows` | 667.0 ms | 2000 ms | ok | Sort 100k rows x 4 cols descending by column A |
-| `xlsx_load` | 160.9 ms | 1500 ms | ok | Load 400k cells from .xlsx |
-| `xlsx_save` | 359.4 ms | 1500 ms | ok | Save 400k cells to .xlsx |
+| `autofilter_apply_1m` | 261.5 ms | 500 ms | ok | 1M rows: AutoFilter one category of 17 (941k rows hidden; no full recalc) |
+| `autofilter_clear_1m` | 75.1 ms | 150 ms | ok | 1M rows: turn the AutoFilter off (unhide 941k rows) |
+| `edit_chain_1m` | 1012.5 ms | 1800 ms | ok | 1M rows: type into A2, which feeds a 1M-long running total (~1M dependents) |
+| `edit_one_cell` | 2.0 ms | 50 ms | ok | Type one value into a 100k-row sheet (undo record + recalc). Target app: instant. |
+| `edit_one_cell_1m` | 10.7 ms | 25 ms | ok | 1M rows: type into a cell nothing depends on (undo record + recalc) |
+| `find_all_1m` | 868.1 ms | 1600 ms | ok | 1M rows: Find All over 10M cells |
+| `grid_layout_filtered_1m` | 0.2 ms | 4 ms | ok | 1M rows: lay out a screen at row 900k with 941k rows filtered out (frame budget) |
+| `grid_layout_screen` | 0.1 ms | 8 ms | ok | Lay out one 1600x1000 screen at row 50k (must fit in a frame) |
+| `grid_layout_screen_1m` | 0.2 ms | 4 ms | ok | 1M rows: lay out one 1600x1000 screen at row 900k (frame budget) |
+| `insert_row_1m` | 5566.0 ms | 9500 ms | ok | 1M rows: insert a row at the top (rewrite 4M formulas + recalc) |
+| `jump_end_1m` | 49.9 ms | 100 ms | ok | 1M rows: Ctrl+Down from A1 to the last row, plus laying out that screen |
+| `pdf_export` | 185.6 ms | 600 ms | ok | Export a 10k-row x 10-col report to PDF (paginate, lay out pages, write file) |
+| `peak_rss_1m_mb` | 7183.0 MB | 8192 MB | ok | 1M rows: peak resident memory of the whole 1M suite, in MB |
+| `recalc_full_cold` | 191.6 ms | 1500 ms | ok | Full recalculation, cold AST cache (parse + evaluate 200k formulas) |
+| `recalc_full_cold_1m` | 4764.4 ms | 8000 ms | ok | 1M rows: full recalculation, cold AST cache (parse + evaluate 4M formulas) |
+| `recalc_full_warm` | 111.9 ms | 800 ms | ok | Full recalculation, warm AST cache |
+| `recalc_full_warm_1m` | 3307.0 ms | 5500 ms | ok | 1M rows: full recalculation, warm AST cache |
+| `scroll_frame_1m` | 0.1 ms | 4 ms | ok | 1M rows: worst of 120 scroll frames (3 rows/frame) from row 900k (frame budget) |
+| `sort_rows` | 485.2 ms | 2000 ms | ok | Sort 100k rows x 4 cols descending by column A |
+| `sort_rows_1m` | 6245.0 ms | 10000 ms | ok | 1M rows: sort 1M x 10 cols descending (shift 4M formulas + recalc) |
+| `undo_edit_chain_1m` | 1000.4 ms | 1800 ms | ok | 1M rows: undo that edit (incremental: ~1M dependents) |
+| `xlsx_load` | 157.9 ms | 1500 ms | ok | Load 400k cells from .xlsx |
+| `xlsx_load_1m` | 4683.9 ms | 8000 ms | ok | 1M rows: load the 80 MB .xlsx back |
+| `xlsx_save` | 239.7 ms | 1500 ms | ok | Save 400k cells to .xlsx |
+| `xlsx_save_1m` | 4945.2 ms | 8500 ms | ok | 1M rows: save 10M cells (4M formulas) to .xlsx |
 
 ## Area checklists
 
