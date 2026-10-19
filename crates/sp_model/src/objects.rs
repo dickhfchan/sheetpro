@@ -554,9 +554,6 @@ pub struct DrawObject {
     /// drawing part: the object follows the first `after_charts` charts).
     #[serde(default)]
     pub after_charts: usize,
-    /// Group number (0 = not grouped); members of a group select and move together.
-    #[serde(default)]
-    pub group: u32,
 }
 
 impl DrawObject {
