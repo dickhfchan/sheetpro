@@ -281,3 +281,21 @@ fn tbilleq_counts_a_366_day_term_as_one_year() {
     assert!(close(num(&wb, "C1"), 0.852_296_131_249_170_1));
     assert!(close(num(&wb, "C2"), 0.848_275_979_665_248_2));
 }
+
+#[test]
+fn external_workbook_links_evaluate_to_ref() {
+    use sp_formula::recalc::unparsable_value;
+    assert_eq!(
+        unparsable_value("[1]Sheet1!A1"),
+        Value::Error(ErrorKind::Ref)
+    );
+    assert_eq!(
+        unparsable_value("SUM('[Book.xlsx]My Sheet'!A1:A3)"),
+        Value::Error(ErrorKind::Ref)
+    );
+    assert_eq!(unparsable_value("FOO((1"), Value::Error(ErrorKind::Name));
+    assert_eq!(
+        unparsable_value("\"[1]x!\"&("),
+        Value::Error(ErrorKind::Name)
+    );
+}

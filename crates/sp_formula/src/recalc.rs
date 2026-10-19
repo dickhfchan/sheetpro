@@ -530,7 +530,7 @@ fn compute(
                 continue;
             };
             let value = match cache.get(top, src) {
-                Err(_) => Value::Error(ErrorKind::Name),
+                Err(_) => unparsable_value(src),
                 Ok(expr) => {
                     host.pending.borrow_mut().clear();
                     let mut ev = Ev::new(&host, top.0, top.1);
@@ -843,10 +843,37 @@ pub fn recalc_dirty(
     stats
 }
 
+/// Value of a formula we cannot parse: #REF! when it links to another workbook
+/// (`[1]Sheet1!A1`, `'[Book.xlsx]Sheet'!A1`: such links are not followed), else #NAME?.
+pub fn unparsable_value(src: &str) -> Value {
+    let mut in_str = false;
+    let mut prev: Option<char> = None;
+    let mut chars = src.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            in_str = !in_str;
+        } else if !in_str
+            && c == '['
+            && !prev.is_some_and(|p| p.is_alphanumeric() || p == '_' || p == '.' || p == ']')
+        {
+            // `[book]` followed (possibly after a sheet name) by `!`.
+            let rest: String = chars.clone().collect();
+            if let Some(close) = rest.find(']')
+                && rest.get(close..).is_some_and(|t| t.contains('!'))
+                && close > 0
+            {
+                return Value::Error(ErrorKind::Ref);
+            }
+        }
+        prev = Some(c);
+    }
+    Value::Error(ErrorKind::Name)
+}
+
 /// Evaluate a standalone formula against a workbook whose cached values are current.
 pub fn eval_formula(wb: &Workbook, sheet: usize, at: CellAddr, src: &str) -> Value {
     match parse(src) {
-        Err(_) => Value::Error(ErrorKind::Name),
+        Err(_) => unparsable_value(src),
         Ok(expr) => {
             let host = WbHost::new(wb, true, None, RecalcOptions::default());
             let mut ev = Ev::new(&host, sheet, at);
