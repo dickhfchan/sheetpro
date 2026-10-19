@@ -223,16 +223,15 @@ fn ddb(cost: f64, salvage: f64, life: f64, period: f64, factor: f64) -> Result<f
     {
         return Err(ErrorKind::Num);
     }
-    let mut book = cost;
-    let mut dep = 0.0;
-    for _ in 0..period.ceil() as u64 {
-        dep = (book * factor / life).min((book - salvage).max(0.0));
-        book -= dep;
-    }
-    Ok(dep)
+    // Closed form of the declining balance: the book value before `period` (which may be
+    // fractional) is cost·(1-rate)^(period-1); depreciation never takes it below salvage.
+    let rate = (factor / life).min(1.0);
+    let book = cost * (1.0 - rate).powf(period - 1.0);
+    fin((book * rate).min((book - salvage).max(0.0)))
 }
 
 fn db(cost: f64, salvage: f64, life: f64, period: f64, month: f64) -> Result<f64, ErrorKind> {
+    let month = month.trunc();
     if cost < 0.0
         || salvage < 0.0
         || life <= 0.0

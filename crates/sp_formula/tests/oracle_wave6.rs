@@ -249,3 +249,22 @@ fn xnpv_xirr_argument_rules() {
     // A blank cash flow counts as zero in XIRR.
     assert!(close(num(&wb, "F5"), num(&wb, "F6")));
 }
+
+#[test]
+fn db_truncates_month_and_ddb_takes_fractional_periods() {
+    let wb = wb_with(&[
+        ("A1", "=DB(100,10,4,3,9.2222)"),
+        ("A2", "=DB(45,10,4,2,12.7)"),
+        ("A3", "=DDB(100,10.233,4.2312,3.2,1.5)"),
+        ("A4", "=DDB(100,10,4,3,2.7)"),
+        ("A5", "=DDB(100,10,4,3,40.777)"),
+        ("A6", "=DDB(1,0,1E300,1E300)"),
+    ]);
+    assert!(close(num(&wb, "A1"), 16.529_375_4));
+    assert!(close(num(&wb, "A2"), 9.676_395));
+    assert!(close(num(&wb, "A3"), 13.532_735_530_775_124));
+    assert!(close(num(&wb, "A4"), 0.5625));
+    assert_eq!(num(&wb, "A5"), 0.0);
+    // Huge lives no longer loop once per period.
+    assert!(num(&wb, "A6").is_finite());
+}
