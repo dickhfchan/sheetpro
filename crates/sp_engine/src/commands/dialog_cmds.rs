@@ -13,29 +13,38 @@ const DENSE_LIMIT: u64 = 200_000;
 const FIND_ALL_CAP: usize = 10_000;
 
 fn paste_special(s: &mut Session, p: &Json) -> CmdResult {
-    let id = match str_req(p, "mode")? {
-        "all" => "home.clipboard.paste",
-        "values" => "home.clipboard.paste_values",
-        "formulas" => "home.clipboard.paste_formulas",
-        "formats" => "home.clipboard.paste_formats",
-        "transpose" => "home.clipboard.paste_transpose",
+    use sp_ops::{PasteOp, PasteOpts, PasteWhat};
+    let (what, transpose) = match str_opt(p, "mode").unwrap_or("all") {
+        "all" => (PasteWhat::All, false),
+        "values" => (PasteWhat::Values, false),
+        "formulas" => (PasteWhat::Formulas, false),
+        "formats" => (PasteWhat::Formats, false),
+        "transpose" => (PasteWhat::All, true),
         other => {
             return Err(CmdError::Param(format!(
                 "unknown paste mode '{other}' (all|values|formulas|formats|transpose)"
             )));
         }
     };
-    let cmd = registry()
-        .get(id)
-        .ok_or_else(|| CmdError::Unknown(id.to_string()))?;
-    if !(cmd.spec.enabled)(s) {
-        return Err(CmdError::Disabled(id.to_string()));
-    }
-    let mut sub = json!({});
-    if let (Some(c), Some(obj)) = (str_opt(p, "cell"), sub.as_object_mut()) {
-        obj.insert("cell".into(), json!(c));
-    }
-    (cmd.spec.run)(s, &sub)
+    let op = match str_opt(p, "operation").unwrap_or("none") {
+        "none" => PasteOp::None,
+        "add" => PasteOp::Add,
+        "subtract" => PasteOp::Subtract,
+        "multiply" => PasteOp::Multiply,
+        "divide" => PasteOp::Divide,
+        other => {
+            return Err(CmdError::Param(format!(
+                "unknown operation '{other}' (none|add|subtract|multiply|divide)"
+            )));
+        }
+    };
+    let opts = PasteOpts {
+        what,
+        op,
+        skip_blanks: bool_opt(p, "skip_blanks").unwrap_or(false),
+        transpose: transpose || bool_opt(p, "transpose").unwrap_or(false),
+    };
+    super::edit_cmds::paste_with(s, p, opts)
 }
 
 /// Which attributes a Format Cells OK changes. `None` = leave as is.
@@ -472,7 +481,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new(
             "home.clipboard.paste_special",
-            r#"{"cell"?: "D1", "mode": "all|values|formulas|formats|transpose"}"#,
+            r#"{"cell"?: "D1" | "range"?: "D1:F6", "mode"?: "all|values|formulas|formats|transpose", "operation"?: "none|add|subtract|multiply|divide", "skip_blanks"?: false, "transpose"?: false}"#,
             paste_special,
         )
         .when(|s| s.clipboard.is_some()),

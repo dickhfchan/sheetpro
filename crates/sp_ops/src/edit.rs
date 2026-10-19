@@ -327,7 +327,7 @@ fn rewritten(src: &str, f: &dyn Fn(&mut sp_formula::Expr)) -> Option<String> {
 /// Rewrite every formula in the workbook with `f(expr, sheet the formula lives on)`: cells,
 /// data-validation rules, in-workbook hyperlink targets and defined names (sheet-scoped names resolve unqualified refs on
 /// their own sheet).
-fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &str)) {
+pub(crate) fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &str)) {
     let names: Vec<String> = wb.sheets.iter().map(|s| s.name.clone()).collect();
     for sheet in &mut wb.sheets {
         let name = sheet.name.clone();
@@ -540,115 +540,6 @@ pub fn insert_delete(
     Ok(())
 }
 
-/// Copied cells, relative to the copied range's top-left.
-#[derive(Debug, Clone)]
-pub struct ClipData {
-    pub sheet: usize,
-    pub range: CellRange,
-    pub cells: Vec<(u32, u32, Cell)>,
-    pub cut: bool,
-}
-
-pub fn copy(wb: &Workbook, sheet: usize, r: CellRange, cut: bool) -> Result<ClipData, OpError> {
-    check_size(&r)?;
-    let s = wb.sheet(sheet).ok_or(OpError::NoSheet)?;
-    let cells = s
-        .cells_in(r)
-        .map(|(a, c)| (a.row - r.start.row, a.col - r.start.col, c.clone()))
-        .collect();
-    Ok(ClipData {
-        sheet,
-        range: r,
-        cells,
-        cut,
-    })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PasteMode {
-    All,
-    Values,
-    Formulas,
-    Formats,
-    Transpose,
-}
-
-/// Paste at `dest` (top-left). Returns the destination range written.
-pub fn paste(
-    tx: &mut Tx<'_>,
-    clip: &ClipData,
-    sheet: usize,
-    dest: CellAddr,
-    mode: PasteMode,
-) -> Result<CellRange, OpError> {
-    tx.wb.sheet(sheet).ok_or(OpError::NoSheet)?;
-    let (rows, cols) = if mode == PasteMode::Transpose {
-        (clip.range.cols(), clip.range.rows())
-    } else {
-        (clip.range.rows(), clip.range.cols())
-    };
-    let end = dest
-        .offset(i64::from(rows) - 1, i64::from(cols) - 1)
-        .ok_or_else(|| OpError::Invalid("paste area extends beyond the sheet".into()))?;
-    let out = CellRange::new(dest, end);
-    // Clear the destination first (values modes keep destination formats).
-    if matches!(mode, PasteMode::All | PasteMode::Transpose) {
-        clear(tx, sheet, out, ClearWhat::All)?;
-    }
-    for (dr, dc, c) in &clip.cells {
-        let (r, col) = if mode == PasteMode::Transpose {
-            (*dc, *dr)
-        } else {
-            (*dr, *dc)
-        };
-        let Some(at) = dest.offset(i64::from(r), i64::from(col)) else {
-            continue;
-        };
-        let src_at = CellAddr::new(clip.range.start.row + dr, clip.range.start.col + dc);
-        let (sr, sc) = (
-            i64::from(at.row) - i64::from(src_at.row),
-            i64::from(at.col) - i64::from(src_at.col),
-        );
-        let existing = tx
-            .wb
-            .sheet(sheet)
-            .and_then(|s| s.get(at))
-            .cloned()
-            .unwrap_or_default();
-        let new = match mode {
-            PasteMode::All | PasteMode::Transpose => moved_cell(c, sr, sc),
-            PasteMode::Formulas => Cell {
-                style: existing.style,
-                ..moved_cell(c, sr, sc)
-            },
-            PasteMode::Values => Cell {
-                content: Content::Value(c.value.clone()),
-                value: c.value.clone(),
-                style: existing.style,
-            },
-            PasteMode::Formats => Cell {
-                style: c.style,
-                ..existing
-            },
-        };
-        tx.set_cell(sheet, at, Some(new));
-    }
-    if clip.cut && mode == PasteMode::All {
-        let moved_into: Vec<CellAddr> = out.iter().collect();
-        let src = tx
-            .wb
-            .sheet(clip.sheet)
-            .map(|s| s.cells_in(clip.range).map(|(a, _)| a).collect::<Vec<_>>())
-            .unwrap_or_default();
-        for a in src {
-            if !(clip.sheet == sheet && moved_into.contains(&a)) {
-                tx.set_cell(clip.sheet, a, None);
-            }
-        }
-    }
-    Ok(out)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -758,25 +649,30 @@ mod tests {
 
     #[test]
     fn copy_paste_and_cut() {
+        use crate::clipboard::{PasteOpts, copy, paste};
         let mut wb = Workbook::new();
         wb.sheets[0].set(a("A1"), num(1.0));
         wb.sheets[0].set(a("B1"), Cell::formula("A1+1"));
         let clip = copy(&wb, 0, CellRange::parse("A1:B1").unwrap(), true).unwrap();
         let mut tx = Tx::new(&mut wb);
-        paste(&mut tx, &clip, 0, a("A3"), PasteMode::All).unwrap();
+        paste(
+            &mut tx,
+            &clip,
+            0,
+            CellRange::parse("A3").unwrap(),
+            PasteOpts::default(),
+        )
+        .unwrap();
         assert_eq!(src(&wb, "B3"), "=A3+1");
         assert_eq!(src(&wb, "A1"), "");
+        let clip = copy(&wb, 0, CellRange::parse("A3:B3").unwrap(), false).unwrap();
         let mut tx = Tx::new(&mut wb);
-        assert!(
-            paste(
-                &mut tx,
-                &clip,
-                0,
-                CellAddr::new(MAX_ROWS - 1, 0),
-                PasteMode::Transpose
-            )
-            .is_err()
-        );
+        let opts = PasteOpts {
+            transpose: true,
+            ..Default::default()
+        };
+        let last = CellRange::single(CellAddr::new(MAX_ROWS - 1, 0));
+        assert!(paste(&mut tx, &clip, 0, last, opts).is_err());
     }
 
     fn r(s: &str) -> CellRange {

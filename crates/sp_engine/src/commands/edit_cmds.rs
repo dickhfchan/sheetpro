@@ -6,7 +6,8 @@ use crate::{CmdError, CmdResult, CommandSpec, Json, Session};
 use serde_json::json;
 use sp_core::{CellAddr, CellRange, Value};
 use sp_model::Content;
-use sp_ops::edit::{self, ClearWhat, FillDir, PasteMode};
+use sp_ops::clipboard::{self, PasteOpts, PasteWhat};
+use sp_ops::edit::{self, ClearWhat, FillDir};
 
 fn has_clip(s: &Session) -> bool {
     s.clipboard.is_some()
@@ -54,7 +55,7 @@ fn repeat(s: &mut Session, _: &Json) -> CmdResult {
 
 fn copy(s: &mut Session, p: &Json, cut: bool) -> CmdResult {
     let (sheet, r) = range(s, p, "range")?;
-    s.clipboard = Some(edit::copy(&s.wb, sheet, r, cut)?);
+    s.clipboard = Some(clipboard::copy(&s.wb, sheet, r, cut)?);
     s.status = if cut {
         "Select destination and press Enter or choose Paste".into()
     } else {
@@ -63,27 +64,55 @@ fn copy(s: &mut Session, p: &Json, cut: bool) -> CmdResult {
     Ok(json!({ "range": r.to_a1(), "cells": s.clipboard.as_ref().map_or(0, |c| c.cells.len()) }))
 }
 
-fn paste(s: &mut Session, p: &Json, mode: PasteMode) -> CmdResult {
+/// Paste destination: `range` (tiles when a multiple of the copied block), else `cell`, else
+/// the selection.
+fn paste_dest(s: &Session, p: &Json) -> Result<(usize, CellRange), CmdError> {
+    if p.get("range").is_some() {
+        return range(s, p, "range");
+    }
+    if p.get("cell").is_some() {
+        let (sheet, a) = crate::params::cell(s, p, "cell")?;
+        return Ok((sheet, CellRange::single(a)));
+    }
+    Ok((s.sheet_index(), s.sel.range()))
+}
+
+/// Paste the clipboard with Paste Special options (shared with the Paste Special dialog).
+pub(crate) fn paste_with(s: &mut Session, p: &Json, opts: PasteOpts) -> CmdResult {
     let clip = s
         .clipboard
         .clone()
         .ok_or_else(|| CmdError::Failed("clipboard is empty".into()))?;
-    let (sheet, dest) = crate::params::cell(s, p, "cell")?;
-    let label = match mode {
-        PasteMode::All => "Paste",
-        PasteMode::Values => "Paste Values",
-        PasteMode::Formulas => "Paste Formulas",
-        PasteMode::Formats => "Paste Formatting",
-        PasteMode::Transpose => "Paste Transpose",
+    let (sheet, dest) = paste_dest(s, p)?;
+    let label = match (opts.what, opts.transpose, opts.op) {
+        (_, _, op) if op != sp_ops::PasteOp::None => "Paste Special",
+        (PasteWhat::All, true, _) => "Paste Transpose",
+        (PasteWhat::All, false, _) => "Paste",
+        (PasteWhat::Values, _, _) => "Paste Values",
+        (PasteWhat::Formulas, _, _) => "Paste Formulas",
+        (PasteWhat::Formats, _, _) => "Paste Formatting",
     };
     let out = s.transact(label, |tx, _| {
-        edit::paste(tx, &clip, sheet, dest, mode).map_err(CmdError::from)
+        clipboard::paste(tx, &clip, sheet, dest, opts).map_err(CmdError::from)
     })?;
-    if clip.cut && mode == PasteMode::All {
+    if clip.cut {
         s.clipboard = None;
     }
+    s.wb.active = sheet;
     s.select_range(out, out.start);
     Ok(json!({ "range": out.to_a1() }))
+}
+
+fn paste(s: &mut Session, p: &Json, what: PasteWhat, transpose: bool) -> CmdResult {
+    paste_with(
+        s,
+        p,
+        PasteOpts {
+            what,
+            transpose,
+            ..Default::default()
+        },
+    )
 }
 
 fn clear(s: &mut Session, p: &Json, what: ClearWhat, label: &str) -> CmdResult {
@@ -348,32 +377,34 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("home.clipboard.cut", r#"{"range"?: "A1:B2"}"#, |s, p| {
             copy(s, p, true)
         }),
-        CommandSpec::new("home.clipboard.paste", r#"{"cell"?: "D1"}"#, |s, p| {
-            paste(s, p, PasteMode::All)
-        })
+        CommandSpec::new(
+            "home.clipboard.paste",
+            r#"{"cell"?: "D1" | "range"?: "D1:F6" (default: selection; tiles when a multiple of the copy)}"#,
+            |s, p| paste(s, p, PasteWhat::All, false),
+        )
         .when(has_clip),
         CommandSpec::new(
             "home.clipboard.paste_values",
-            r#"{"cell"?: "D1"}"#,
-            |s, p| paste(s, p, PasteMode::Values),
+            r#"{"cell"?: "D1" | "range"?: "D1:F6"}"#,
+            |s, p| paste(s, p, PasteWhat::Values, false),
         )
         .when(has_clip),
         CommandSpec::new(
             "home.clipboard.paste_formulas",
-            r#"{"cell"?: "D1"}"#,
-            |s, p| paste(s, p, PasteMode::Formulas),
+            r#"{"cell"?: "D1" | "range"?: "D1:F6"}"#,
+            |s, p| paste(s, p, PasteWhat::Formulas, false),
         )
         .when(has_clip),
         CommandSpec::new(
             "home.clipboard.paste_formats",
-            r#"{"cell"?: "D1"}"#,
-            |s, p| paste(s, p, PasteMode::Formats),
+            r#"{"cell"?: "D1" | "range"?: "D1:F6"}"#,
+            |s, p| paste(s, p, PasteWhat::Formats, false),
         )
         .when(has_clip),
         CommandSpec::new(
             "home.clipboard.paste_transpose",
-            r#"{"cell"?: "D1"}"#,
-            |s, p| paste(s, p, PasteMode::Transpose),
+            r#"{"cell"?: "D1" | "range"?: "D1:F6"}"#,
+            |s, p| paste(s, p, PasteWhat::All, true),
         )
         .when(has_clip),
         CommandSpec::new(

@@ -54,7 +54,10 @@ fn input(s: &mut Session, a: &str) -> String {
 }
 
 fn text(s: &mut Session, a: &str) -> String {
-    get(s, a)["display"].as_str().unwrap_or_default().to_string()
+    get(s, a)["display"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn num(s: &mut Session, a: &str) -> f64 {
@@ -94,10 +97,7 @@ fn copy_paste_shifts_relative_refs_only() {
     exec(&mut s, "home.clipboard.copy", json!({"range": "B1"}));
     let before = s.wb.clone();
     exec(&mut s, "home.clipboard.paste", json!({"cell": "D3"}));
-    assert_eq!(
-        input(&mut s, "D3"),
-        "=C3+$A$1+C$1+$A3+SUM(C3:C4)+Sheet1!C3"
-    );
+    assert_eq!(input(&mut s, "D3"), "=C3+$A$1+C$1+$A3+SUM(C3:C4)+Sheet1!C3");
     // The copy is unchanged and the clipboard survives (copy can paste many times).
     assert_eq!(input(&mut s, "B1"), "=A1+$A$1+A$1+$A1+SUM(A1:A2)+Sheet1!A1");
     one_undo_step(&mut s, &before);
@@ -135,7 +135,11 @@ fn cut_paste_moves_cells_and_rewrites_refs_everywhere() {
         json!({"name": "Base", "refers_to": "=Sheet1!$A$1"}),
     );
     exec(&mut s, "nav.goto_cell", json!({"reference": "Sheet1!A1"}));
-    exec(&mut s, "home.clipboard.cut", json!({"range": "Sheet1!A1:A2"}));
+    exec(
+        &mut s,
+        "home.clipboard.cut",
+        json!({"range": "Sheet1!A1:A2"}),
+    );
     let before = s.wb.clone();
     exec(&mut s, "home.clipboard.paste", json!({"cell": "Sheet1!E5"}));
     assert_eq!(num(&mut s, "Sheet1!E5"), 5.0);
@@ -194,7 +198,10 @@ fn cut_part_of_a_range_leaves_the_range_ref_alone() {
 #[test]
 fn cut_paste_over_referenced_cells_makes_ref_errors() {
     let mut s = Session::new();
-    sets(&mut s, &[("A1", "1"), ("G1", "9"), ("D1", "=G1"), ("D2", "=A1")]);
+    sets(
+        &mut s,
+        &[("A1", "1"), ("G1", "9"), ("D1", "=G1"), ("D2", "=A1")],
+    );
     exec(&mut s, "home.clipboard.cut", json!({"range": "A1"}));
     exec(&mut s, "home.clipboard.paste", json!({"cell": "G1"}));
     assert_eq!(input(&mut s, "D1"), "=#REF!");
@@ -205,10 +212,16 @@ fn cut_paste_over_referenced_cells_makes_ref_errors() {
 #[test]
 fn cut_paste_overlapping_move_down() {
     let mut s = Session::new();
-    sets(&mut s, &[("A1", "1"), ("A2", "2"), ("A3", "=A1+A2"), ("C1", "=A3")]);
+    sets(
+        &mut s,
+        &[("A1", "1"), ("A2", "2"), ("A3", "=A1+A2"), ("C1", "=A3")],
+    );
     exec(&mut s, "home.clipboard.cut", json!({"range": "A1:A3"}));
     exec(&mut s, "home.clipboard.paste", json!({"cell": "A2"}));
-    assert_eq!(inputs(&mut s, &["A1", "A2", "A3", "A4"]), ["", "1", "2", "=A2+A3"]);
+    assert_eq!(
+        inputs(&mut s, &["A1", "A2", "A3", "A4"]),
+        ["", "1", "2", "=A2+A3"]
+    );
     assert_eq!(input(&mut s, "C1"), "=A4");
     assert_eq!(num(&mut s, "C1"), 3.0);
 }
@@ -229,7 +242,7 @@ fn cut_paste_to_other_sheet_qualifies_refs() {
 fn cut_moves_formats_and_notes() {
     let mut s = Session::new();
     set(&mut s, "A1", "x");
-    exec(&mut s, "home.bold", json!({"range": "A1"}));
+    exec(&mut s, "home.font.bold", json!({"range": "A1"}));
     exec(&mut s, "insert.note", json!({"cell": "A1", "text": "hi"}));
     exec(&mut s, "home.clipboard.cut", json!({"range": "A1"}));
     exec(&mut s, "home.clipboard.paste", json!({"cell": "C3"}));
@@ -305,6 +318,7 @@ fn paste_special_operations() {
         [11.0, 22.0, 30.0]
     );
     one_undo_step(&mut s, &before);
+    exec(&mut s, "edit.undo", json!({}));
     exec(
         &mut s,
         "home.clipboard.paste_special",
@@ -382,8 +396,15 @@ fn paste_transpose_transposes_references() {
     sets(&mut s, &[("A1", "1"), ("B1", "=A1*2"), ("C1", "=$A$1+B1")]);
     exec(&mut s, "home.clipboard.copy", json!({"range": "A1:C1"}));
     let before = s.wb.clone();
-    exec(&mut s, "home.clipboard.paste_transpose", json!({"cell": "E1"}));
-    assert_eq!(inputs(&mut s, &["E1", "E2", "E3"]), ["1", "=E1*2", "=$A$1+E2"]);
+    exec(
+        &mut s,
+        "home.clipboard.paste_transpose",
+        json!({"cell": "E1"}),
+    );
+    assert_eq!(
+        inputs(&mut s, &["E1", "E2", "E3"]),
+        ["1", "=E1*2", "=$A$1+E2"]
+    );
     assert_eq!(num(&mut s, "E3"), 3.0);
     assert_eq!(input(&mut s, "F1"), "");
     one_undo_step(&mut s, &before);
@@ -464,7 +485,11 @@ fn paste_carries_conditional_formats() {
     assert!(covers(&s, "C1") && covers(&s, "C2"));
     exec(&mut s, "home.clipboard.paste_values", json!({"cell": "E1"}));
     assert!(!covers(&s, "E1"));
-    exec(&mut s, "home.clipboard.paste_formats", json!({"cell": "G1"}));
+    exec(
+        &mut s,
+        "home.clipboard.paste_formats",
+        json!({"cell": "G1"}),
+    );
     assert!(covers(&s, "G1"));
     assert_eq!(input(&mut s, "G1"), "");
 }
@@ -486,7 +511,11 @@ fn paste_into_table_keeps_table() {
             ("F3", "20"),
         ],
     );
-    exec(&mut s, "insert.table", json!({"range": "A1:B3", "name": "Table1"}));
+    exec(
+        &mut s,
+        "insert.table",
+        json!({"range": "A1:B3", "name": "Table1"}),
+    );
     exec(&mut s, "home.clipboard.copy", json!({"range": "F2:F3"}));
     exec(&mut s, "home.clipboard.paste", json!({"cell": "B2"}));
     assert_eq!(s.wb.sheets[0].tables[0].range, r("A1:B3"));
@@ -534,21 +563,34 @@ fn copy_of_manually_hidden_rows_copies_everything() {
 fn paste_values_formulas_formats() {
     let mut s = Session::new();
     sets(&mut s, &[("A1", "2"), ("B1", "=A1*3"), ("D1", "old")]);
-    exec(&mut s, "home.bold", json!({"range": "B1"}));
-    exec(&mut s, "home.italic", json!({"range": "D1:F1"}));
+    exec(&mut s, "home.font.bold", json!({"range": "B1"}));
+    exec(&mut s, "home.font.italic", json!({"range": "D1:F1"}));
     exec(&mut s, "home.clipboard.copy", json!({"range": "B1"}));
     exec(&mut s, "home.clipboard.paste_values", json!({"cell": "D1"}));
     assert_eq!(input(&mut s, "D1"), "6");
     let st = |s: &Session, x: &str| {
         s.wb.styles
-            .get(s.wb.sheets[0].get(a(x)).map(|c| c.style).unwrap_or_default())
+            .get(
+                s.wb.sheets[0]
+                    .get(a(x))
+                    .map(|c| c.style)
+                    .unwrap_or_default(),
+            )
             .clone()
     };
     assert!(st(&s, "D1").italic && !st(&s, "D1").bold);
-    exec(&mut s, "home.clipboard.paste_formulas", json!({"cell": "E1"}));
+    exec(
+        &mut s,
+        "home.clipboard.paste_formulas",
+        json!({"cell": "E1"}),
+    );
     assert_eq!(input(&mut s, "E1"), "=D1*3");
     assert!(st(&s, "E1").italic && !st(&s, "E1").bold);
-    exec(&mut s, "home.clipboard.paste_formats", json!({"cell": "F1"}));
+    exec(
+        &mut s,
+        "home.clipboard.paste_formats",
+        json!({"cell": "F1"}),
+    );
     assert_eq!(input(&mut s, "F1"), "");
     assert!(st(&s, "F1").bold);
 }
@@ -621,7 +663,11 @@ fn fill_dates_by_day_month_year() {
         ],
     );
     autofill(&mut s, "A1", "A1:A3");
-    assert_eq!(nums(&mut s, &["A2", "A3"]), [45307.0, 45308.0], "single date counts days");
+    assert_eq!(
+        nums(&mut s, &["A2", "A3"]),
+        [45307.0, 45308.0],
+        "single date counts days"
+    );
     autofill(&mut s, "B1:B2", "B1:B4");
     assert_eq!(nums(&mut s, &["B3", "B4"]), [45308.0, 45309.0]);
     autofill(&mut s, "C1:C2", "C1:C4");
@@ -659,7 +705,10 @@ fn fill_weekday_and_month_names() {
     autofill(&mut s, "E1", "E1:E2");
     autofill(&mut s, "F1:F2", "F1:F4");
     assert_eq!(inputs(&mut s, &["A2", "A3"]), ["Tue", "Wed"]);
-    assert_eq!(inputs(&mut s, &["B2", "B3", "B4"]), ["Saturday", "Sunday", "Monday"]);
+    assert_eq!(
+        inputs(&mut s, &["B2", "B3", "B4"]),
+        ["Saturday", "Sunday", "Monday"]
+    );
     assert_eq!(inputs(&mut s, &["C2", "C3"]), ["Feb", "Mar"]);
     assert_eq!(inputs(&mut s, &["D2", "D3"]), ["December", "January"]);
     assert_eq!(input(&mut s, "E2"), "MON");
@@ -692,7 +741,10 @@ fn fill_text_with_trailing_number() {
 #[test]
 fn fill_formulas_shift_like_paste() {
     let mut s = Session::new();
-    sets(&mut s, &[("A1", "1"), ("A2", "2"), ("A3", "3"), ("B1", "=A1*$A$1")]);
+    sets(
+        &mut s,
+        &[("A1", "1"), ("A2", "2"), ("A3", "3"), ("B1", "=A1*$A$1")],
+    );
     autofill(&mut s, "B1", "B1:B3");
     assert_eq!(inputs(&mut s, &["B2", "B3"]), ["=A2*$A$1", "=A3*$A$1"]);
     assert_eq!(num(&mut s, "B3"), 3.0);
@@ -771,12 +823,24 @@ fn insert_rows_fixes_refs_across_sheets_names_and_edges() {
     );
     exec(&mut s, "nav.goto_cell", json!({"reference": "Sheet1!A1"}));
     let before = s.wb.clone();
-    exec(&mut s, "home.cells.insert_rows", json!({"range": "Sheet1!A3:A4"}));
-    assert_eq!(input(&mut s, "Sheet1!C1"), "=SUM(A2:A7)", "insert inside grows");
+    exec(
+        &mut s,
+        "home.cells.insert_rows",
+        json!({"range": "Sheet1!A3:A4"}),
+    );
+    assert_eq!(
+        input(&mut s, "Sheet1!C1"),
+        "=SUM(A2:A7)",
+        "insert inside grows"
+    );
     assert_eq!(input(&mut s, "Sheet1!C2"), "=SUM(A8:A10)", "below moves");
-    assert_eq!(input(&mut s, "Sheet1!C3"), "=A7");
+    assert_eq!(input(&mut s, "Sheet1!C5"), "=A7");
     assert_eq!(input(&mut s, "Sheet1!C6"), "=SUM(A1:A6)");
-    assert_eq!(input(&mut s, "Sheet1!C7"), "=SUM(5:6)", "insert at a range's first row moves it");
+    assert_eq!(
+        input(&mut s, "Sheet1!C7"),
+        "=SUM(5:6)",
+        "insert at a range's first row moves it"
+    );
     assert_eq!(input(&mut s, "Other!A1"), "=Sheet1!A7+SUM(Sheet1!A1:A7)");
     let n = s.wb.names.iter().find(|n| n.name == "Block").unwrap();
     assert_eq!(n.formula, "Sheet1!$A$2:$A$7");
@@ -827,13 +891,16 @@ fn delete_rows_ref_errors_and_shrinking_ranges() {
 #[test]
 fn delete_columns_shrinks_range_at_its_end() {
     let mut s = Session::new();
-    sets(&mut s, &[("A1", "1"), ("B1", "2"), ("C1", "3"), ("A3", "=SUM(A1:C1)")]);
+    sets(
+        &mut s,
+        &[("A1", "1"), ("B1", "2"), ("C1", "3"), ("F3", "=SUM(A1:C1)")],
+    );
     exec(&mut s, "home.cells.delete_columns", json!({"range": "C1"}));
-    assert_eq!(input(&mut s, "A3"), "=SUM(A1:B1)");
-    assert_eq!(num(&mut s, "A3"), 3.0);
+    assert_eq!(input(&mut s, "E3"), "=SUM(A1:B1)");
+    assert_eq!(num(&mut s, "E3"), 3.0);
     exec(&mut s, "home.cells.delete_columns", json!({"range": "A1"}));
-    assert_eq!(input(&mut s, "A3"), "=SUM(A1:A1)");
-    assert_eq!(num(&mut s, "A3"), 2.0);
+    assert_eq!(input(&mut s, "D3"), "=SUM(A1:A1)");
+    assert_eq!(num(&mut s, "D3"), 2.0);
 }
 
 #[test]
@@ -852,7 +919,11 @@ fn insert_delete_moves_cf_validation_tables_and_print_area() {
             ("B4", "3"),
         ],
     );
-    exec(&mut s, "insert.table", json!({"range": "A1:B4", "name": "T"}));
+    exec(
+        &mut s,
+        "insert.table",
+        json!({"range": "A1:B4", "name": "T"}),
+    );
     exec(
         &mut s,
         "home.styles.cf.highlight_rules",
@@ -871,14 +942,14 @@ fn insert_delete_moves_cf_validation_tables_and_print_area() {
     assert_eq!(sh.tables[0].range, r("A1:B5"));
     assert_eq!(sh.cond_formats[0].ranges, vec![r("D2:D7")]);
     assert_eq!(sh.validations[0].ranges, vec![r("E2:E7")]);
-    let pa = s
-        .wb
-        .names
-        .iter()
-        .find(|n| n.name.eq_ignore_ascii_case("_xlnm.Print_Area"))
-        .unwrap();
+    let pa =
+        s.wb.names
+            .iter()
+            .find(|n| n.name.eq_ignore_ascii_case("_xlnm.Print_Area"))
+            .unwrap();
     assert_eq!(pa.formula, "Sheet1!$A$1:$E$7");
     one_undo_step(&mut s, &before);
+    exec(&mut s, "edit.undo", json!({}));
     exec(&mut s, "home.cells.delete_rows", json!({"range": "A2:A3"}));
     let sh = &s.wb.sheets[0];
     assert_eq!(sh.tables[0].range, r("A1:B2"));
@@ -916,8 +987,12 @@ fn insert_delete_moves_charts_pivots_and_objects() {
     let vals = &sh.drawings.charts[0].series[0].values;
     assert_ne!(vals, &chart_before);
     assert!(vals.contains("$B$3:$B$4"), "{vals}");
-    assert!(sh.analysis.pivots[0].source.contains("$A$2:$B$4") || sh.analysis.pivots[0].source.contains("A2:B4"),
-        "{}", sh.analysis.pivots[0].source);
+    assert!(
+        sh.analysis.pivots[0].source.contains("$A$2:$B$4")
+            || sh.analysis.pivots[0].source.contains("A2:B4"),
+        "{}",
+        sh.analysis.pivots[0].source
+    );
     assert_eq!(sh.objects[0].anchor.cells.from.row, obj_row + 1);
     one_undo_step(&mut s, &before);
 }
@@ -940,7 +1015,13 @@ fn find_all(s: &mut Session, p: Json) -> Vec<String> {
         .as_array()
         .unwrap()
         .iter()
-        .map(|h| format!("{}!{}", h["sheet"].as_str().unwrap(), h["cell"].as_str().unwrap()))
+        .map(|h| {
+            format!(
+                "{}!{}",
+                h["sheet"].as_str().unwrap(),
+                h["cell"].as_str().unwrap()
+            )
+        })
         .collect()
 }
 
@@ -993,7 +1074,10 @@ fn find_wildcards() {
         ["Sheet1!A1"]
     );
     assert_eq!(find_all(&mut s, json!({"what": "a~*b"})), ["Sheet1!B2"]);
-    assert_eq!(find_all(&mut s, json!({"what": "~?"})), Vec::<String>::new());
+    assert_eq!(
+        find_all(&mut s, json!({"what": "~?"})),
+        Vec::<String>::new()
+    );
     assert_eq!(
         find_all(&mut s, json!({"what": "a*e"})),
         ["Sheet1!A1", "Sheet1!B1", "Sheet1!A2"]
@@ -1009,7 +1093,10 @@ fn find_look_in_formulas_vs_values() {
     );
     assert!(find_all(&mut s, json!({"what": "1+1", "look_in": "values"})).is_empty());
     assert_eq!(
-        find_all(&mut s, json!({"what": "2", "look_in": "values", "whole": true})),
+        find_all(
+            &mut s,
+            json!({"what": "2", "look_in": "values", "whole": true})
+        ),
         ["Sheet1!C1"]
     );
     // Values are searched as displayed.
@@ -1024,8 +1111,12 @@ fn find_look_in_formulas_vs_values() {
 fn find_within_sheet_or_workbook() {
     let mut s = find_session();
     assert_eq!(
-        find_all(&mut s, json!({"what": "apple", "whole": true, "within": "workbook"})),
-        ["Sheet1!A1", "S2!A1"]
+        find_all(
+            &mut s,
+            json!({"what": "apple", "whole": true, "within": "workbook"})
+        ),
+        ["S2!A1", "Sheet1!A1"],
+        "workbook search lists hits in sheet order (S2 was inserted before Sheet1)"
     );
     assert_eq!(
         find_all(&mut s, json!({"what": "apple", "whole": true})),
@@ -1034,7 +1125,11 @@ fn find_within_sheet_or_workbook() {
     );
     // Find next stays on the sheet by default and cycles.
     exec(&mut s, "nav.goto_cell", json!({"reference": "A1"}));
-    let r = exec(&mut s, "home.editing.find", json!({"what": "apple", "whole": true}));
+    let r = exec(
+        &mut s,
+        "home.editing.find",
+        json!({"what": "apple", "whole": true}),
+    );
     assert_eq!(r["cell"], "A1");
     assert_eq!(s.wb.active, 0);
     let r = exec(
@@ -1042,7 +1137,10 @@ fn find_within_sheet_or_workbook() {
         "home.editing.find",
         json!({"what": "apple", "whole": true, "within": "workbook"}),
     );
-    assert_eq!((r["sheet"].as_str(), r["cell"].as_str()), (Some("S2"), Some("A1")));
+    assert_eq!(
+        (r["sheet"].as_str(), r["cell"].as_str()),
+        (Some("S2"), Some("A1"))
+    );
 }
 
 #[test]
@@ -1053,10 +1151,17 @@ fn find_by_rows_or_columns() {
         ["Sheet1!A1", "Sheet1!A2", "Sheet1!B1"]
     );
     exec(&mut s, "nav.goto_cell", json!({"reference": "A1"}));
-    let r = exec(&mut s, "home.editing.find", json!({"what": "apple", "search": "columns"}));
+    let r = exec(
+        &mut s,
+        "home.editing.find",
+        json!({"what": "apple", "search": "columns"}),
+    );
     assert_eq!(r["cell"], "A2");
     let r = exec(&mut s, "home.editing.find", json!({"what": "apple"}));
-    assert_eq!(r["cell"], "B1", "by rows from A2... wraps to next row-major hit");
+    assert_eq!(
+        r["cell"], "B1",
+        "by rows from A2... wraps to next row-major hit"
+    );
 }
 
 #[test]
@@ -1073,14 +1178,22 @@ fn replace_inside_formulas_keeps_them_valid() {
         ],
     );
     let before = s.wb.clone();
-    let n = exec(&mut s, "home.editing.replace", json!({"what": "A2", "with": "A3"}));
+    let n = exec(
+        &mut s,
+        "home.editing.replace",
+        json!({"what": "A2", "with": "A3"}),
+    );
     assert_eq!(n, 2);
     assert_eq!(input(&mut s, "B1"), "=SUM(A1:A3)");
     assert_eq!(num(&mut s, "B1"), 7.0);
     assert_eq!(num(&mut s, "B2"), 5.0);
     one_undo_step(&mut s, &before);
     // A replacement that would break a formula is skipped, not applied.
-    let r = exec(&mut s, "home.editing.replace", json!({"what": ")", "with": ""}));
+    let r = exec(
+        &mut s,
+        "home.editing.replace",
+        json!({"what": ")", "with": ""}),
+    );
     assert_eq!(r, 0);
     assert_eq!(input(&mut s, "B1"), "=SUM(A1:A2)");
 }
@@ -1102,18 +1215,33 @@ fn replace_whole_cell_wildcards_and_case() {
         "home.editing.replace",
         json!({"what": "cat", "with": "dog", "whole": true, "match_case": true}),
     );
-    assert_eq!(inputs(&mut s, &["A1", "A2", "A3"]), ["cat hat cut", "dog", "Cat"]);
-    exec(&mut s, "home.editing.replace", json!({"what": "c?t", "with": "X"}));
+    assert_eq!(
+        inputs(&mut s, &["A1", "A2", "A3"]),
+        ["cat hat cut", "dog", "Cat"]
+    );
+    exec(
+        &mut s,
+        "home.editing.replace",
+        json!({"what": "c?t", "with": "X"}),
+    );
     assert_eq!(inputs(&mut s, &["A1", "A3"]), ["X hat X", "X"]);
     // Case-insensitive replace with non-ASCII text does not corrupt it.
-    exec(&mut s, "home.editing.replace", json!({"what": "strasse", "with": "road"}));
+    exec(
+        &mut s,
+        "home.editing.replace",
+        json!({"what": "strasse", "with": "road"}),
+    );
     assert_eq!(input(&mut s, "A4"), "road straße");
 }
 
 #[test]
 fn replace_within_sheet_by_default() {
     let mut s = find_session();
-    exec(&mut s, "home.editing.replace", json!({"what": "apple", "with": "kiwi"}));
+    exec(
+        &mut s,
+        "home.editing.replace",
+        json!({"what": "apple", "with": "kiwi"}),
+    );
     assert_eq!(input(&mut s, "S2!A1"), "apple");
     assert_eq!(input(&mut s, "Sheet1!B1"), "pinekiwi");
     exec(
@@ -1129,7 +1257,11 @@ fn replace_current_honours_wildcards() {
     let mut s = Session::new();
     sets(&mut s, &[("A1", "cat"), ("A3", "cot")]);
     exec(&mut s, "nav.goto_cell", json!({"reference": "A1"}));
-    let r = exec(&mut s, "edit.replace_current", json!({"what": "c?t", "with": "dog"}));
+    let r = exec(
+        &mut s,
+        "edit.replace_current",
+        json!({"what": "c?t", "with": "dog"}),
+    );
     assert_eq!(r["replaced"], true);
     assert_eq!(input(&mut s, "A1"), "dog");
     assert_eq!(r["next"]["cell"], "A3");

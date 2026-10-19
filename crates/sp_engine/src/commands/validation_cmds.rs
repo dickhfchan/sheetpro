@@ -445,10 +445,11 @@ mod tests {
         // Formula entries validate by result.
         assert!(set(&mut s, "A5", "=B1").is_err());
         set(&mut s, "A5", "=A1*2").unwrap();
-        // Paste bypasses validation, as in the target app; circle_invalid finds it.
+        // Paste Values bypasses validation (and keeps the rule), as in the target app;
+        // circle_invalid finds it. (A plain paste replaces the rule with the source's.)
         s.execute("home.clipboard.copy", &json!({"range": "B1"}))
             .unwrap();
-        s.execute("home.clipboard.paste", &json!({"cell": "A6"}))
+        s.execute("home.clipboard.paste_values", &json!({"cell": "A6"}))
             .unwrap();
         let r = s.execute("data.circle_invalid", &json!({})).unwrap();
         assert_eq!(r, json!(["A6"]));
