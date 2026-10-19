@@ -13,29 +13,38 @@ const DENSE_LIMIT: u64 = 200_000;
 const FIND_ALL_CAP: usize = 10_000;
 
 fn paste_special(s: &mut Session, p: &Json) -> CmdResult {
-    let id = match str_req(p, "mode")? {
-        "all" => "home.clipboard.paste",
-        "values" => "home.clipboard.paste_values",
-        "formulas" => "home.clipboard.paste_formulas",
-        "formats" => "home.clipboard.paste_formats",
-        "transpose" => "home.clipboard.paste_transpose",
+    use sp_ops::{PasteOp, PasteOpts, PasteWhat};
+    let (what, transpose) = match str_opt(p, "mode").unwrap_or("all") {
+        "all" => (PasteWhat::All, false),
+        "values" => (PasteWhat::Values, false),
+        "formulas" => (PasteWhat::Formulas, false),
+        "formats" => (PasteWhat::Formats, false),
+        "transpose" => (PasteWhat::All, true),
         other => {
             return Err(CmdError::Param(format!(
                 "unknown paste mode '{other}' (all|values|formulas|formats|transpose)"
             )));
         }
     };
-    let cmd = registry()
-        .get(id)
-        .ok_or_else(|| CmdError::Unknown(id.to_string()))?;
-    if !(cmd.spec.enabled)(s) {
-        return Err(CmdError::Disabled(id.to_string()));
-    }
-    let mut sub = json!({});
-    if let (Some(c), Some(obj)) = (str_opt(p, "cell"), sub.as_object_mut()) {
-        obj.insert("cell".into(), json!(c));
-    }
-    (cmd.spec.run)(s, &sub)
+    let op = match str_opt(p, "operation").unwrap_or("none") {
+        "none" => PasteOp::None,
+        "add" => PasteOp::Add,
+        "subtract" => PasteOp::Subtract,
+        "multiply" => PasteOp::Multiply,
+        "divide" => PasteOp::Divide,
+        other => {
+            return Err(CmdError::Param(format!(
+                "unknown operation '{other}' (none|add|subtract|multiply|divide)"
+            )));
+        }
+    };
+    let opts = PasteOpts {
+        what,
+        op,
+        skip_blanks: bool_opt(p, "skip_blanks").unwrap_or(false),
+        transpose: transpose || bool_opt(p, "transpose").unwrap_or(false),
+    };
+    super::edit_cmds::paste_with(s, p, opts)
 }
 
 /// Which attributes a Format Cells OK changes. `None` = leave as is.
@@ -367,46 +376,19 @@ fn format_cells(s: &mut Session, p: &Json, label: &str) -> CmdResult {
     Ok(json!(n))
 }
 
-/// Replace `what` with `with` in `text`, optionally ignoring case; `None` if no occurrence.
-fn replace_text(text: &str, what: &str, with: &str, match_case: bool) -> Option<String> {
-    if match_case {
-        return text.contains(what).then(|| text.replace(what, with));
-    }
-    let lower = text.to_lowercase();
-    let wl = what.to_lowercase();
-    // Lowercasing can change byte lengths; fall back to an exact-case replace then.
-    if lower.len() != text.len() || wl.len() != what.len() {
-        return text.contains(what).then(|| text.replace(what, with));
-    }
-    let mut out = String::new();
-    let mut i = 0;
-    let mut found = false;
-    while let Some(pos) = lower.get(i..).and_then(|t| t.find(&wl)) {
-        found = true;
-        out.push_str(text.get(i..i + pos).unwrap_or(""));
-        out.push_str(with);
-        i += pos + wl.len();
-    }
-    out.push_str(text.get(i..).unwrap_or(""));
-    found.then_some(out)
-}
-
 /// Replace in the active cell (when it matches), then move to the next match, like the
 /// Replace button of the Find & Replace dialog.
 fn replace_current(s: &mut Session, p: &Json) -> CmdResult {
+    use super::edit_cmds::{Search, replaced_cell};
     let what = str_req(p, "what")?.to_string();
-    if what.is_empty() {
-        return Err(CmdError::Param("search text is empty".into()));
-    }
     let with = str_opt(p, "with").unwrap_or("").to_string();
-    let match_case = bool_opt(p, "match_case").unwrap_or(false);
+    let search = Search::from_params(p, &what, true)?;
     let (sheet, at) = (s.sheet_index(), s.sel.active);
     let old = s.wb.sheet(sheet).and_then(|sh| sh.get(at)).cloned();
     let mut replaced = false;
     if let Some(old) = old
-        && let Some(new_text) = replace_text(&old.input_text(), &what, &with, match_case)
+        && let Some(new) = replaced_cell(s, &search, &old, &with)?
     {
-        let new = super::cell_cmds::parse_input(&new_text, Some(&old), &mut s.wb.styles)?;
         s.transact("Replace", |tx, _| {
             tx.set_cell(sheet, at, new);
             Ok(())
@@ -416,52 +398,28 @@ fn replace_current(s: &mut Session, p: &Json) -> CmdResult {
     let find = registry()
         .get("home.editing.find")
         .ok_or_else(|| CmdError::Unknown("home.editing.find".into()))?;
-    let next = (find.spec.run)(s, &json!({"what": what, "match_case": match_case})).ok();
+    let next = (find.spec.run)(s, p).ok();
     Ok(json!({ "replaced": replaced, "next": next }))
 }
 
 fn find_all(s: &mut Session, p: &Json) -> CmdResult {
     let what = str_req(p, "what")?;
-    if what.is_empty() {
-        return Err(CmdError::Param("search text is empty".into()));
-    }
-    let in_formulas = bool_opt(p, "formulas").unwrap_or(true);
-    let match_case = bool_opt(p, "match_case").unwrap_or(false);
-    let whole = bool_opt(p, "whole").unwrap_or(false);
-    let needle = if match_case {
-        what.to_string()
-    } else {
-        what.to_lowercase()
-    };
-    let mut hits = Vec::new();
-    'sheets: for sh in &s.wb.sheets {
-        let mut cells: Vec<(CellAddr, &Cell)> = sh.iter().collect();
-        cells.sort_by_key(|(a, _)| (a.row, a.col));
-        for (a, c) in cells {
-            let hay = if in_formulas {
-                c.input_text()
-            } else {
-                c.value.to_display()
-            };
-            let hay_cmp = if match_case {
-                hay.clone()
-            } else {
-                hay.to_lowercase()
-            };
-            if (whole && hay_cmp == needle) || (!whole && hay_cmp.contains(&needle)) {
-                let formula = matches!(c.content, Content::Formula(_)).then(|| c.input_text());
-                hits.push(json!({
-                    "sheet": sh.name,
-                    "cell": a.to_a1(),
-                    "value": c.value.to_display(),
-                    "formula": formula,
-                }));
-                if hits.len() >= FIND_ALL_CAP {
-                    break 'sheets;
-                }
-            }
-        }
-    }
+    let search = super::edit_cmds::Search::from_params(p, what, true)?;
+    let hits = search
+        .matches(s, FIND_ALL_CAP)
+        .into_iter()
+        .filter_map(|(si, a)| {
+            let sh = s.wb.sheets.get(si)?;
+            let c = sh.get(a)?;
+            let formula = matches!(c.content, Content::Formula(_)).then(|| c.input_text());
+            Some(json!({
+                "sheet": sh.name,
+                "cell": a.to_a1(),
+                "value": search.haystack(s, c),
+                "formula": formula,
+            }))
+        })
+        .collect();
     s.last_find = Some(what.to_string());
     Ok(Json::Array(hits))
 }
@@ -472,7 +430,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new(
             "home.clipboard.paste_special",
-            r#"{"cell"?: "D1", "mode": "all|values|formulas|formats|transpose"}"#,
+            r#"{"cell"?: "D1" | "range"?: "D1:F6", "mode"?: "all|values|formulas|formats|transpose", "operation"?: "none|add|subtract|multiply|divide", "skip_blanks"?: false, "transpose"?: false}"#,
             paste_special,
         )
         .when(|s| s.clipboard.is_some()),
@@ -486,12 +444,12 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         CommandSpec::new(
             "edit.replace_current",
-            r#"{"what": "a", "with": "b", "match_case"?: false} → {replaced, next}"#,
+            r#"{"what": "a", "with": "b", …find options} → {replaced, next}"#,
             replace_current,
         ),
         CommandSpec::new(
             "edit.find_all",
-            r#"{"what": "text", "formulas"?: true, "match_case"?: false, "whole"?: false} → [{sheet, cell, value, formula}]"#,
+            r#"{"what": "text (wildcards * ? ~)", "look_in"?: "formulas|values", "match_case"?: false, "whole"?: false, "within"?: "sheet|workbook", "search"?: "rows|columns"} → [{sheet, cell, value, formula}]"#,
             find_all,
         ),
     ]
@@ -639,8 +597,12 @@ mod tests {
                 .unwrap();
         assert_eq!(a1.input_text(), "pear");
         assert_eq!(s.sel.active, CellAddr::new(2, 1));
-        assert_eq!(replace_text("aXa", "x", "-", false).as_deref(), Some("a-a"));
-        assert_eq!(replace_text("aXa", "x", "-", true), None);
+        let p = sp_ops::find::Pattern::new("x", false, false);
+        assert_eq!(p.replace("aXa", "-").as_deref(), Some("a-a"));
+        assert_eq!(
+            sp_ops::find::Pattern::new("x", true, false).replace("aXa", "-"),
+            None
+        );
     }
 
     #[test]

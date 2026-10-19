@@ -6,7 +6,8 @@ use crate::{CmdError, CmdResult, CommandSpec, Json, Session};
 use serde_json::json;
 use sp_core::{CellAddr, CellRange, Value};
 use sp_model::Content;
-use sp_ops::edit::{self, ClearWhat, FillDir, PasteMode};
+use sp_ops::clipboard::{self, PasteOpts, PasteWhat};
+use sp_ops::edit::{self, ClearWhat, FillDir};
 
 fn has_clip(s: &Session) -> bool {
     s.clipboard.is_some()
@@ -54,7 +55,7 @@ fn repeat(s: &mut Session, _: &Json) -> CmdResult {
 
 fn copy(s: &mut Session, p: &Json, cut: bool) -> CmdResult {
     let (sheet, r) = range(s, p, "range")?;
-    s.clipboard = Some(edit::copy(&s.wb, sheet, r, cut)?);
+    s.clipboard = Some(clipboard::copy(&s.wb, sheet, r, cut)?);
     s.status = if cut {
         "Select destination and press Enter or choose Paste".into()
     } else {
@@ -63,27 +64,55 @@ fn copy(s: &mut Session, p: &Json, cut: bool) -> CmdResult {
     Ok(json!({ "range": r.to_a1(), "cells": s.clipboard.as_ref().map_or(0, |c| c.cells.len()) }))
 }
 
-fn paste(s: &mut Session, p: &Json, mode: PasteMode) -> CmdResult {
+/// Paste destination: `range` (tiles when a multiple of the copied block), else `cell`, else
+/// the selection.
+fn paste_dest(s: &Session, p: &Json) -> Result<(usize, CellRange), CmdError> {
+    if p.get("range").is_some() {
+        return range(s, p, "range");
+    }
+    if p.get("cell").is_some() {
+        let (sheet, a) = crate::params::cell(s, p, "cell")?;
+        return Ok((sheet, CellRange::single(a)));
+    }
+    Ok((s.sheet_index(), s.sel.range()))
+}
+
+/// Paste the clipboard with Paste Special options (shared with the Paste Special dialog).
+pub(crate) fn paste_with(s: &mut Session, p: &Json, opts: PasteOpts) -> CmdResult {
     let clip = s
         .clipboard
         .clone()
         .ok_or_else(|| CmdError::Failed("clipboard is empty".into()))?;
-    let (sheet, dest) = crate::params::cell(s, p, "cell")?;
-    let label = match mode {
-        PasteMode::All => "Paste",
-        PasteMode::Values => "Paste Values",
-        PasteMode::Formulas => "Paste Formulas",
-        PasteMode::Formats => "Paste Formatting",
-        PasteMode::Transpose => "Paste Transpose",
+    let (sheet, dest) = paste_dest(s, p)?;
+    let label = match (opts.what, opts.transpose, opts.op) {
+        (_, _, op) if op != sp_ops::PasteOp::None => "Paste Special",
+        (PasteWhat::All, true, _) => "Paste Transpose",
+        (PasteWhat::All, false, _) => "Paste",
+        (PasteWhat::Values, _, _) => "Paste Values",
+        (PasteWhat::Formulas, _, _) => "Paste Formulas",
+        (PasteWhat::Formats, _, _) => "Paste Formatting",
     };
     let out = s.transact(label, |tx, _| {
-        edit::paste(tx, &clip, sheet, dest, mode).map_err(CmdError::from)
+        clipboard::paste(tx, &clip, sheet, dest, opts).map_err(CmdError::from)
     })?;
-    if clip.cut && mode == PasteMode::All {
+    if clip.cut {
         s.clipboard = None;
     }
+    s.wb.active = sheet;
     s.select_range(out, out.start);
     Ok(json!({ "range": out.to_a1() }))
+}
+
+fn paste(s: &mut Session, p: &Json, what: PasteWhat, transpose: bool) -> CmdResult {
+    paste_with(
+        s,
+        p,
+        PasteOpts {
+            what,
+            transpose,
+            ..Default::default()
+        },
+    )
 }
 
 fn clear(s: &mut Session, p: &Json, what: ClearWhat, label: &str) -> CmdResult {
@@ -182,33 +211,110 @@ fn autosum(s: &mut Session, func: &str) -> CmdResult {
     Ok(json!({ "cell": target.to_a1(), "formula": formula }))
 }
 
-fn find_matches(
-    s: &Session,
-    what: &str,
-    in_formulas: bool,
-    match_case: bool,
-    whole: bool,
-) -> Vec<(usize, CellAddr)> {
-    let needle = if match_case {
-        what.to_string()
-    } else {
-        what.to_lowercase()
-    };
-    let mut out = Vec::new();
-    for (si, sh) in s.wb.sheets.iter().enumerate() {
-        for (a, c) in sh.iter() {
-            let hay = if in_formulas {
-                c.input_text()
-            } else {
-                c.value.to_display()
-            };
-            let hay = if match_case { hay } else { hay.to_lowercase() };
-            if (whole && hay == needle) || (!whole && hay.contains(&needle)) {
-                out.push((si, a));
+/// Find & Replace options shared by Find, Find All, Replace and Replace (current).
+pub(crate) struct Search {
+    pattern: sp_ops::find::Pattern,
+    /// Look in formulas (cell input) rather than displayed values.
+    formulas: bool,
+    workbook: bool,
+    by_cols: bool,
+}
+
+impl Search {
+    /// `formulas_default`: Replace always looks in formulas.
+    pub(crate) fn from_params(
+        p: &Json,
+        what: &str,
+        formulas_default: bool,
+    ) -> Result<Self, CmdError> {
+        if what.is_empty() {
+            return Err(CmdError::Param("search text is empty".into()));
+        }
+        let formulas = match str_opt(p, "look_in") {
+            Some("formulas") => true,
+            Some("values") => false,
+            Some(o) => {
+                return Err(CmdError::Param(format!(
+                    "'look_in' is formulas or values, not '{o}'"
+                )));
             }
+            None => bool_opt(p, "formulas").unwrap_or(formulas_default),
+        };
+        let workbook = match str_opt(p, "within") {
+            None | Some("sheet") => false,
+            Some("workbook") => true,
+            Some(o) => {
+                return Err(CmdError::Param(format!(
+                    "'within' is sheet or workbook, not '{o}'"
+                )));
+            }
+        };
+        let by_cols = match str_opt(p, "search") {
+            None | Some("rows") => false,
+            Some("columns") => true,
+            Some(o) => {
+                return Err(CmdError::Param(format!(
+                    "'search' is rows or columns, not '{o}'"
+                )));
+            }
+        };
+        Ok(Search {
+            pattern: sp_ops::find::Pattern::new(
+                what,
+                bool_opt(p, "match_case").unwrap_or(false),
+                bool_opt(p, "whole").unwrap_or(false),
+            ),
+            formulas,
+            workbook,
+            by_cols,
+        })
+    }
+
+    pub(crate) fn pattern(&self) -> &sp_ops::find::Pattern {
+        &self.pattern
+    }
+
+    /// Text searched for a cell: its input (formulas) or its displayed value.
+    pub(crate) fn haystack(&self, s: &Session, c: &sp_model::Cell) -> String {
+        if self.formulas {
+            c.input_text()
+        } else {
+            let code = &s.wb.styles.get(c.style).num_fmt;
+            sp_core::numfmt::format_value(&c.value, code).text
         }
     }
-    out
+
+    /// Sort key of a hit in search order.
+    pub(crate) fn key(&self, sheet: usize, a: CellAddr) -> (usize, u32, u32) {
+        if self.by_cols {
+            (sheet, a.col, a.row)
+        } else {
+            (sheet, a.row, a.col)
+        }
+    }
+
+    /// Every matching cell in search order (active sheet, or every sheet in order).
+    pub(crate) fn matches(&self, s: &Session, cap: usize) -> Vec<(usize, CellAddr)> {
+        let active = s.sheet_index();
+        let mut out = Vec::new();
+        for (si, sh) in s.wb.sheets.iter().enumerate() {
+            if !self.workbook && si != active {
+                continue;
+            }
+            let mut hits: Vec<CellAddr> = sh
+                .iter()
+                .filter(|(_, c)| self.pattern.is_match(&self.haystack(s, c)))
+                .map(|(a, _)| a)
+                .collect();
+            hits.sort_by_key(|a| self.key(si, *a));
+            out.extend(hits.into_iter().map(|a| (si, a)));
+            if out.len() >= cap {
+                out.truncate(cap);
+                break;
+            }
+        }
+        out
+    }
 }
 
 fn find(s: &mut Session, p: &Json, next: bool) -> CmdResult {
@@ -220,22 +326,14 @@ fn find(s: &mut Session, p: &Json, next: bool) -> CmdResult {
             .ok_or_else(|| CmdError::Failed("nothing to find".into()))?,
         None => return Err(CmdError::Param("missing string 'what'".into())),
     };
-    if what.is_empty() {
-        return Err(CmdError::Param("search text is empty".into()));
-    }
+    let search = Search::from_params(p, &what, true)?;
     s.last_find = Some(what.clone());
-    let hits = find_matches(
-        s,
-        &what,
-        bool_opt(p, "formulas").unwrap_or(true),
-        bool_opt(p, "match_case").unwrap_or(false),
-        bool_opt(p, "whole").unwrap_or(false),
-    );
-    let cur = (s.sheet_index(), s.sel.active);
-    // Next match after the current cell in sheet/row-major order, wrapping around.
+    let hits = search.matches(s, usize::MAX);
+    let cur = search.key(s.sheet_index(), s.sel.active);
+    // Next match after the active cell in search order, wrapping around.
     let hit = hits
         .iter()
-        .find(|h| (h.0, h.1.row, h.1.col) > (cur.0, cur.1.row, cur.1.col))
+        .find(|h| search.key(h.0, h.1) > cur)
         .or_else(|| hits.first())
         .copied();
     match hit {
@@ -252,45 +350,40 @@ fn find(s: &mut Session, p: &Json, next: bool) -> CmdResult {
     }
 }
 
+/// New cell for a replacement in `old` (`Ok(None)` = no match; `Err` = the result is not
+/// a valid entry, e.g. a broken formula).
+pub(crate) fn replaced_cell(
+    s: &mut Session,
+    search: &Search,
+    old: &sp_model::Cell,
+    with: &str,
+) -> Result<Option<Option<sp_model::Cell>>, CmdError> {
+    let Some(new_text) = search.pattern().replace(&old.input_text(), with) else {
+        return Ok(None);
+    };
+    super::cell_cmds::parse_input(&new_text, Some(old), &mut s.wb.styles).map(Some)
+}
+
 fn replace(s: &mut Session, p: &Json) -> CmdResult {
     let what = str_req(p, "what")?.to_string();
     let with = str_opt(p, "with").unwrap_or("").to_string();
-    if what.is_empty() {
-        return Err(CmdError::Param("search text is empty".into()));
-    }
-    let match_case = bool_opt(p, "match_case").unwrap_or(false);
+    let mut search = Search::from_params(p, &what, true)?;
+    // Replace works on what is typed in the cells.
+    search.formulas = true;
     let all = bool_opt(p, "all").unwrap_or(true);
-    let hits = find_matches(s, &what, true, match_case, false);
-    let hits: Vec<_> = if all {
-        hits
-    } else {
-        hits.into_iter().take(1).collect()
-    };
+    let hits = search.matches(s, if all { usize::MAX } else { 1 });
     let mut edits = Vec::new();
+    let mut skipped = 0;
     for (si, a) in &hits {
-        let Some(c) = s.wb.sheet(*si).and_then(|sh| sh.get(*a)) else {
+        let Some(old) = s.wb.sheet(*si).and_then(|sh| sh.get(*a)).cloned() else {
             continue;
         };
-        let text = c.input_text();
-        let new_text = if match_case {
-            text.replace(&what, &with)
-        } else {
-            // Case-insensitive replace preserving the rest of the text.
-            let lower = text.to_lowercase();
-            let wl = what.to_lowercase();
-            let mut out = String::new();
-            let mut i = 0;
-            while let Some(pos) = lower.get(i..).and_then(|t| t.find(&wl)) {
-                out.push_str(text.get(i..i + pos).unwrap_or(""));
-                out.push_str(&with);
-                i += pos + wl.len();
-            }
-            out.push_str(text.get(i..).unwrap_or(""));
-            out
-        };
-        let old = c.clone();
-        let new = super::cell_cmds::parse_input(&new_text, Some(&old), &mut s.wb.styles)?;
-        edits.push((*si, *a, new));
+        match replaced_cell(s, &search, &old, &with) {
+            Ok(Some(new)) => edits.push((*si, *a, new)),
+            Ok(None) => {}
+            // A replacement that would break a formula is left out.
+            Err(_) => skipped += 1,
+        }
     }
     let n = edits.len();
     s.transact("Replace", |tx, _| {
@@ -299,7 +392,13 @@ fn replace(s: &mut Session, p: &Json) -> CmdResult {
         }
         Ok(())
     })?;
-    s.status = format!("All done. We made {n} replacements.");
+    s.status = if skipped > 0 {
+        format!(
+            "We made {n} replacements; {skipped} cells were skipped because the result was not a valid formula."
+        )
+    } else {
+        format!("All done. We made {n} replacements.")
+    };
     Ok(json!(n))
 }
 
@@ -348,32 +447,34 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("home.clipboard.cut", r#"{"range"?: "A1:B2"}"#, |s, p| {
             copy(s, p, true)
         }),
-        CommandSpec::new("home.clipboard.paste", r#"{"cell"?: "D1"}"#, |s, p| {
-            paste(s, p, PasteMode::All)
-        })
+        CommandSpec::new(
+            "home.clipboard.paste",
+            r#"{"cell"?: "D1" | "range"?: "D1:F6" (default: selection; tiles when a multiple of the copy)}"#,
+            |s, p| paste(s, p, PasteWhat::All, false),
+        )
         .when(has_clip),
         CommandSpec::new(
             "home.clipboard.paste_values",
-            r#"{"cell"?: "D1"}"#,
-            |s, p| paste(s, p, PasteMode::Values),
+            r#"{"cell"?: "D1" | "range"?: "D1:F6"}"#,
+            |s, p| paste(s, p, PasteWhat::Values, false),
         )
         .when(has_clip),
         CommandSpec::new(
             "home.clipboard.paste_formulas",
-            r#"{"cell"?: "D1"}"#,
-            |s, p| paste(s, p, PasteMode::Formulas),
+            r#"{"cell"?: "D1" | "range"?: "D1:F6"}"#,
+            |s, p| paste(s, p, PasteWhat::Formulas, false),
         )
         .when(has_clip),
         CommandSpec::new(
             "home.clipboard.paste_formats",
-            r#"{"cell"?: "D1"}"#,
-            |s, p| paste(s, p, PasteMode::Formats),
+            r#"{"cell"?: "D1" | "range"?: "D1:F6"}"#,
+            |s, p| paste(s, p, PasteWhat::Formats, false),
         )
         .when(has_clip),
         CommandSpec::new(
             "home.clipboard.paste_transpose",
-            r#"{"cell"?: "D1"}"#,
-            |s, p| paste(s, p, PasteMode::Transpose),
+            r#"{"cell"?: "D1" | "range"?: "D1:F6"}"#,
+            |s, p| paste(s, p, PasteWhat::All, true),
         )
         .when(has_clip),
         CommandSpec::new(
@@ -420,15 +521,15 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("home.editing.autosum_min", "{}", |s, _| autosum(s, "MIN")),
         CommandSpec::new(
             "home.editing.find",
-            r#"{"what": "text", "formulas"?: true, "match_case"?: false, "whole"?: false}"#,
+            r#"{"what": "text (wildcards * ? ~)", "look_in"?: "formulas|values", "match_case"?: false, "whole"?: false, "within"?: "sheet|workbook", "search"?: "rows|columns"}"#,
             |s, p| find(s, p, false),
         ),
-        CommandSpec::new("home.editing.find_next", r#"{"what"?: "text"}"#, |s, p| {
+        CommandSpec::new("home.editing.find_next", r#"{"what"?: "text", …same options as find}"#, |s, p| {
             find(s, p, true)
         }),
         CommandSpec::new(
             "home.editing.replace",
-            r#"{"what": "a", "with": "b", "match_case"?: false, "all"?: true}"#,
+            r#"{"what": "a (wildcards * ? ~)", "with": "b", "match_case"?: false, "whole"?: false, "within"?: "sheet|workbook", "search"?: "rows|columns", "all"?: true} → replacements made (results that would break a formula are skipped)"#,
             replace,
         ),
         CommandSpec::new(

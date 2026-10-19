@@ -200,9 +200,17 @@ fn copy_above(s: &mut Session, formula: bool) -> CmdResult {
 
 fn autofill(s: &mut Session, p: &Json) -> CmdResult {
     let (sheet, src) = range(s, p, "source")?;
-    let (_, dest) = crate::params::parse_ref(s, str_req(p, "dest")?)?;
+    let dest = match crate::params::str_opt(p, "dest") {
+        Some(d) => crate::params::parse_ref(s, d)?.1,
+        // No destination: the fill handle was double-clicked.
+        None => match sp_ops::autofill::double_click_extent(&s.wb, sheet, src) {
+            Some(d) => d,
+            None => return Ok(Json::Null),
+        },
+    };
+    let ctrl = crate::params::bool_opt(p, "ctrl").unwrap_or(false);
     s.transact("AutoFill", |tx, _| {
-        sp_ops::edit::autofill(tx, sheet, src, dest).map_err(CmdError::from)
+        sp_ops::autofill::autofill(tx, sheet, src, dest, ctrl).map_err(CmdError::from)
     })?;
     s.select_range(dest, dest.start);
     Ok(Json::Null)
@@ -234,7 +242,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("cell.copy_above_value", "{}", |s, _| copy_above(s, false)),
         CommandSpec::new(
             "cell.autofill",
-            r#"{"source"?: "A1:A2", "dest": "A1:A10"}"#,
+            r#"{"source"?: "A1:A2", "dest"?: "A1:A10" (down/up/right/left; omitted = double-click: down to the end of the adjacent column's data), "ctrl"?: false (Ctrl+drag: copy instead of series, or series from one number)}"#,
             autofill,
         ),
         CommandSpec::new(
