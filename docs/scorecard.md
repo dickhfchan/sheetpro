@@ -12,37 +12,20 @@ Measured 2026-10-19 against IronCalc test files @ `c88f07f0c7`.
 
 | Metric | Result | Floor |
 |---|---|---|
-| Formula test files fully matching | 192/218 | 192 |
-| Formula cells matching cached results | 72802/73244 (99.4%) | 72802 |
+| Formula test files fully matching | 209/218 | 192 |
+| Formula cells matching cached results | 73219/73244 (100.0%) | 72802 |
 | Files round-tripping through our writer | 259/259 | 259 |
 
 Largest gaps (cells failing):
 
 | File | Matched | First mismatch |
 |---|---|---|
-| `calc_tests/ENGINEERING/BESSEL.xlsx` | 426/476 | BESSELY!B3 =BESSELY(A3,0) → expected -1.08110533, got -1.081105322 |
-| `calc_tests/LOOKUP_AND_REFERENCE/INDIRECT.xlsx` | 19/55 | r1c1_notation!L2 =E1 → expected 5, got #REF! |
-| `calc_tests/TEXT/TEXTBEFORE_TEXTAFTER.xlsx` | 120/143 | Sheet1!G16 =TEXTAFTER(A16,B16,C16,D16,E16,F16) → expected  456 the 891, got  891 |
-| `calc_tests/STATISTICAL/GEOMEAN.xlsx` | 14/33 | Sheet1!F2 =NA() → expected #N/A, got #N/A |
-| `calc_tests/FINANCIAL/XIRR.xlsx` | 26/42 | Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got 1.185916208 |
-| `calc_tests/FINANCIAL/PRICE_YIELD.xlsx` | 342/352 | ODDFPRICE_ODDFYIELD!J9 =ODDFPRICE(A9,B9,C9,D9,E9,F9,G9,H9,I9) → expected 115.8457481, got 115.8243677 |
-| `calc_tests/FINANCIAL/accrint_cases.xlsx` | 393/400 | accrint_cases!I105 =ACCRINT(A105,B105,C105,D105,E105,F105,G105,H105) → expected 93.23770492, got 93.40659341 |
-| `calc_tests/FINANCIAL/DB_DDB.xlsx` | 74/80 | Sheet1!G10 =DB(A10,B10,C10,D10,E10) → expected 16.5293754, got 16.3297355 |
-| `calc_tests/FINANCIAL/XNPV.xlsx` | 18/24 | Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got 1.185916208 |
-| `calc_tests/LOOKUP_AND_REFERENCE/ROW_COLUM.xlsx` | 65/69 | Ranges!A18 =MAX(ROW(Sheet2!B:B)) → expected 1048576, got 1 |
-| `calc_tests/TEXT/FIND_SEARCH.xlsx` | 59/62 | Sheet1!E29 =SEARCH(A29,B29,C29) → expected 1, got #VALUE! |
-| `calc_tests/TEXT/TEXTJOIN.xlsx` | 39/42 | Sheet1!G9 =TEXTJOIN(A9,B9,C9:F9) → expected Monday,,Wednesday,, got Monday,Wednesday |
-| `calc_tests/FINANCIAL/ACCRINT_extended.xlsx` | 257/259 | Sheet1!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got 16.66666667 |
+| `calc_tests/FINANCIAL/XIRR.xlsx` | 33/42 | Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got 1.185916208 |
 | `calc_tests/FINANCIAL/IRR.xlsx` | 130/132 | Three Parameters!D2 =IRR(A2:C2) → expected 0.0000001091, got -0.0000000133 |
-| `calc_tests/FINANCIAL/TBILLs.xlsx` | 271/273 | Sheet1!D6 =TBILLEQ(A6,B6,C6) → expected 0.8522961312, got 0.8499684013 |
-| `calc_tests/LOOKUP_AND_REFERENCE/HVLOOKUP.xlsx` | 101/103 | HLOOKUP!N13 =HLOOKUP(M13,"Nothing",1) → expected #VALUE!, got #N/A |
-| `calc_tests/TEXT/STRING_HANDLING.xlsx` | 145/147 | Sheet1!H7 =LEFT(A7,-1) → expected #DIV/0!, got #VALUE! |
+| `calc_tests/FINANCIAL/XNPV.xlsx` | 22/24 | Sheet1!R2 =XIRR(A2:F2,H2:M2) → expected 1.185916197, got 1.185916208 |
+| `calc_tests/LOOKUP_AND_REFERENCE/ROW_COLUM.xlsx` | 67/69 | Ranges!A18 =MAX(ROW(Sheet2!B:B)) → expected 1048576, got 7 |
 | `calc_tests/TEXT/T_VALUE_VALUETOTEXT.xlsx` | 61/63 | Sheet1!I5 =VALUE(H5) → expected 36504, got 36445 |
-| `calc_tests/FINANCIAL/ACCRINT_ACCRINTM.xlsx` | 50/51 | Sheet1!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got 16.66666667 |
-| `calc_tests/LOOKUP_AND_REFERENCE/INDEX.xlsx` | 10/11 | INDEX!E20 =INDEX({1,2,3},1,0,2) → expected #REF!, got 1 |
-| `calc_tests/MATH_AND_TRIGONOMETRY/SEQUENCE.xlsx` | 16/17 | Sheet1!C18 =SEQUENCE(-1) → expected #VALUE!, got #CALC! |
 | `calc_tests/STATISTICAL/LOGNORM.xlsx` | 146/147 | LOGNORM.DIST LOGNORM.INV!F26 =LOGNORM.INV(E26,B26,C26) → expected 3.999765881, got 3.999705157 |
-| `calc_tests/simple_functions.xlsx` | 198/199 | LOOKUP!D15 =@LOOKUP(C15,$A$2:$A$6,$B$2:$B$6) → expected #DIV/0!, got #N/A |
 
 ## Performance (100k rows)
 

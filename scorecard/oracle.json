@@ -3,9 +3,9 @@
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
   "files_total": 259,
   "calc_files_total": 218,
-  "calc_files_pass": 205,
+  "calc_files_pass": 209,
   "cells_compared": 73244,
-  "cells_matched": 73197,
+  "cells_matched": 73219,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -359,25 +359,20 @@
       "kind": "calc",
       "load_error": null,
       "compared": 51,
-      "matched": 50,
+      "matched": 51,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got 16.66666667"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/ACCRINT_extended.xlsx",
       "kind": "calc",
       "load_error": null,
       "compared": 259,
-      "matched": 257,
+      "matched": 259,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "Sheet1!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got 16.66666667",
-        "Sheet2!I5 =ACCRINT(A5,B5,C5,D5,E5,F5) → expected 16.94444444, got 16.66666667"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/COUPDAYS.xlsx",
@@ -547,16 +542,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 352,
-      "matched": 342,
+      "matched": 352,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "ODDFPRICE_ODDFYIELD!J9 =ODDFPRICE(A9,B9,C9,D9,E9,F9,G9,H9,I9) → expected 115.8457481, got 115.8243677",
-        "ODDFPRICE_ODDFYIELD!J10 =ODDFPRICE(A10,B10,C10,D10,E10,F10,G10,H10,I10) → expected 125.7492032, got 125.7490131",
-        "ODDFPRICE_ODDFYIELD!J50 =ODDFPRICE(A50,B50,C50,D50,E50,F50,G50,H50,I50) → expected 115.8550339, got 115.8335908",
-        "ODDFPRICE_ODDFYIELD!J51 =ODDFPRICE(A51,B51,C51,D51,E51,F51,G51,H51,I51) → expected 125.7274306, got 125.72724",
-        "ODDLPRICE_ODDLYIELD!I3 =ODDLPRICE(A3,B3,C3,D3,E3,F3,G3,H3) → expected 122.3670584, got 122.3848324"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/FINANCIAL/PV.xlsx",
@@ -642,16 +631,10 @@
       "kind": "calc",
       "load_error": null,
       "compared": 400,
-      "matched": 393,
+      "matched": 400,
       "skipped_volatile": 0,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "accrint_cases!I105 =ACCRINT(A105,B105,C105,D105,E105,F105,G105,H105) → expected 93.23770492, got 93.40659341",
-        "accrint_cases!I115 =ACCRINT(A115,B115,C115,D115,E115,F115,G115,H115) → expected 9.364754098, got 9.385245902",
-        "accrint_cases!I185 =ACCRINT(A185,B185,C185,D185,E185,F185,G185,H185) → expected 52.54120879, got 52.77777778",
-        "accrint_cases!I312 =ACCRINT(A312,B312,C312,D312,E312,F312,G312,H312) → expected 5.020833333, got 5",
-        "accrint_cases!I313 =ACCRINT(A313,B313,C313,D313,E313,F313,G313,H313) → expected -2.479166667, got -2.5"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/INFORMATION/CELL.xlsx",
@@ -998,14 +981,12 @@
       "kind": "calc",
       "load_error": null,
       "compared": 69,
-      "matched": 65,
+      "matched": 67,
       "skipped_volatile": 121,
       "roundtrip_ok": true,
       "first_mismatches": [
-        "Ranges!A18 =MAX(ROW(Sheet2!B:B)) → expected 1048576, got 1",
-        "Ranges!B18 =MAX(COLUMN(Sheet2!7:7)) → expected 16384, got 1",
-        "Ranges!C18 =MAX((Sheet2!B:B<>\"\")*ROW(Sheet2!B:B)) → expected 7, got 1",
-        "Ranges!D18 =MAX((Sheet2!7:7<>\"\")*COLUMN(Sheet2!7:7)) → expected 2, got 1"
+        "Ranges!A18 =MAX(ROW(Sheet2!B:B)) → expected 1048576, got 7",
+        "Ranges!B18 =MAX(COLUMN(Sheet2!7:7)) → expected 16384, got 3"
       ]
     },
     {
