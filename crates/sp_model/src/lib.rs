@@ -85,6 +85,17 @@ impl Cell {
         }
     }
 
+    /// Text shown in the formula bar for a cell displayed with `num_fmt`: dates, times and
+    /// percentages edit as typed (`1/31/2026`, `50%`), not as the stored serial or fraction.
+    pub fn edit_text(&self, num_fmt: &str) -> String {
+        if let Content::Value(Value::Number(n)) = &self.content
+            && let Some(t) = sp_core::numfmt::edit_text(*n, num_fmt)
+        {
+            return t;
+        }
+        self.input_text()
+    }
+
     /// A value spilled here by an array formula (no content of its own).
     pub fn is_spilled(&self) -> bool {
         matches!(self.content, Content::Value(Value::Empty)) && !self.value.is_empty()

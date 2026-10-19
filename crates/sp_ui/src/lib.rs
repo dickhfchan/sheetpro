@@ -85,7 +85,7 @@ impl App {
         self.edit_buf =
             s.wb.sheet(s.sheet_index())
                 .and_then(|sh| sh.get(s.sel.active))
-                .map(|c| c.input_text())
+                .map(|c| c.edit_text(&s.wb.styles.get(c.style).num_fmt))
                 .unwrap_or_default();
     }
 

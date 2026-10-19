@@ -45,14 +45,9 @@ fn get(s: &Session, range: &str) -> Json {
             let a = CellAddr::new(row, col);
             match sh.get(a) {
                 Some(c) => {
-                    let d = display_cell(
-                        a,
-                        &c.value,
-                        c.formula_src(),
-                        s.wb.styles.get(c.style),
-                        false,
-                    );
-                    cols.push(json!({ "input": c.input_text(), "value": value_json(&c.value), "display": d.text }));
+                    let style = s.wb.styles.get(c.style);
+                    let d = display_cell(a, &c.value, c.formula_src(), style, false);
+                    cols.push(json!({ "input": c.edit_text(&style.num_fmt), "value": value_json(&c.value), "display": d.text }));
                 }
                 None => cols.push(json!({ "input": "", "value": null, "display": "" })),
             }

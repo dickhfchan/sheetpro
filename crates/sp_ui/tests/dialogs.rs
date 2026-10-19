@@ -304,3 +304,28 @@ fn find_all_searches_sheet_or_workbook() {
     d.find_all(&mut app);
     assert_eq!(d.hits.len(), 2, "workbook: {:?}", d.hits);
 }
+
+#[test]
+fn formula_bar_shows_dates_and_percents_as_typed() {
+    // Regression: a typed date showed its serial (46053) in the formula bar.
+    let mut s = Session::new();
+    for (c, v) in [
+        ("A1", "2026-01-31"),
+        ("A2", "1/31/2026 13:30"),
+        ("A3", "50%"),
+        ("A4", "1234.5"),
+    ] {
+        s.execute("cell.set", &json!({"cell": c, "input": v}))
+            .unwrap();
+    }
+    let mut app = App::new(s);
+    for (cell, want) in [
+        ("A1", "1/31/2026"),
+        ("A2", "1/31/2026 1:30:00 PM"),
+        ("A3", "50%"),
+        ("A4", "1234.5"),
+    ] {
+        app.exec("select.range", json!({"range": cell}));
+        assert_eq!(app.edit_buf, want, "formula bar for {cell}");
+    }
+}

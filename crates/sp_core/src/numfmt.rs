@@ -817,9 +817,75 @@ pub fn is_date_format(code: &str) -> bool {
         .is_some_and(|s| parse_section(s).is_date())
 }
 
+/// Text for editing a number shown with `code` (the formula bar): dates as `m/d/yyyy`, with
+/// `h:mm:ss AM/PM` when there is a time part, times alone as `h:mm:ss AM/PM`, percentages
+/// as `50%`. `None` = edit the plain number. The result parses back to the same value.
+pub fn edit_text(n: f64, code: &str) -> Option<String> {
+    let first = split_sections(code).first().map(|s| parse_section(s))?;
+    if first.is_date() {
+        // Serials outside the calendar (negative, past 9999-12-31) edit as plain numbers.
+        if !(0.0..2_958_466.0).contains(&n) {
+            return None;
+        }
+        let days = n.floor();
+        // Round to the second so 0.999999 doesn't print as 24:00:00.
+        let secs = ((n - days) * 86_400.0).round();
+        let (days, secs) = if secs >= 86_400.0 {
+            (days + 1.0, 0.0)
+        } else {
+            (days, secs)
+        };
+        let date = format_value(&Value::Number(days), "m/d/yyyy").text;
+        let time = format_value(&Value::Number(secs / 86_400.0), "h:mm:ss AM/PM").text;
+        return Some(match (days == 0.0, secs == 0.0) {
+            (true, false) => time,
+            (_, true) => date,
+            (false, false) => format!("{date} {time}"),
+        });
+    }
+    if first.toks.contains(&Tok::Percent) {
+        // 15 significant digits, like plain numbers, so 0.07 edits as 7% not 7.000000000000001%.
+        let pct = format!("{:.15e}", n * 100.0).parse::<f64>().ok()?;
+        return Some(format!("{}%", Value::Number(pct).to_display()));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edit_text_for_dates_times_and_percents() {
+        assert_eq!(edit_text(46053.0, "m/d/yyyy").as_deref(), Some("1/31/2026"));
+        assert_eq!(edit_text(46053.0, "d-mmm-yy").as_deref(), Some("1/31/2026"));
+        assert_eq!(
+            edit_text(46053.5625, "m/d/yyyy h:mm").as_deref(),
+            Some("1/31/2026 1:30:00 PM")
+        );
+        assert_eq!(edit_text(0.25, "h:mm").as_deref(), Some("6:00:00 AM"));
+        assert_eq!(
+            edit_text(46_053.999_999_9, "m/d/yyyy").as_deref(),
+            Some("2/1/2026")
+        );
+        assert_eq!(edit_text(-1.0, "m/d/yyyy"), None);
+        assert_eq!(edit_text(0.5, "0%").as_deref(), Some("50%"));
+        assert_eq!(edit_text(0.07, "0.0%").as_deref(), Some("7%"));
+        assert_eq!(edit_text(0.12345, "0.00%").as_deref(), Some("12.345%"));
+        assert_eq!(edit_text(1234.5, "#,##0.00"), None);
+        assert_eq!(edit_text(1234.5, "General"), None);
+        // What the formula bar shows must parse back to the same value.
+        for (n, code) in [
+            (46053.0, "m/d/yyyy"),
+            (46053.5625, "m/d/yyyy h:mm"),
+            (0.25, "h:mm"),
+            (0.5, "0%"),
+        ] {
+            let t = edit_text(n, code).unwrap();
+            let (back, _) = crate::parse::parse_numeric_input(&t, 2026).unwrap();
+            assert!((back - n).abs() < 1e-9, "{t} parsed to {back}, not {n}");
+        }
+    }
 
     fn f(v: f64, code: &str) -> String {
         format_value(&Value::Number(v), code).text
