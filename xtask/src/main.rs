@@ -6,6 +6,7 @@ mod package;
 mod parity;
 mod perf;
 mod scorecard;
+mod smoke;
 
 use anyhow::{Result, bail};
 use std::path::PathBuf;
@@ -52,6 +53,15 @@ fn main() -> Result<()> {
         Some("perf") => perf::run(flag("--quick"), flag("--million")),
         Some("scorecard") => scorecard::run(flag("--check")),
         Some("package") => package::run_package(),
+        Some("smoke") => {
+            let bin = args
+                .iter()
+                .position(|a| a == "--bin")
+                .and_then(|i| args.get(i + 1))
+                .map(PathBuf::from)
+                .unwrap_or_else(|| smoke::packaged_binary(&root()));
+            smoke::run(&bin)
+        }
         Some("panic-hunt") => cargo(&[
             "test",
             "--release",
@@ -87,7 +97,7 @@ fn main() -> Result<()> {
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] [--dump out.tsv] [--only substr] | perf [--quick | --million] | scorecard [--check] | panic-hunt | package | check>"
+                "usage: cargo xtask <parity [--check] | layers | corpus | test-corpus [--verbose] [--dump out.tsv] [--only substr] | perf [--quick | --million] | scorecard [--check] | panic-hunt | package | smoke [--bin path] | check>"
             );
             bail!("unknown task")
         }

@@ -4,6 +4,8 @@
 //!   --write-icon`, ad-hoc signed when `codesign` exists; not notarized) plus
 //!   `dist/SheetPro-<version>-macos-<arch>.zip` (via `ditto`).
 //! - Elsewhere: `dist/sheetpro-<version>-<os>-<arch>/` with the binary and docs.
+//!
+//! Then `cargo xtask smoke` runs on the bundled binary (skip with `SP_SKIP_SMOKE=1`).
 
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
@@ -187,7 +189,11 @@ pub fn run_package() -> Result<()> {
         plain_folder(&root, &bin, &dist)?
     };
     println!("package: {}", out.display());
-    Ok(())
+    if std::env::var_os("SP_SKIP_SMOKE").is_some_and(|v| !v.is_empty()) {
+        println!("package: smoke test skipped (SP_SKIP_SMOKE)");
+        return Ok(());
+    }
+    crate::smoke::run(&crate::smoke::packaged_binary(&root))
 }
 
 #[cfg(test)]

@@ -34,7 +34,8 @@ cargo run -p sp -- screenshot --out shot.png [--open book.xlsx] [--script steps.
 | `cargo xtask panic-hunt` | Every command × adversarial params × odd states; must not panic |
 | `cargo xtask perf [--quick \| --million]` | Benchmarks vs `perf/budgets.toml`: `--quick` 20k rows (CI); default 100k rows + the 1M-row suite (writes `perf/baseline.json`); `--million` only the 1M suite (`SP_PERF_VERBOSE=1` prints recalc stats) |
 | `cargo xtask scorecard` | Regenerates `docs/scorecard.md` (`--check` fails if stale) |
-| `cargo xtask package` | Release build bundled for trial users → `dist/` (see Trial builds) |
+| `cargo xtask package` | Release build bundled for trial users → `dist/` (see Trial builds), then `smoke` on it |
+| `cargo xtask smoke [--bin path]` | Drive a built app end to end over its control port (formulas, editing, objects, pivot, save/reopen, PDF); default: the `dist/` build |
 | `cargo xtask check` | Everything above that runs offline, in CI order |
 
 ## Trial builds
@@ -43,7 +44,8 @@ cargo run -p sp -- screenshot --out shot.png [--open book.xlsx] [--script steps.
 cargo xtask package
 ```
 
-Builds `sheetpro` in release mode and lays it out in `dist/` (gitignored):
+Builds `sheetpro` in release mode, lays it out in `dist/` (gitignored), then runs
+`cargo xtask smoke` on the bundled binary (it opens app windows; `SP_SKIP_SMOKE=1` skips it):
 
 - **macOS**: `dist/SheetPro.app` (Info.plist, `Contents/MacOS/sheetpro`, an `.icns` drawn by
   `sheetpro --write-icon` and packed with `iconutil`, README/ATTRIBUTION in `Resources`), plus
