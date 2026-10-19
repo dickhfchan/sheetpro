@@ -214,7 +214,7 @@ pub fn generate() -> Result<String> {
     }
 
     // Perf.
-    md.push_str("## Performance (100k rows)\n\n");
+    md.push_str("## Performance (100k rows; `*_1m`: 1M rows x 10 columns)\n\n");
     match std::fs::read_to_string(root.join("perf/baseline.json"))
         .ok()
         .and_then(|t| serde_json::from_str::<crate::perf::Baseline>(&t).ok())
@@ -226,9 +226,10 @@ pub fn generate() -> Result<String> {
                 b.date
             );
             for (k, (ms, budget, desc)) in &b.results {
+                let u = crate::perf::unit_of(k);
                 let _ = writeln!(
                     md,
-                    "| `{k}` | {ms:.1} ms | {budget:.0} ms | {} | {desc} |",
+                    "| `{k}` | {ms:.1} {u} | {budget:.0} {u} | {} | {desc} |",
                     if ms <= budget { "ok" } else { "**OVER**" }
                 );
             }

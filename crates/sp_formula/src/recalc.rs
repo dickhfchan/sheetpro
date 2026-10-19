@@ -499,22 +499,38 @@ struct Computed {
     spills: FxMap<Key, SpillOut>,
 }
 
-/// Evaluate `order` (formula key + source) demand-driven; returns each formula's value.
+/// Formula source of `key`, if it holds a formula.
+fn formula_src(wb: &Workbook, key: Key) -> Option<&str> {
+    wb.sheet(key.0)?.get(key.1)?.formula_src()
+}
+
+/// Formula cells among `keys`, sorted (sheet, then row-major).
+fn formula_order<'k>(wb: &Workbook, keys: impl IntoIterator<Item = &'k Key>) -> Vec<Key> {
+    let mut order: Vec<Key> = keys
+        .into_iter()
+        .copied()
+        .filter(|k| formula_src(wb, *k).is_some())
+        .collect();
+    order.sort_unstable();
+    order
+}
+
+/// Evaluate the formula cells `order` demand-driven (sources are read from `wb`; with
+/// `dirty`, only formulas in that set are evaluated); returns each formula's value.
 fn compute(
     wb: &Workbook,
     cache: &mut AstCache,
-    order: &[(Key, String)],
+    order: &[Key],
     dirty: Option<&FxSet<Key>>,
     opts: RecalcOptions,
     stats: &mut RecalcStats,
 ) -> Computed {
-    let sources: FxMap<Key, &str> = order.iter().map(|(k, s)| (*k, s.as_str())).collect();
     let host = WbHost::new(wb, false, dirty, opts);
     // Formulas evaluated at least once and waiting for pending precedents. They are exactly
     // the current evaluation path, so reaching one again is a genuine circular reference
     // (cells merely queued on the stack are not: they are pushed again and evaluated first).
     let mut waiting: FxSet<Key> = FxSet::default();
-    for (key, _) in order {
+    for key in order {
         if host.computed.borrow().contains_key(key) {
             continue;
         }
@@ -525,7 +541,8 @@ fn compute(
                 waiting.remove(&top);
                 continue;
             }
-            let Some(src) = sources.get(&top) else {
+            let src = formula_src(wb, top).filter(|_| dirty.is_none_or(|d| d.contains(&top)));
+            let Some(src) = src else {
                 stack.pop();
                 continue;
             };
@@ -607,10 +624,14 @@ fn set_area(s: &mut sp_model::Sheet, area: SpillArea) {
 /// spill (readers evaluated earlier may have seen them blank).
 fn write_back(wb: &mut Workbook, results: Computed) -> Vec<Key> {
     let mut grown = Vec::new();
-    for (&(si, a), v) in &results.values {
+    // Row-major order: consecutive lookups walk the same B-tree paths (hash order would
+    // make every lookup a cache-missing descent through a million-row sheet).
+    let mut values: Vec<(Key, Value)> = results.values.into_iter().collect();
+    values.sort_unstable_by_key(|(k, _)| *k);
+    for ((si, a), v) in values {
         let Some(s) = wb.sheet_mut(si) else { continue };
         let Some(c) = s.get_mut(a) else { continue };
-        c.value = v.clone();
+        c.value = v;
         if c.formula_src().is_none() {
             continue;
         }
@@ -720,17 +741,10 @@ fn settle_spills(
         let Some(dirty) = graph.dirty_from(wb, &grown) else {
             return;
         };
-        let mut order: Vec<(Key, String)> = dirty
-            .iter()
-            .filter_map(|k| {
-                let src = wb.sheet(k.0)?.get(k.1)?.formula_src()?;
-                Some((*k, src.to_string()))
-            })
-            .collect();
+        let order = formula_order(wb, &dirty);
         if order.is_empty() {
             return;
         }
-        order.sort_unstable_by_key(|(k, _)| *k);
         let results = compute(wb, cache, &order, Some(&dirty), opts, stats);
         grown = write_back(wb, results);
     }
@@ -740,11 +754,11 @@ fn settle_spills(
 /// and rebuild the dependency graph used by `recalc_dirty`.
 pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> RecalcStats {
     let mut stats = RecalcStats::default();
-    let mut formulas: Vec<(Key, String)> = Vec::new();
+    let mut formulas: Vec<Key> = Vec::new();
     for (si, s) in wb.sheets.iter().enumerate() {
         for (a, c) in s.iter() {
-            if let Some(src) = c.formula_src() {
-                formulas.push(((si, a), src.to_string()));
+            if c.formula_src().is_some() {
+                formulas.push((si, a));
             }
         }
     }
@@ -753,7 +767,10 @@ pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> R
     let results = compute(wb, cache, &formulas, None, opts, &mut stats);
     let grown = write_back(wb, results);
     let mut graph = DepGraph::new(wb);
-    for (key, src) in &formulas {
+    for key in &formulas {
+        let Some(src) = formula_src(wb, *key) else {
+            continue;
+        };
         let expr = cache.get(*key, src).ok();
         graph.insert(wb, *key, expr.as_deref());
     }
@@ -815,15 +832,8 @@ pub fn recalc_dirty(
     let Some(dirty) = graph.dirty_from(wb, &changed) else {
         return recalc(wb, cache, opts);
     };
-    let mut order: Vec<(Key, String)> = dirty
-        .iter()
-        .filter_map(|k| {
-            let src = wb.sheet(k.0)?.get(k.1)?.formula_src()?;
-            Some((*k, src.to_string()))
-        })
-        .collect();
     // Same visiting order as a full recalc (sheet, then row-major).
-    order.sort_unstable_by_key(|(k, _)| *k);
+    let order = formula_order(wb, &dirty);
     let mut stats = RecalcStats {
         formulas: order.len(),
         incremental: true,

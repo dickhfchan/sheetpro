@@ -13,6 +13,7 @@ pub mod theme;
 use serde::{Deserialize, Serialize};
 use sp_core::{CellAddr, CellRange, Value};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 pub use condfmt::{
     CfKind, CfOp, CfRule, Cfvo, CfvoKind, CondFormat, DiffStyle, TextOp, TimePeriod,
@@ -139,10 +140,17 @@ pub struct SpillArea {
     pub blocked: bool,
 }
 
+/// One row's cells by column. Shared copy-on-write between sheet snapshots (undo history),
+/// so cloning a sheet costs O(rows), not O(cells); mutate through [`Sheet::row_mut`] or
+/// `Arc::make_mut`.
+pub type CellRow = Arc<BTreeMap<u32, Cell>>;
+/// A sheet's cells: row → [`CellRow`].
+pub type Cells = BTreeMap<u32, CellRow>;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Sheet {
     pub name: String,
-    pub cells: BTreeMap<u32, BTreeMap<u32, Cell>>,
+    pub cells: Cells,
     /// Column widths in character units; absent = default.
     pub col_widths: BTreeMap<u32, f64>,
     /// Row heights in points; absent = default.
@@ -257,7 +265,16 @@ impl Sheet {
     }
 
     pub fn get_mut(&mut self, a: CellAddr) -> Option<&mut Cell> {
-        self.cells.get_mut(&a.row)?.get_mut(&a.col)
+        let row = self.cells.get_mut(&a.row)?;
+        if !row.contains_key(&a.col) {
+            return None;
+        }
+        Arc::make_mut(row).get_mut(&a.col)
+    }
+
+    /// Mutable access to an existing row (unsharing it from snapshots if needed).
+    pub fn row_mut(&mut self, row: u32) -> Option<&mut BTreeMap<u32, Cell>> {
+        self.cells.get_mut(&row).map(Arc::make_mut)
     }
 
     pub fn value(&self, a: CellAddr) -> &Value {
@@ -270,12 +287,15 @@ impl Sheet {
         if cell.is_blank() {
             return self.remove(a);
         }
-        self.cells.entry(a.row).or_default().insert(a.col, cell)
+        Arc::make_mut(self.cells.entry(a.row).or_default()).insert(a.col, cell)
     }
 
     pub fn remove(&mut self, a: CellAddr) -> Option<Cell> {
         let row = self.cells.get_mut(&a.row)?;
-        let old = row.remove(&a.col);
+        if !row.contains_key(&a.col) {
+            return None;
+        }
+        let old = Arc::make_mut(row).remove(&a.col);
         if row.is_empty() {
             self.cells.remove(&a.row);
         }
@@ -284,15 +304,82 @@ impl Sheet {
 
     /// Mutable access, creating a default cell if missing.
     pub fn entry(&mut self, a: CellAddr) -> &mut Cell {
-        self.cells
-            .entry(a.row)
-            .or_default()
+        Arc::make_mut(self.cells.entry(a.row).or_default())
             .entry(a.col)
             .or_default()
     }
 
     pub fn cell_count(&self) -> usize {
-        self.cells.values().map(BTreeMap::len).sum()
+        self.cells.values().map(|r| r.len()).sum()
+    }
+
+    /// Cells whose stored state differs between `self` and `other` (another version of the
+    /// same sheet), row-major. Rows still shared between the two versions are skipped
+    /// without comparing their cells. Stops early with `None` once more than `limit`
+    /// addresses differ.
+    pub fn changed_cells(&self, other: &Sheet, limit: usize) -> Option<Vec<CellAddr>> {
+        let mut out = Vec::new();
+        let (mut a, mut b) = (self.cells.iter().peekable(), other.cells.iter().peekable());
+        let empty = BTreeMap::new();
+        loop {
+            let (row, ra, rb) = match (a.peek(), b.peek()) {
+                (None, None) => break,
+                (Some((ka, _)), Some((kb, _))) if ka == kb => {
+                    let ((k, ra), (_, rb)) = (a.next()?, b.next()?);
+                    if Arc::ptr_eq(ra, rb) {
+                        continue;
+                    }
+                    (*k, &**ra, &**rb)
+                }
+                (Some((ka, _)), Some((kb, _))) if ka < kb => {
+                    let (k, ra) = a.next()?;
+                    (*k, &**ra, &empty)
+                }
+                (Some(_), None) => {
+                    let (k, ra) = a.next()?;
+                    (*k, &**ra, &empty)
+                }
+                _ => {
+                    let (k, rb) = b.next()?;
+                    (*k, &empty, &**rb)
+                }
+            };
+            let (mut ca, mut cb) = (ra.iter().peekable(), rb.iter().peekable());
+            loop {
+                let col = match (ca.peek(), cb.peek()) {
+                    (None, None) => break,
+                    (Some((x, cx)), Some((y, cy))) if x == y => {
+                        let (col, same) = (**x, cx == cy);
+                        ca.next();
+                        cb.next();
+                        if same {
+                            continue;
+                        }
+                        col
+                    }
+                    (Some((x, _)), Some((y, _))) if x < y => {
+                        let col = **x;
+                        ca.next();
+                        col
+                    }
+                    (Some((x, _)), None) => {
+                        let col = **x;
+                        ca.next();
+                        col
+                    }
+                    (_, Some((y, _))) => {
+                        let col = **y;
+                        cb.next();
+                        col
+                    }
+                };
+                out.push(CellAddr::new(row, col));
+                if out.len() > limit {
+                    return None;
+                }
+            }
+        }
+        Some(out)
     }
 
     /// Smallest range containing every stored cell (`None` for an empty sheet).
@@ -499,6 +586,83 @@ mod tests {
         s.set(a, Cell::default());
         assert_eq!(s.cell_count(), 0);
         assert!(s.cells.is_empty());
+    }
+
+    #[test]
+    fn snapshots_share_rows_copy_on_write() {
+        let mut s = Sheet::new("S");
+        for r in 0..100 {
+            s.set(
+                CellAddr::new(r, 0),
+                Cell::constant(Value::Number(f64::from(r))),
+            );
+        }
+        let snap = s.clone();
+        // Cloning shares every row.
+        assert!(
+            s.cells
+                .iter()
+                .zip(&snap.cells)
+                .all(|((_, a), (_, b))| Arc::ptr_eq(a, b))
+        );
+        s.set(CellAddr::new(5, 1), Cell::constant(Value::Bool(true)));
+        s.get_mut(CellAddr::new(7, 0)).unwrap().value = Value::Number(-1.0);
+        s.remove(CellAddr::new(9, 0));
+        s.remove(CellAddr::new(11, 3)); // absent: no unsharing
+        // The snapshot is untouched; only the edited rows were copied.
+        assert_eq!(snap.value(CellAddr::new(7, 0)), &Value::Number(7.0));
+        assert!(snap.get(CellAddr::new(5, 1)).is_none());
+        assert_eq!(snap.cell_count(), 100);
+        let unshared: Vec<u32> = s
+            .cells
+            .iter()
+            .filter(|(r, row)| !snap.cells.get(r).is_some_and(|o| Arc::ptr_eq(o, row)))
+            .map(|(r, _)| *r)
+            .collect();
+        assert_eq!(unshared, vec![5, 7]);
+    }
+
+    #[test]
+    fn changed_cells_diff() {
+        let mut a = Sheet::new("S");
+        for r in 0..50 {
+            for c in 0..3 {
+                a.set(
+                    CellAddr::new(r, c),
+                    Cell::constant(Value::Number(f64::from(r + c))),
+                );
+            }
+        }
+        let before = a.clone();
+        assert_eq!(a.changed_cells(&before, 10), Some(vec![]));
+        a.set(CellAddr::new(3, 1), Cell::formula("A1"));
+        a.set(CellAddr::new(3, 7), Cell::constant(Value::Bool(false)));
+        a.remove(CellAddr::new(20, 0));
+        a.set(CellAddr::new(60, 2), Cell::constant(Value::text("new row")));
+        for r in 40..50 {
+            a.remove(CellAddr::new(r, 2));
+            a.remove(CellAddr::new(r, 1));
+            a.remove(CellAddr::new(r, 0));
+        }
+        let mut want = vec![
+            CellAddr::new(3, 1),
+            CellAddr::new(3, 7),
+            CellAddr::new(20, 0),
+        ];
+        for r in 40..50 {
+            want.extend((0..3).map(|c| CellAddr::new(r, c)));
+        }
+        want.push(CellAddr::new(60, 2));
+        assert_eq!(a.changed_cells(&before, 1000).as_ref(), Some(&want));
+        // Symmetric.
+        assert_eq!(before.changed_cells(&a, 1000), Some(want));
+        // An unshared but equal row reports nothing.
+        let mut c = before.clone();
+        let v = c.get(CellAddr::new(1, 1)).cloned().unwrap();
+        c.set(CellAddr::new(1, 1), v);
+        assert_eq!(c.changed_cells(&before, 10), Some(vec![]));
+        // Limit.
+        assert_eq!(a.changed_cells(&before, 5), None);
     }
 
     #[test]

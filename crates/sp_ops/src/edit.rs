@@ -220,15 +220,24 @@ pub fn sort_rows(
                 .collect()
         })
         .collect();
-    for (i, (dest_row, src_row)) in rows.iter().zip(order.iter()).enumerate() {
-        let dr = i64::from(*dest_row) - i64::from(*src_row);
-        for (j, col) in (body.start.col..=body.end.col).enumerate() {
-            let cell = snapshot
-                .get(i)
-                .and_then(|r| r.get(j))
-                .cloned()
-                .flatten()
-                .map(|c| moved_cell(&c, dr, 0));
+    // Shifting formulas (parse + print) dominates big sorts: compute moved rows on all
+    // cores, then record them in order.
+    let moves: Vec<(u32, u32, &Vec<Option<Cell>>)> = rows
+        .iter()
+        .zip(order.iter())
+        .zip(snapshot.iter())
+        .map(|((d, s), cells)| (*d, *s, cells))
+        .collect();
+    let moved: Vec<Vec<Option<Cell>>> =
+        crate::par::par_map(&moves, |(dest_row, src_row, cells)| {
+            let dr = i64::from(*dest_row) - i64::from(*src_row);
+            cells
+                .iter()
+                .map(|c| c.as_ref().map(|c| moved_cell(c, dr, 0)))
+                .collect()
+        });
+    for ((dest_row, _, _), cells) in moves.iter().zip(moved) {
+        for (col, cell) in (body.start.col..=body.end.col).zip(cells) {
             tx.set_cell(sheet, CellAddr::new(*dest_row, col), cell);
         }
     }
@@ -246,18 +255,29 @@ fn rewritten(src: &str, f: &dyn Fn(&mut sp_formula::Expr)) -> Option<String> {
 /// Rewrite every formula in the workbook with `f(expr, sheet the formula lives on)`: cells,
 /// data-validation rules, in-workbook hyperlink targets and defined names (sheet-scoped names resolve unqualified refs on
 /// their own sheet).
-pub(crate) fn rewrite_all_formulas(wb: &mut Workbook, f: &dyn Fn(&mut sp_formula::Expr, &str)) {
+pub(crate) fn rewrite_all_formulas(
+    wb: &mut Workbook,
+    f: &(dyn Fn(&mut sp_formula::Expr, &str) + Sync),
+) {
     let names: Vec<String> = wb.sheets.iter().map(|s| s.name.clone()).collect();
     for sheet in &mut wb.sheets {
         let name = sheet.name.clone();
         let g = |e: &mut sp_formula::Expr| f(e, &name);
-        for row in sheet.cells.values_mut() {
-            for cell in row.values_mut() {
-                if let Content::Formula(src) = &cell.content
-                    && let Some(new) = rewritten(src, &g)
-                {
-                    cell.content = Content::Formula(new);
-                }
+        // Parse/rewrite/print every formula on all cores, then apply the changes, unsharing
+        // (copy-on-write) only rows whose formulas actually change.
+        let formulas: Vec<(sp_core::CellAddr, &str)> = sheet
+            .iter()
+            .filter_map(|(a, c)| Some((a, c.formula_src()?)))
+            .collect();
+        let new = crate::par::par_map(&formulas, |(_, src)| rewritten(src, &g));
+        let updates: Vec<(sp_core::CellAddr, String)> = formulas
+            .iter()
+            .zip(new)
+            .filter_map(|((a, _), n)| Some((*a, n?)))
+            .collect();
+        for (a, new) in updates {
+            if let Some(cell) = sheet.get_mut(a) {
+                cell.content = Content::Formula(new);
             }
         }
         let texts = sheet
@@ -433,7 +453,7 @@ pub fn insert_delete(
             }
             Axis::Cols => {
                 for row in s.cells.values_mut() {
-                    *row = sh.keys(row);
+                    *row = std::sync::Arc::new(sh.keys(row));
                 }
                 s.cells.retain(|_, r| !r.is_empty());
                 s.col_widths = sh.keys(&s.col_widths);

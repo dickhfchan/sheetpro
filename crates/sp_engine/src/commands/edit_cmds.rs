@@ -19,7 +19,7 @@ fn undo(s: &mut Session, _: &Json) -> CmdResult {
         .undo(&mut s.wb)
         .ok_or_else(|| CmdError::Failed("nothing to undo".into()))?;
     s.dirty = true;
-    s.after_change();
+    s.after_history_step(true);
     s.status = format!("Undo {label}");
     Ok(json!(label))
 }
@@ -30,7 +30,7 @@ fn redo(s: &mut Session, _: &Json) -> CmdResult {
         .redo(&mut s.wb)
         .ok_or_else(|| CmdError::Failed("nothing to redo".into()))?;
     s.dirty = true;
-    s.after_change();
+    s.after_history_step(false);
     s.status = format!("Redo {label}");
     Ok(json!(label))
 }
