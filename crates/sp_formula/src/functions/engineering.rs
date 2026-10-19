@@ -7,7 +7,6 @@ use super::{Registry, ret};
 use crate::ast::Expr;
 use crate::eval::{Ev, EvalValue, to_number};
 use sp_core::{ErrorKind, Value};
-use std::f64::consts::PI;
 
 type R = Result<f64, ErrorKind>;
 use ErrorKind::{NA, Num};
@@ -534,7 +533,7 @@ fn text_arg(ev: &mut Ev<'_>, a: &[Expr], i: usize) -> Result<String, ErrorKind> 
 
 // ── Bessel functions ────────────────────────────────────────────────────────────────────
 // I and K use the classic polynomial approximations from Abramowitz & Stegun 9.8.1–9.8.8
-// with recurrences for higher orders; J and Y use power series / Hankel asymptotics.
+// with recurrences for higher orders; J and Y are described below.
 
 fn poly(c: &[f64], t: f64) -> f64 {
     c.iter().rev().fold(0.0, |s, a| s * t + a)
@@ -731,103 +730,244 @@ fn bessel_k(x: f64, n: usize) -> f64 {
     k
 }
 
-/// Hankel asymptotic expansion: (J_ν(x), Y_ν(x)) for large x > 0.
-fn hankel(nu: f64, x: f64) -> (f64, f64) {
-    let mu = 4.0 * nu * nu;
-    let (mut p, mut q) = (1.0, 0.0);
-    let mut term = 1.0_f64;
-    let mut last = f64::INFINITY;
-    for k in 1..60 {
-        let odd = (2 * k - 1) as f64;
-        let next = term * (mu - odd * odd) / (k as f64 * 8.0 * x);
-        if next.abs() > last || next.abs() < 1e-17 {
-            break;
-        }
-        last = next.abs();
-        term = next;
-        match k % 4 {
-            1 => q += term,
-            2 => p -= term,
-            3 => q -= term,
-            _ => p += term,
-        }
-    }
-    let chi = x - (nu / 2.0 + 0.25) * PI;
-    let s = (2.0 / (PI * x)).sqrt();
+// J0, J1, Y0 and Y1 use the classic low-order rational approximations (Hart, *Computer
+// Approximations*, 1968) for x < 8 and the asymptotic amplitude/phase forms beyond. They are
+// accurate to about 1e-8, and the target's results carry exactly that error (for example
+// BESSELJ(0,0) = 1.00000000283), so these reproduce its values rather than the true ones.
+
+/// `poly` with the variable first.
+fn poly_asc(y: f64, cs: &[f64]) -> f64 {
+    poly(cs, y)
+}
+
+/// Amplitude terms P, Q of the large-x form of order 0.
+fn pq0(y: f64) -> (f64, f64) {
     (
-        s * (p * chi.cos() - q * chi.sin()),
-        s * (p * chi.sin() + q * chi.cos()),
+        poly_asc(
+            y,
+            &[
+                1.0,
+                -0.109_862_862_7e-2,
+                0.273_451_040_7e-4,
+                -0.207_337_063_9e-5,
+                0.209_388_721_1e-6,
+            ],
+        ),
+        poly_asc(
+            y,
+            &[
+                -0.156_249_999_5e-1,
+                0.143_048_876_5e-3,
+                -0.691_114_765_1e-5,
+                0.762_109_516_1e-6,
+                -0.934_935_152e-7,
+            ],
+        ),
     )
 }
 
-const EULER: f64 = 0.577_215_664_901_532_9;
+/// Amplitude terms P, Q of the large-x form of order 1. For J1 (`j1_quirk`) the target's P
+/// series repeats its third coefficient (six terms instead of five); reproduced so large-x
+/// BESSELJ matches it. Y1 uses the plain series.
+fn pq1(y: f64, j1_quirk: bool) -> (f64, f64) {
+    const P: [f64; 5] = [
+        1.0,
+        0.183_105e-2,
+        -0.351_639_649_6e-4,
+        0.245_752_017_4e-5,
+        -0.240_337_019e-6,
+    ];
+    const P_J1: [f64; 6] = [
+        1.0,
+        0.183_105e-2,
+        -0.351_639_649_6e-4,
+        -0.351_639_649_6e-4,
+        0.245_752_017_4e-5,
+        -0.240_337_019e-6,
+    ];
+    (
+        poly_asc(y, if j1_quirk { &P_J1 } else { &P }),
+        poly_asc(
+            y,
+            &[
+                0.046_874_999_95,
+                -0.200_269_087_3e-3,
+                0.844_919_909_6e-5,
+                -0.882_289_87e-6,
+                0.105_787_412e-6,
+            ],
+        ),
+    )
+}
 
-/// (J0, J1, Y0, Y1) at x > 0.
-fn bessel_jy01(x: f64) -> (f64, f64, f64, f64) {
-    if x > 12.0 {
-        let (j0, y0) = hankel(0.0, x);
-        let (j1, y1) = hankel(1.0, x);
-        return (j0, j1, y0, y1);
+const TWO_OVER_PI: f64 = 0.636_619_772;
+
+fn bessel_j0(x: f64) -> f64 {
+    let ax = x.abs();
+    if ax < 8.0 {
+        let y = x * x;
+        let n = poly_asc(
+            y,
+            &[
+                57_568_490_574.0,
+                -13_362_590_354.0,
+                651_619_640.7,
+                -11_214_424.18,
+                77_392.330_17,
+                -184.905_245_6,
+            ],
+        );
+        let d = poly_asc(
+            y,
+            &[
+                57_568_490_411.0,
+                1_029_532_985.0,
+                9_494_680.718,
+                59_272.648_53,
+                267.853_271_2,
+                1.0,
+            ],
+        );
+        return n / d;
     }
-    let h = x / 2.0;
-    let h2 = h * h;
-    let (mut j0, mut j1) = (0.0, 0.0);
-    let (mut s0, mut s1) = (0.0, 0.0);
-    let mut t0 = 1.0; // (-1)^k h^{2k} / (k!)^2
-    let mut t1 = h; // (-1)^k h^{2k+1} / (k!(k+1)!)
-    let mut hk = 0.0; // harmonic number H_k
-    for k in 0..200 {
-        let kf = k as f64;
-        if k > 0 {
-            hk += 1.0 / kf;
-            t0 *= -h2 / (kf * kf);
-            t1 *= -h2 / (kf * (kf + 1.0));
-        }
-        j0 += t0;
-        j1 += t1;
-        // Y0 series: Σ (-1)^{k+1} H_k h^{2k}/(k!)^2 = -Σ H_k t0
-        s0 -= hk * t0;
-        // Y1 series: Σ (-1)^k (ψ(k+1)+ψ(k+2)) h^{2k+1}/(k!(k+1)!)
-        s1 += (2.0 * hk + 1.0 / (kf + 1.0) - 2.0 * EULER) * t1;
-        if t0.abs() < 1e-18 && t1.abs() < 1e-18 && k > 2 {
-            break;
-        }
+    let z = 8.0 / ax;
+    let (p, q) = pq0(z * z);
+    let xx = ax - 0.785_398_164;
+    (TWO_OVER_PI / ax).sqrt() * (xx.cos() * p - z * xx.sin() * q)
+}
+
+fn bessel_j1(x: f64) -> f64 {
+    let ax = x.abs();
+    if ax < 8.0 {
+        let y = x * x;
+        let n = x * poly_asc(
+            y,
+            &[
+                72_362_614_232.0,
+                -7_895_059_235.0,
+                242_396_853.1,
+                -2_972_611.439,
+                15_704.482_60,
+                -30.160_366_06,
+            ],
+        );
+        let d = poly_asc(
+            y,
+            &[
+                144_725_228_442.0,
+                2_300_535_178.0,
+                18_583_304.74,
+                99_447.433_94,
+                376.999_139_7,
+                1.0,
+            ],
+        );
+        return n / d;
     }
-    let lg = h.ln();
-    let y0 = 2.0 / PI * (lg + EULER) * j0 + 2.0 / PI * s0;
-    let y1 = -2.0 / (PI * x) + 2.0 / PI * lg * j1 - s1 / PI;
-    (j0, j1, y0, y1)
+    let z = 8.0 / ax;
+    let (p, q) = pq1(z * z, true);
+    let xx = ax - 2.356_194_491;
+    let r = (TWO_OVER_PI / ax).sqrt() * (xx.cos() * p - z * xx.sin() * q);
+    if x < 0.0 { -r } else { r }
+}
+
+/// Y0 for x > 0.
+fn bessel_y0(x: f64) -> f64 {
+    if x < 8.0 {
+        let y = x * x;
+        let n = poly_asc(
+            y,
+            &[
+                -2_957_821_389.0,
+                7_062_834_065.0,
+                -512_359_803.6,
+                10_879_881.29,
+                -86_327.927_57,
+                228.462_273_3,
+            ],
+        );
+        let d = poly_asc(
+            y,
+            &[
+                40_076_544_269.0,
+                745_249_964.8,
+                7_189_466.438,
+                47_447.264_70,
+                226.103_024_4,
+                1.0,
+            ],
+        );
+        return n / d + TWO_OVER_PI * bessel_j0(x) * x.ln();
+    }
+    let z = 8.0 / x;
+    let (p, q) = pq0(z * z);
+    let xx = x - 0.785_398_164;
+    (TWO_OVER_PI / x).sqrt() * (xx.sin() * p + z * xx.cos() * q)
+}
+
+/// Y1 for x > 0.
+fn bessel_y1(x: f64) -> f64 {
+    if x < 8.0 {
+        let y = x * x;
+        let n = x * poly_asc(
+            y,
+            &[
+                -0.490_060_494_3e13,
+                0.127_527_439_0e13,
+                -0.515_343_813_9e11,
+                0.734_926_455_1e9,
+                -0.423_792_272_6e7,
+                0.851_193_793_5e4,
+            ],
+        );
+        let d = poly_asc(
+            y,
+            &[
+                0.249_958_057_0e14,
+                0.424_441_966_4e12,
+                0.373_365_036_7e10,
+                0.224_590_400_2e8,
+                0.102_042_605_0e6,
+                0.354_963_288_5e3,
+                1.0,
+            ],
+        );
+        return n / d + TWO_OVER_PI * (bessel_j1(x) * x.ln() - 1.0 / x);
+    }
+    let z = 8.0 / x;
+    let (p, q) = pq1(z * z, false);
+    let xx = x - 2.356_194_491;
+    (TWO_OVER_PI / x).sqrt() * (xx.sin() * p + z * xx.cos() * q)
 }
 
 fn bessel_j(x: f64, n: usize) -> f64 {
+    match n {
+        0 => return bessel_j0(x),
+        1 => return bessel_j1(x),
+        _ => {}
+    }
     if x == 0.0 {
-        return if n == 0 { 1.0 } else { 0.0 };
+        return 0.0;
     }
     let ax = x.abs();
     let sign = if x < 0.0 && n % 2 == 1 { -1.0 } else { 1.0 };
-    let (j0, j1, _, _) = bessel_jy01(ax);
-    if n == 0 {
-        return j0;
-    }
-    if n == 1 {
-        return sign * j1;
-    }
-    if (n as f64) < ax {
+    let tox = 2.0 / ax;
+    if ax > n as f64 {
         // Upward recurrence is stable here.
-        let (mut jm, mut j) = (j0, j1);
+        let (mut jm, mut j) = (bessel_j0(ax), bessel_j1(ax));
         for k in 1..n {
-            let jp = 2.0 * k as f64 / ax * j - jm;
+            let jp = k as f64 * tox * j - jm;
             jm = j;
             j = jp;
         }
         return sign * j;
     }
-    // Miller backward recurrence normalised by J0 + 2ΣJ_{2k} = 1.
-    let m = 2 * ((n.max(ax as usize) + 15 + (40.0 * n as f64).sqrt() as usize) / 2);
+    // Miller backward recurrence from an even start, normalised by J0 + 2ΣJ_2k = 1.
+    let m = 2 * ((n + (160.0 * n as f64).sqrt() as usize) / 2);
     let (mut bjp, mut bj, mut sum, mut ans) = (0.0_f64, 1.0_f64, 0.0_f64, 0.0_f64);
-    let mut j = m;
-    while j > 0 {
-        let bjm = 2.0 * j as f64 / ax * bj - bjp;
+    let mut even = false;
+    for j in (1..=m).rev() {
+        let bjm = j as f64 * tox * bj - bjp;
         bjp = bj;
         bj = bjm;
         if bj.abs() > 1e10 {
@@ -836,26 +976,27 @@ fn bessel_j(x: f64, n: usize) -> f64 {
             ans *= 1e-10;
             sum *= 1e-10;
         }
-        if j % 2 == 1 {
+        if even {
             sum += bj;
         }
+        even = !even;
         if j == n {
             ans = bjp;
         }
-        j -= 1;
     }
     let norm = 2.0 * sum - bj;
     sign * ans / norm
 }
 
 fn bessel_y(x: f64, n: usize) -> f64 {
-    let (_, _, y0, y1) = bessel_jy01(x);
+    let y0 = bessel_y0(x);
     if n == 0 {
         return y0;
     }
-    let (mut ym, mut y) = (y0, y1);
+    let (mut ym, mut y) = (y0, bessel_y1(x));
+    let tox = 2.0 / x;
     for k in 1..n {
-        let yp = 2.0 * k as f64 / x * y - ym;
+        let yp = k as f64 * tox * y - ym;
         ym = y;
         y = yp;
         if !y.is_finite() {
@@ -1442,7 +1583,9 @@ mod tests {
         approx("BESSELK(1.5,12)", 598_740_569.415_651_7);
         approx("BESSELJ(1.9,2)", 0.329_925_727_692_387_8);
         approx("BESSELY(2.5,1)", 0.145_918_137_966_786_6);
-        approx("BESSELJ(20,3)", -0.098_901_394_560_449_14);
+        // The target's large-x J1 approximation (see `pq1`) shifts this from the true
+        // -0.0989013945604 to its own value.
+        approx("BESSELJ(20,3)", -0.098_901_384_895_778_21);
         assert_eq!(ev("BESSELK(0,1)"), Value::Error(ErrorKind::Num));
         assert_eq!(ev("BESSELJ(1,-1)"), Value::Error(ErrorKind::Num));
         let _ = ev("BESSELJ(1E300,9999)");

@@ -197,3 +197,22 @@ fn indirect_r1c1_absolute_relative_ranges_and_wrap() {
     assert_eq!(num(&wb, "E8"), 7.0);
     assert_eq!(err(&wb, "E9"), ErrorKind::Ref);
 }
+
+#[test]
+fn bessel_j_y_reproduce_target_approximations() {
+    let wb = wb_with(&[
+        ("A1", "=BESSELJ(0,0)"),
+        ("A2", "=BESSELJ(10,1)"),
+        ("A3", "=BESSELJ(10,7)"),
+        ("A4", "=BESSELJ(-10,1)"),
+        ("A5", "=BESSELJ(1.9,2)"),
+        ("A6", "=BESSELY(10,1)"),
+    ]);
+    // Values the target computes (its approximations are accurate to ~1e-8, not exact).
+    assert!(close(num(&wb, "A1"), 1.000_000_002_831_41));
+    assert!(close(num(&wb, "A2"), 4.347_224_965_225_415_1e-2));
+    assert!(close(num(&wb, "A3"), 0.216_710_438_003_148_9));
+    assert!(close(num(&wb, "A4"), -4.347_224_965_225_415_1e-2));
+    assert!(close(num(&wb, "A5"), 0.329_925_728));
+    assert!(close(num(&wb, "A6"), 0.249_015_424_1));
+}
