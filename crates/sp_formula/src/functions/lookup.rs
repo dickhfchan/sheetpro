@@ -573,13 +573,15 @@ fn indirect(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         Ok(s) => s,
         Err(e) => return EvalValue::err(e),
     };
-    let a1 = match ev.bool_or(args, 1, true) {
-        Ok(b) => b,
-        Err(e) => return EvalValue::err(e),
+    // An omitted-but-present second argument (`INDIRECT(x,)`) means FALSE (R1C1).
+    let a1 = match args.get(1) {
+        None => true,
+        Some(Expr::Missing) => false,
+        Some(e) => match ev.boolean(e) {
+            Ok(b) => b,
+            Err(e) => return EvalValue::err(e),
+        },
     };
-    if !a1 {
-        return EvalValue::err(ErrorKind::Ref);
-    }
     let (sheet, body) = split_sheet_prefix(s.trim());
     let sheet_idx = match sheet {
         Some(n) => match ev.host.sheet_index(&n) {
@@ -588,6 +590,15 @@ fn indirect(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
         },
         None => ev.sheet,
     };
+    if !a1 {
+        return match parse_r1c1_range(body, ev.cell) {
+            Some(range) => EvalValue::Ref(SheetRange {
+                sheet: sheet_idx,
+                range,
+            }),
+            None => EvalValue::err(ErrorKind::Ref),
+        };
+    }
     match CellRange::parse(body) {
         Ok(rg) => EvalValue::Ref(SheetRange {
             sheet: sheet_idx,
@@ -598,6 +609,92 @@ fn indirect(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
             None => EvalValue::err(ErrorKind::Ref),
         },
     }
+}
+
+/// One R1C1 coordinate after its `R`/`C` letter: `None` = relative 0 (the formula's own
+/// row/column), `[n]` = relative (wrapping around the sheet like the target), `n` = absolute.
+/// Returns the zero-based index, or `None` when malformed or out of range.
+fn r1c1_coord(t: &str, cur: u32, max: u32) -> Option<u32> {
+    if t.is_empty() {
+        return Some(cur);
+    }
+    if let Some(inner) = t.strip_prefix('[').and_then(|x| x.strip_suffix(']')) {
+        let off: i64 = inner.parse().ok()?;
+        if off.unsigned_abs() >= u64::from(max) {
+            return None;
+        }
+        let m = i64::from(max);
+        return u32::try_from((i64::from(cur) + off).rem_euclid(m)).ok();
+    }
+    if !t.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let n: u32 = t.parse().ok()?;
+    (1..=max).contains(&n).then(|| n - 1)
+}
+
+/// What one side of an R1C1 range names.
+enum R1c1Part {
+    Cell(CellAddr),
+    Row(u32),
+    Col(u32),
+}
+
+fn parse_r1c1_part(t: &str, at: CellAddr) -> Option<R1c1Part> {
+    let up = t.trim().to_ascii_uppercase();
+    let rest = up.strip_prefix('R');
+    match rest {
+        Some(r) => {
+            // Row spec runs up to the `C` that starts the column spec (if any).
+            let split = r.find('C');
+            let (rs, cs) = match split {
+                Some(i) => (r.get(..i)?, Some(r.get(i + 1..)?)),
+                None => (r, None),
+            };
+            let row = r1c1_coord(rs, at.row, MAX_ROWS)?;
+            match cs {
+                Some(cs) => {
+                    let col = r1c1_coord(cs, at.col, MAX_COLS)?;
+                    Some(R1c1Part::Cell(CellAddr::new(row, col)))
+                }
+                None => Some(R1c1Part::Row(row)),
+            }
+        }
+        None => {
+            let cs = up.strip_prefix('C')?;
+            Some(R1c1Part::Col(r1c1_coord(cs, at.col, MAX_COLS)?))
+        }
+    }
+}
+
+/// Parse an R1C1-style reference (`R2C3`, `R[-1]C`, `R1C1:R2C3`, `R2`, `C[1]`, `C2:C3`)
+/// relative to the formula cell `at`.
+fn parse_r1c1_range(s: &str, at: CellAddr) -> Option<CellRange> {
+    let whole = |p: R1c1Part| match p {
+        R1c1Part::Cell(a) => CellRange::single(a),
+        R1c1Part::Row(r) => CellRange::new(CellAddr::new(r, 0), CellAddr::new(r, MAX_COLS - 1)),
+        R1c1Part::Col(c) => CellRange::new(CellAddr::new(0, c), CellAddr::new(MAX_ROWS - 1, c)),
+    };
+    let (a, b) = match s.split_once(':') {
+        None => return Some(whole(parse_r1c1_part(s, at)?)),
+        Some((a, b)) => (parse_r1c1_part(a, at)?, parse_r1c1_part(b, at)?),
+    };
+    let (x, y) = match (a, b) {
+        (R1c1Part::Cell(x), R1c1Part::Cell(y)) => (x, y),
+        (R1c1Part::Row(r1), R1c1Part::Row(r2)) => (
+            CellAddr::new(r1.min(r2), 0),
+            CellAddr::new(r1.max(r2), MAX_COLS - 1),
+        ),
+        (R1c1Part::Col(c1), R1c1Part::Col(c2)) => (
+            CellAddr::new(0, c1.min(c2)),
+            CellAddr::new(MAX_ROWS - 1, c1.max(c2)),
+        ),
+        _ => return None,
+    };
+    Some(CellRange::new(
+        CellAddr::new(x.row.min(y.row), x.col.min(y.col)),
+        CellAddr::new(x.row.max(y.row), x.col.max(y.col)),
+    ))
 }
 
 fn offset(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {

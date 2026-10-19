@@ -159,3 +159,41 @@ fn textbefore_textafter_instance_match_end_and_fallback() {
     assert_eq!(text(&wb, "B12"), "");
     assert_eq!(err(&wb, "B13"), ErrorKind::Value);
 }
+
+#[test]
+fn indirect_r1c1_absolute_relative_ranges_and_wrap() {
+    let wb = wb_with(&[
+        ("A1", "1"),
+        ("B1", "2"),
+        ("C1", "3"),
+        ("A2", "4"),
+        ("B2", "5"),
+        ("C2", "6"),
+        ("E1", "=INDIRECT(\"R2C2\",FALSE)"),
+        ("E2", "=INDIRECT(\"r1c3\",0)"),
+        ("E3", "=SUM(INDIRECT(\"R2C3:R1C2\",FALSE))"),
+        ("E4", "=INDIRECT(\"R2C2\",)"),
+        ("E5", "=INDIRECT(\"B2\",FALSE)"),
+        ("D2", "=INDIRECT(\"RC[-1]\",FALSE)"),
+        ("D3", "=INDIRECT(\"R[-1]C[-2]\",FALSE)"),
+        ("F6", "=INDIRECT(\"R[-6]C\",FALSE)"),
+        ("E6", "=SUM(INDIRECT(\"R2\",FALSE))"),
+        ("E7", "=SUM(INDIRECT(\"C1:C2\",FALSE))"),
+        ("E8", "=SUM(INDIRECT(\"C[-3]\",FALSE))"),
+        ("E9", "=INDIRECT(\"R0C1\",FALSE)"),
+    ]);
+    assert_eq!(num(&wb, "E1"), 5.0);
+    assert_eq!(num(&wb, "E2"), 3.0);
+    assert_eq!(num(&wb, "E3"), 16.0);
+    assert_eq!(num(&wb, "E4"), 5.0);
+    assert_eq!(err(&wb, "E5"), ErrorKind::Ref);
+    assert_eq!(num(&wb, "D2"), 6.0);
+    assert_eq!(num(&wb, "D3"), 5.0);
+    // R[-6] from row 6 wraps to the last row of the sheet (blank).
+    assert_eq!(num(&wb, "F6"), 0.0);
+    // Row 2: A2:C2 plus D2 (6) and E2 (3).
+    assert_eq!(num(&wb, "E6"), 24.0);
+    assert_eq!(num(&wb, "E7"), 12.0);
+    assert_eq!(num(&wb, "E8"), 7.0);
+    assert_eq!(err(&wb, "E9"), ErrorKind::Ref);
+}
