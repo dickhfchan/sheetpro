@@ -267,3 +267,87 @@ fn objects_select_move_and_delete() {
     assert!(h.state().session.wb.sheet(0).unwrap().objects.is_empty());
     assert_eq!(h.state().ui.grid.object, None);
 }
+
+fn drag(h: &mut Harness<'static, App>, start: Pos2, end: Pos2) {
+    h.hover_at(start);
+    h.run_steps(1);
+    h.drag_at(start);
+    h.run_steps(1);
+    for i in 1..=4 {
+        h.hover_at(start + (end - start) * (i as f32 / 4.0));
+        h.run_steps(1);
+    }
+    h.drop_at(end);
+    h.run_steps(3);
+}
+
+fn slicer_anchor(h: &Harness<'static, App>) -> String {
+    let sl = &h.state().session.wb.sheet(0).unwrap().analysis.slicers[0];
+    sp_core::CellRange::new(sl.anchor.from, sl.anchor.to).to_a1()
+}
+
+#[test]
+fn slicers_select_move_resize_and_delete() {
+    let mut h = harness(App::new(pivot_session()));
+    let origin = sp_ui::overlays::cells_origin(&h.ctx).unwrap();
+    let r = sp_ui::objdraw::slicer_rects(&h.state().session, origin)[0].1;
+    // J2:L12 → the anchor runs to the top-left of M13.
+    assert_eq!(slicer_anchor(&h), "J2:M13");
+    // Clicking the caption selects the slicer (not a cell, nothing filtered).
+    let caption = Pos2::new(r.min.x + 30.0, r.min.y + 10.0);
+    click(&mut h, caption);
+    assert_eq!(h.state().ui.grid.slicer, Some(0));
+    assert_eq!(h.state().session.sel.active, CellAddr::new(0, 0));
+    assert!(hidden_regions(h.state()).is_empty());
+    // Dragging the caption moves it two columns right and two rows down, snapped to cells.
+    drag(&mut h, caption, caption + Vec2::new(128.0, 40.0));
+    assert_eq!(slicer_anchor(&h), "L4:O15");
+    assert_eq!(h.state().ui.grid.slicer, Some(0), "stays selected");
+    // The bottom-right handle resizes it.
+    let r = sp_ui::objdraw::slicer_rects(&h.state().session, origin)[0].1;
+    drag(&mut h, r.max, r.max + Vec2::new(64.0, 40.0));
+    assert_eq!(slicer_anchor(&h), "L4:P17");
+    // Each change is one undo step.
+    h.state_mut().exec("edit.undo", json!({}));
+    assert_eq!(slicer_anchor(&h), "L4:O15");
+    h.state_mut().exec("edit.undo", json!({}));
+    assert_eq!(slicer_anchor(&h), "J2:M13");
+    // A button click still filters, and selects the slicer.
+    h.state_mut().ui.grid.slicer = None;
+    let r = sp_ui::objdraw::slicer_rects(&h.state().session, origin)[0].1;
+    let b = sp_render::objects::slicer_layout((r.min.x, r.min.y, r.width(), r.height()), 3, 1, 1.0)
+        .buttons[0];
+    click(&mut h, Pos2::new(b.0 + b.2 / 2.0, b.1 + b.3 / 2.0));
+    assert_eq!(hidden_regions(h.state()), vec!["North", "West"]);
+    assert_eq!(h.state().ui.grid.slicer, Some(0));
+    // Clicking a cell deselects it.
+    let a8 = cell_center(&h, "A8");
+    click(&mut h, a8);
+    assert_eq!(h.state().ui.grid.slicer, None);
+    // Delete with the slicer selected removes it (one undo step).
+    click(&mut h, caption);
+    h.key_press(egui::Key::Delete);
+    h.run_steps(2);
+    assert!(
+        h.state()
+            .session
+            .wb
+            .sheet(0)
+            .unwrap()
+            .analysis
+            .slicers
+            .is_empty()
+    );
+    h.state_mut().exec("edit.undo", json!({}));
+    assert_eq!(
+        h.state()
+            .session
+            .wb
+            .sheet(0)
+            .unwrap()
+            .analysis
+            .slicers
+            .len(),
+        1
+    );
+}

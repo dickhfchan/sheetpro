@@ -115,6 +115,9 @@ pub struct ChartDrag {
     pub idx: usize,
     #[serde(default)]
     pub object: bool,
+    /// A slicer (index into `analysis.slicers`) rather than a chart or object.
+    #[serde(default)]
+    pub slicer: bool,
     pub handle: Option<(i8, i8)>,
     pub start: [f32; 2],
     pub now: [f32; 2],
@@ -144,6 +147,14 @@ impl ChartDrag {
         }
         r
     }
+}
+
+/// What a drag on the grid grabbed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Grab {
+    Chart,
+    Object,
+    Slicer,
 }
 
 const HANDLES: [(i8, i8); 8] = [
@@ -430,18 +441,36 @@ impl App {
                 );
             }
         }
-        // Charts: selection frame, handles and drag ghost.
-        for (idx, r) in crate::chart::chart_rects(s, geo.origin) {
-            if !r.intersects(geo.area) {
-                continue;
+        // The selected chart: frame and handles (charts' own hit areas are added in paint
+        // order with the other drawings).
+        if let Some(idx) = self.ui.grid.chart
+            && let Some((_, r)) = crate::chart::chart_rects(s, geo.origin)
+                .into_iter()
+                .find(|(i, _)| *i == idx)
+            && r.intersects(geo.area)
+        {
+            selection_frame(&p, r);
+            hots.push(Hot::Chart {
+                rect: r.expand(5.0),
+                idx,
+            });
+        }
+        // The selected slicer: frame, and its handles grab first (its buttons stay
+        // clickable).
+        if let Some(idx) = self.ui.grid.slicer
+            && let Some((_, r)) = crate::objdraw::slicer_rects(s, geo.origin)
+                .into_iter()
+                .find(|(i, _)| *i == idx)
+            && r.intersects(geo.area)
+        {
+            selection_frame(&p, r);
+            for h in HANDLES {
+                hots.push(Hot::Slicer {
+                    rect: handle_rect(r, h).expand(2.0),
+                    slicer: idx,
+                    item: None,
+                });
             }
-            let selected = self.ui.grid.chart == Some(idx);
-            let mut hit = r;
-            if selected {
-                selection_frame(&p, r);
-                hit = r.expand(5.0);
-            }
-            hots.push(Hot::Chart { rect: hit, idx });
         }
         // The selected object: frame and handles above everything, grabbing first.
         if let Some(idx) = self.ui.grid.object
@@ -538,7 +567,14 @@ impl App {
             if resp.drag_stopped() || !resp.dragged() {
                 self.ui.grid.drag = None;
                 let moved = (d.now[0] - d.start[0]).abs() + (d.now[1] - d.start[1]).abs() > 3.0;
-                if moved && d.object {
+                if moved && d.slicer {
+                    if let (Some(name), Some(anchor)) = (
+                        self.slicer_name(d.idx),
+                        crate::chart::rect_to_anchor(&self.session, geo.origin, d.ghost()),
+                    ) {
+                        self.exec("insert.slicer", json!({ "name": name, "anchor": anchor }));
+                    }
+                } else if moved && d.object {
                     if let Some(rect) = screen_to_sheet_rect(&self.session, geo.origin, d.ghost()) {
                         self.exec("object.format", json!({ "object": d.idx, "rect": rect }));
                     }
@@ -559,26 +595,31 @@ impl App {
         // A drag starts where the button went down (egui reports it once the pointer has
         // moved past the drag threshold).
         let press = resp.ctx.input(|i| i.pointer.press_origin()).or(pos);
+        // What a drag grabs: a chart, an object, or a slicer by its body (not a button).
         let grabbed = match press.and_then(top_hit) {
-            Some(Hot::Chart { idx, .. }) => Some((idx, false)),
-            Some(Hot::Object { idx, .. }) => Some((idx, true)),
+            Some(Hot::Chart { idx, .. }) => Some((idx, Grab::Chart)),
+            Some(Hot::Object { idx, .. }) => Some((idx, Grab::Object)),
+            Some(Hot::Slicer {
+                slicer, item: None, ..
+            }) => Some((slicer, Grab::Slicer)),
             _ => None,
         };
         if resp.drag_started()
             && let Some(p) = press
-            && let Some((idx, object)) = grabbed
+            && let Some((idx, grab)) = grabbed
         {
-            let rects = if object {
-                crate::objdraw::object_rects(&self.session, geo.origin)
-            } else {
-                crate::chart::chart_rects(&self.session, geo.origin)
+            let rects = match grab {
+                Grab::Object => crate::objdraw::object_rects(&self.session, geo.origin),
+                Grab::Chart => crate::chart::chart_rects(&self.session, geo.origin),
+                Grab::Slicer => crate::objdraw::slicer_rects(&self.session, geo.origin),
             };
+            let object = grab == Grab::Object;
             let rect = rects.into_iter().find(|(i, _)| *i == idx).map(|(_, r)| r);
             if let Some(r) = rect {
-                let selected = if object {
-                    self.ui.grid.object == Some(idx)
-                } else {
-                    self.ui.grid.chart == Some(idx)
+                let selected = match grab {
+                    Grab::Object => self.ui.grid.object == Some(idx),
+                    Grab::Chart => self.ui.grid.chart == Some(idx),
+                    Grab::Slicer => self.ui.grid.slicer == Some(idx),
                 };
                 let handle = if selected {
                     HANDLES
@@ -588,16 +629,13 @@ impl App {
                 } else {
                     None
                 };
-                if object {
-                    self.ui.grid.object = Some(idx);
-                    self.ui.grid.chart = None;
-                } else {
-                    self.ui.grid.chart = Some(idx);
-                    self.ui.grid.object = None;
-                }
+                self.ui.grid.object = (grab == Grab::Object).then_some(idx);
+                self.ui.grid.chart = (grab == Grab::Chart).then_some(idx);
+                self.ui.grid.slicer = (grab == Grab::Slicer).then_some(idx);
                 self.ui.grid.drag = Some(ChartDrag {
                     idx,
                     object,
+                    slicer: grab == Grab::Slicer,
                     handle,
                     start: [p.x, p.y],
                     now: [p.x, p.y],
@@ -616,6 +654,12 @@ impl App {
         }
         if !matches!(hit, Some(Hot::Object { .. })) {
             self.ui.grid.object = None;
+        }
+        match &hit {
+            Some(Hot::Slicer { slicer, .. } | Hot::SlicerClear { slicer, .. }) => {
+                self.ui.grid.slicer = Some(*slicer);
+            }
+            _ => self.ui.grid.slicer = None,
         }
         match hit {
             Some(Hot::Object { idx, .. }) => {
@@ -700,6 +744,22 @@ impl App {
 
     /// Delete / Escape while a chart is selected act on the chart.
     pub(crate) fn chart_key(&mut self, sc: &str) -> bool {
+        if let Some(idx) = self.ui.grid.slicer {
+            match sc {
+                "Delete" | "Backspace" => {
+                    if let Some(name) = self.slicer_name(idx) {
+                        self.exec("insert.slicer", json!({ "name": name, "delete": true }));
+                    }
+                    self.ui.grid.slicer = None;
+                    return true;
+                }
+                "Escape" => {
+                    self.ui.grid.slicer = None;
+                    return true;
+                }
+                _ => return false,
+            }
+        }
         if let Some(idx) = self.ui.grid.object {
             match sc {
                 "Delete" | "Backspace" => {
@@ -769,6 +829,8 @@ impl App {
 pub struct GridUi {
     pub chart: Option<usize>,
     pub object: Option<usize>,
+    /// The selected slicer (index into the active sheet's `analysis.slicers`).
+    pub slicer: Option<usize>,
     pub hide_field_list: bool,
     #[serde(skip)]
     pub drag: Option<ChartDrag>,

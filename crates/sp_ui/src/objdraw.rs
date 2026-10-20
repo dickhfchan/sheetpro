@@ -458,6 +458,9 @@ pub(crate) fn paint_drawings(
             ZItem::Chart(i) => {
                 if let Some((_, r)) = charts.get(i) {
                     crate::chart::paint_chart(&p, s, i, *r, cell_area);
+                    if r.intersects(cell_area) {
+                        hots.push(Hot::Chart { rect: *r, idx: i });
+                    }
                 }
             }
             ZItem::Object(i) => {
