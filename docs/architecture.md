@@ -56,6 +56,17 @@ match the target: 1,048,576 rows × 16,384 columns.
 Dynamic-array spill is modelled in `recalc` (anchor cell owns a spill range; blocked spill =
 `#SPILL!`).
 
+Shared formulas (`shared`): `rel_key` rewrites formula text with every A1 cell reference
+relative to the cell, so a filled-down column (`C2*D2`, `C3*D3`, ...) has one key. The
+`AstCache` holds one tree per key (parsed at an *origin* cell; `Ev::with_origin` and the
+dependency collector move relative reference parts by the cell's offset; defined names and
+lambdas from names evaluate unmoved). The dependency graph registers a vertical run of cells
+sharing a tree as one group with per-row precedents. `FormulaMemo` runs a bulk text rewrite
+(load normalization and shared-formula expansion, save, sort/fill shifts, insert/delete
+fix-ups) once per key and instantiates the result for the other cells. The key scanner gives
+up (literal key, no sharing) on anything unusual, and a key's first tree is verified against
+it.
+
 ## Engine (sp_engine): everything is a command
 
 ```rust
