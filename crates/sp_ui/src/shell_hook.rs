@@ -89,7 +89,10 @@ pub(crate) fn name_box_reference(text: &str) -> String {
 /// Route ribbon activations of these command ids to [`take_pending`] (this thread only).
 /// Command ids the desktop app handles natively (file dialogs, closing, options) when the
 /// ribbon activates them; it registers them with [`set_intercepted`].
-pub const DESKTOP_INTERCEPTED: [&str; 13] = [
+pub const DESKTOP_INTERCEPTED: [&str; 16] = [
+    "file.export.pdf",
+    "insert.picture",
+    "layout.background",
     "file.new",
     "file.open",
     "file.close",

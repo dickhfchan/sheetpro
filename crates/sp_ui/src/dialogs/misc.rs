@@ -9,7 +9,7 @@ use crate::theme::{LIGHT as T, hex};
 use egui::{Context, RichText, Vec2};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sp_engine::{Json, Session, catalog, registry};
+use sp_engine::{Json, Session, catalog};
 
 fn done(r: Result<Json, String>, error: &mut Option<String>) -> Flow {
     match r {
@@ -771,69 +771,6 @@ impl TabColor {
 
 // ── Generic params form ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Params {
-    pub cmd: String,
-    pub label: String,
-    pub doc: String,
-    /// JSON object typed by the user.
-    pub text: String,
-    pub error: Option<String>,
-}
-
-impl Params {
-    pub fn new(id: &str) -> Result<Self, String> {
-        let c = registry()
-            .get(id)
-            .ok_or_else(|| format!("unknown command '{id}'"))?;
-        let fields: Vec<String> = super::required_params(c.params)
-            .iter()
-            .map(|k| format!("\"{k}\": \"\""))
-            .collect();
-        Ok(Params {
-            cmd: id.to_string(),
-            label: c.label.clone(),
-            doc: c.params.to_string(),
-            text: format!("{{{}}}", fields.join(", ")),
-            error: None,
-        })
-    }
-
-    pub fn ui(&mut self, ctx: &Context, app: &mut App) -> Flow {
-        let ((ok, cancel), esc) = window(ctx, &self.label.clone(), 440.0, |ui| {
-            label(ui, "Parameters (JSON):");
-            ui.label(
-                RichText::new(&self.doc)
-                    .monospace()
-                    .size(11.5)
-                    .color(T.group_label),
-            );
-            ui.add(
-                egui::TextEdit::multiline(&mut self.text)
-                    .desired_width(440.0)
-                    .desired_rows(3)
-                    .font(egui::FontId::monospace(12.5)),
-            );
-            error_line(ui, &self.error);
-            ok_cancel(ui, "Run")
-        });
-        if cancel || esc {
-            return Flow::Close;
-        }
-        if ok {
-            return match serde_json::from_str::<Json>(&self.text) {
-                Ok(p) if p.is_object() => done(app.try_exec(&self.cmd, p), &mut self.error),
-                _ => {
-                    self.error = Some("Parameters must be a JSON object.".into());
-                    Flow::Keep
-                }
-            };
-        }
-        Flow::Keep
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -868,12 +805,5 @@ mod tests {
         assert_eq!(ps.params(), json!({"mode": "values"}));
         ps.transpose = true;
         assert_eq!(ps.params(), json!({"mode": "transpose"}));
-    }
-
-    #[test]
-    fn generic_params_template() {
-        let p = Params::new("view.zoom").unwrap();
-        assert_eq!(p.text, r#"{"percent": ""}"#);
-        assert!(Params::new("nope").is_err());
     }
 }

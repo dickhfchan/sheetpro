@@ -3,10 +3,10 @@
 //! command's dialog) through `App::activate_command` / `App::exec`.
 
 use crate::App;
+use crate::dialogs::Dialog;
 use crate::dialogs::format_cells::{FONT_FAMILIES, FONT_SIZES};
 use crate::dialogs::misc::{Prompt, TabColor};
 use crate::dialogs::widgets::swatch_grid;
-use crate::dialogs::{Dialog, misc};
 use crate::theme::{LIGHT as T, hex};
 use egui::{RichText, Ui};
 use serde_json::json;
@@ -188,8 +188,11 @@ impl App {
             ui.close();
         }
         if ui.button("Move or Copy…").clicked() {
-            if let Ok(mut d) = misc::Params::new("home.cells.move_copy_sheet") {
-                d.text = json!({ "sheet": name, "to": index + 1, "copy": false }).to_string();
+            if let Ok(mut d) = crate::dialogs::params_form::Params::new(
+                "home.cells.move_copy_sheet",
+                &self.session,
+            ) {
+                d.set(&json!({ "sheet": name, "to": index + 1, "copy": false }));
                 self.ui.dialog = Some(Dialog::Params(d));
             }
             ui.close();

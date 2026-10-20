@@ -250,6 +250,53 @@ impl Desktop {
         }
     }
 
+    /// Export as PDF through a native save dialog (the active sheet).
+    pub fn export_pdf(&mut self) {
+        let stem = Path::new(&self.doc_name())
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Book1")
+            .to_string();
+        let mut d = rfd::FileDialog::new()
+            .set_title("Export as PDF")
+            .set_file_name(format!("{stem}.pdf"))
+            .add_filter("PDF", &["pdf"]);
+        if let Some(dir) = self.start_dir() {
+            d = d.set_directory(dir);
+        }
+        if let Some(mut path) = d.save_file() {
+            if path.extension().is_none() {
+                path.set_extension("pdf");
+            }
+            if self
+                .run(
+                    "file.export.pdf",
+                    json!({ "path": path.display().to_string() }),
+                )
+                .is_some()
+            {
+                settings::log_line(&format!("exported {}", path.display()));
+            }
+        }
+    }
+
+    /// Insert Picture / sheet Background: pick an image through a native open dialog.
+    pub fn pick_image(&mut self, id: &str) {
+        let mut d = rfd::FileDialog::new()
+            .set_title(if id == "layout.background" {
+                "Sheet Background"
+            } else {
+                "Insert Picture"
+            })
+            .add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "bmp"]);
+        if let Some(dir) = self.start_dir() {
+            d = d.set_directory(dir);
+        }
+        if let Some(path) = d.pick_file() {
+            self.run(id, json!({ "path": path.display().to_string() }));
+        }
+    }
+
     pub fn import_text(&mut self) {
         let mut d = rfd::FileDialog::new()
             .set_title("Import Text/CSV")
@@ -287,6 +334,8 @@ impl Desktop {
             "file.save_as" | "file.save_copy" | "file.export.csv" => {
                 self.save_as(id);
             }
+            "file.export.pdf" => self.export_pdf(),
+            "insert.picture" | "layout.background" => self.pick_image(id),
             "file.close" => self.close_workbook(),
             "file.exit" => self.request_quit(ctx),
             "file.recent" => {

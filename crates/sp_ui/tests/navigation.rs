@@ -80,46 +80,6 @@ fn register_desktop() {
     let _ = sp_ui::shell_hook::take_pending();
 }
 
-/// Buttons whose dialog is the generic one that asks for the command's parameters as typed
-/// JSON. They work, but a user needs a real dialog; tracked here so the list only shrinks:
-/// a new button falling back to it fails, and so does one that gets a real dialog until it
-/// is removed from this list.
-const JSON_PROMPT: [&str; 33] = [
-    "file.export.pdf",
-    "home.clipboard.format_painter",
-    "home.styles.cell_styles",
-    "home.cells.move_copy_sheet",
-    "home.editing.flash_fill",
-    "home.editing.goto_special",
-    "insert.picture",
-    "insert.slicer",
-    "insert.comment",
-    "insert.symbol",
-    "insert.hyperlink",
-    "layout.size",
-    "layout.background",
-    "layout.margins",
-    "layout.scale_to_fit",
-    "formulas.library.financial",
-    "formulas.library.logical",
-    "formulas.library.text",
-    "formulas.library.datetime",
-    "formulas.library.lookup",
-    "formulas.library.math",
-    "formulas.library.more",
-    "formulas.use_in_formula",
-    "formulas.evaluate_formula",
-    "data.advanced_filter",
-    "data.validation",
-    "data.consolidate",
-    "data.what_if.scenario",
-    "data.what_if.goal_seek",
-    "data.what_if.data_table",
-    "data.forecast_sheet",
-    "insert.note",
-    "review.comment.new",
-];
-
 /// Enabled buttons whose command, in this workbook, answers with a message the target also
 /// shows (nothing to act on here), rather than greying out.
 const CONTEXT_MESSAGES: [(&str, &str); 5] = [
@@ -364,15 +324,11 @@ fn judge(
             {
                 return Err(format!("cancelling the dialog ran {after:?}"));
             }
-            let json = want == "params";
-            match (json, JSON_PROMPT.contains(&id)) {
-                (true, true) => Ok("dialog params (JSON prompt, tracked)".into()),
-                (true, false) => {
-                    Err("opens the JSON parameter prompt; give it a real dialog".into())
-                }
-                (false, true) => Err("has a real dialog now: remove it from JSON_PROMPT".into()),
-                (false, false) => Ok(format!("dialog {want}")),
-            }
+            Ok(if want == "params" {
+                "form dialog".into()
+            } else {
+                format!("dialog {want}")
+            })
         }
         Expect::Runs => match log.as_slice() {
             [l] if l == id => Ok("ran".into()),
@@ -897,4 +853,126 @@ fn key_presses_are_named_like_the_catalog() {
     assert_eq!(names(M::NONE, Key::F2), vec!["F2"]);
     assert_eq!(names(M::COMMAND, Key::A), vec!["Ctrl+A"]);
     assert!(names(M::NONE, Key::ArrowDown) == vec!["Down"]);
+}
+
+/// A form dialog is filled in and submitted the way a user does: New Note from the ribbon,
+/// type the text, OK.
+#[test]
+fn form_dialog_fills_in_and_runs() {
+    let mut h = harness();
+    h.state_mut()
+        .session
+        .select_range(CellRange::parse("C3").unwrap(), CellAddr::new(2, 2));
+    h.run_steps(2);
+    click_tab(&mut h, "Review").unwrap();
+    click_in_ribbon(&mut h, "Notes", "New Note").unwrap();
+    h.run_steps(3);
+    assert_eq!(h.state().dialog_kind().as_deref(), Some("params"));
+    // OK with the required text empty explains instead of running.
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    assert!(
+        h.state().dialog_kind().is_some(),
+        "an empty required field must keep the form open"
+    );
+    // Type into the Text box (the one without a value yet) and confirm.
+    let text_box = h
+        .query_all_by_role(egui::accesskit::Role::TextInput)
+        .find(|n| n.value().is_none_or(|v| v.is_empty()))
+        .expect("text box");
+    text_box.click();
+    h.run_steps(1);
+    h.event(egui::Event::Text("Check this".into()));
+    h.run_steps(2);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    assert!(
+        h.state().dialog_kind().is_none(),
+        "form should close: {:?}",
+        h.state().last_error()
+    );
+    let s = &h.state().session;
+    let note = s.wb.sheet(s.sheet_index()).and_then(|sh| {
+        sh.comments
+            .iter()
+            .find(|c| c.addr == CellAddr::new(2, 2))
+            .cloned()
+    });
+    assert!(note.is_some_and(|n| format!("{n:?}").contains("Check this")));
+}
+
+/// Formulas › Function Library menus open Insert Function on their category, and picking a
+/// function starts the formula in the active cell.
+#[test]
+fn function_library_buttons_open_their_category() {
+    for (label, category) in [
+        ("Financial", "Financial"),
+        ("Date & Time", "Date & Time"),
+        ("Math & Trig", "Math & Trig"),
+    ] {
+        let mut h = harness();
+        click_tab(&mut h, "Formulas").unwrap();
+        click_in_ribbon(&mut h, "Function Library", label).unwrap();
+        h.run_steps(3);
+        assert_eq!(
+            h.state().dialog_kind().as_deref(),
+            Some("insert_function"),
+            "{label}"
+        );
+        let shown = h.query_all_by_label(category).count();
+        assert!(shown > 0, "{label}: category {category} not shown");
+    }
+}
+
+/// Forms whose command answers with text or a result: Use in Formula puts the name into the
+/// formula being typed; Evaluate Formula stays open and shows its steps.
+#[test]
+fn form_inserts_text_or_shows_the_result() {
+    // Use in Formula.
+    let mut h = harness();
+    h.state_mut()
+        .session
+        .execute(
+            "formulas.define_name",
+            &json!({"name": "Rate", "refers_to": "=Sheet1!$C$2"}),
+        )
+        .unwrap();
+    h.state_mut()
+        .open_dialog(r#"params:formulas.use_in_formula"#)
+        .unwrap();
+    h.run_steps(2);
+    let name_box = h
+        .query_all_by_role(egui::accesskit::Role::TextInput)
+        .find(|n| n.value().is_none_or(|v| v.is_empty()))
+        .expect("name box");
+    name_box.click();
+    h.run_steps(1);
+    h.event(egui::Event::Text("Rate".into()));
+    h.run_steps(2);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    assert!(h.state().dialog_kind().is_none());
+    assert_eq!(h.state().edit_buf, "=Rate");
+
+    // Evaluate Formula on E2 (=C2*D2).
+    let mut h = harness();
+    h.state_mut()
+        .session
+        .select_range(CellRange::parse("E2").unwrap(), CellAddr::new(1, 4));
+    h.run_steps(1);
+    h.state_mut()
+        .open_dialog("params:formulas.evaluate_formula")
+        .unwrap();
+    h.run_steps(2);
+    h.get_by_label("OK").click();
+    h.run_steps(3);
+    assert_eq!(
+        h.state().dialog_kind().as_deref(),
+        Some("params"),
+        "stays open"
+    );
+    assert!(
+        h.query_all_by_label_contains("=C2*D2").next().is_some(),
+        "the steps are shown"
+    );
 }

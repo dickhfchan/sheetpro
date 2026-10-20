@@ -283,6 +283,9 @@ Fixed what it found:
   Break, Clear Filter, Reapply, Ungroup, Show/Hide Detail, Delete Comment): now grey out.
 - Link, Margins, Scale to Fit, Data Table errored on click; they open the parameter dialog.
 
-Tracked, not fixed: 33 buttons (and Move or Copy Sheet on the tab menu) whose dialog is the
-generic "Parameters (JSON)" prompt; the test fails if the list grows or a listed one gets a
-real dialog without leaving the list.
+Then replaced that JSON prompt: `dialogs/params_form.rs` builds a form from each command's
+params doc (text boxes with the documented example as hint, drop-downs for `a|b|c` choices,
+check boxes for booleans, cell/range/sheet filled from the selection, required fields
+marked). It inserts returned text into the formula (Use in Formula) and shows returned
+results (Evaluate Formula, Flash Fill). Export as PDF, Insert Picture and Background use
+native file dialogs; the Function Library buttons open Insert Function on their category.

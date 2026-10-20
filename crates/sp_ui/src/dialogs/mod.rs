@@ -11,6 +11,7 @@ pub mod find;
 pub mod format_cells;
 pub mod grid_popups;
 pub mod misc;
+pub mod params_form;
 pub mod sort;
 pub mod spelling;
 pub mod table_dialog;
@@ -46,7 +47,7 @@ pub enum Dialog {
     Zoom(misc::Zoom),
     UnhideSheet(misc::UnhideSheet),
     TabColor(misc::TabColor),
-    Params(misc::Params),
+    Params(params_form::Params),
     Filter(Box<grid_popups::FilterDropdown>),
     ValidationList(grid_popups::ValidationList),
     Comment(grid_popups::CommentCard),
@@ -122,7 +123,14 @@ pub fn dialog_for_command(id: &str) -> Option<&'static str> {
         "data.sort" => "sort",
         "home.editing.sort_custom" => "sort_custom",
         "home.clipboard.paste_special" => "paste_special",
-        "formulas.insert_function" => "insert_function",
+        "formulas.insert_function" | "formulas.library.more" => "insert_function",
+        // Function Library menus: Insert Function, filtered to the menu's category.
+        "formulas.library.financial" => r#"insert_function {"category": "Financial"}"#,
+        "formulas.library.logical" => r#"insert_function {"category": "Logical"}"#,
+        "formulas.library.text" => r#"insert_function {"category": "Text"}"#,
+        "formulas.library.datetime" => r#"insert_function {"category": "Date & Time"}"#,
+        "formulas.library.lookup" => r#"insert_function {"category": "Lookup & Reference"}"#,
+        "formulas.library.math" => r#"insert_function {"category": "Math & Trig"}"#,
         "formulas.name_manager" => "name_manager",
         "formulas.define_name" => "define_name",
         "home.cells.column_width" => "column_width",
@@ -292,7 +300,7 @@ impl Dialog {
             )),
             "spelling" => Dialog::Spelling(spelling::Spelling::new(app)),
             other => match other.strip_prefix("params:") {
-                Some(id) => Dialog::Params(misc::Params::new(id)?),
+                Some(id) => Dialog::Params(params_form::Params::new(id, &app.session)?),
                 None => return Err(format!("unknown dialog '{other}'")),
             },
         })
