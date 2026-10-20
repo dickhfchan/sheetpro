@@ -63,6 +63,8 @@ impl Ctx {
 
     /// A known difference from the target, tracked without failing the run. If it starts
     /// passing, that fails: remove it from the known list so it is guarded from then on.
+    /// (No known issues are tracked right now; kept for the next one.)
+    #[allow(dead_code)]
     pub fn known(&mut self, name: &str, ok: bool, detail: impl std::fmt::Debug, why: &str) {
         let full = format!("{}: {name}", self.area);
         if ok {
