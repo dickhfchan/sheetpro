@@ -4,6 +4,7 @@ use crate::IoError;
 use crate::xlsx_passthrough as pass;
 use crate::xml::esc;
 use sp_core::Value;
+use sp_formula::shared::FormulaMemo;
 use sp_formula::{Expr, parse, to_formula};
 use sp_model::passthrough::RawRel;
 use sp_model::{Border, BorderStyle, Content, HAlign, Style, VAlign, Visibility, Workbook};
@@ -138,6 +139,30 @@ pub fn file_formula(src: &str) -> String {
 struct FileFormula {
     text: String,
     array: Option<(String, bool)>,
+}
+
+/// [`formula_for_cell`], converted once per relative form (`memo`) for formulas whose file
+/// text does not depend on where they are (no array area, outside tables).
+fn formula_for_cell_memo(
+    memo: &mut FormulaMemo,
+    src: &str,
+    sheet: &sp_model::Sheet,
+    at: sp_core::CellAddr,
+) -> FileFormula {
+    if sheet.spill_at_anchor(at).is_some() || sheet.table_at(at).is_some() {
+        return formula_for_cell(src, sheet, at);
+    }
+    let mut array = None;
+    let text = memo.rewrite(src, at, at, "save", |s| {
+        let f = formula_for_cell(s, sheet, at);
+        array = f.array.clone();
+        // A dynamic formula is saved as an array over its own cell: not position-free.
+        f.array.is_none().then_some(f.text)
+    });
+    match text {
+        Some(text) if array.is_none() => FileFormula { text, array: None },
+        _ => formula_for_cell(src, sheet, at),
+    }
 }
 
 fn formula_for_cell(src: &str, sheet: &sp_model::Sheet, at: sp_core::CellAddr) -> FileFormula {
@@ -470,27 +495,35 @@ fn file_formulas(sheet: &sp_model::Sheet, rows: &[u32]) -> Vec<Option<FileFormul
             })
         })
         .collect();
-    let convert = |(at, src): &(sp_core::CellAddr, &str)| {
-        crate::xlsx_pivots::data_table_f(sheet, *at, src)
-            .is_none()
-            .then(|| formula_for_cell(src, sheet, *at))
+    // Each worker converts a filled-down range once per relative form (`FormulaMemo`).
+    let convert = |chunk: &[(sp_core::CellAddr, &str)]| -> Vec<Option<FileFormula>> {
+        let mut memo = FormulaMemo::new();
+        chunk
+            .iter()
+            .map(|(at, src)| {
+                crate::xlsx_pivots::data_table_f(sheet, *at, src)
+                    .is_none()
+                    .then(|| formula_for_cell_memo(&mut memo, src, sheet, *at))
+            })
+            .collect()
     };
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(16));
     if threads < 2 || cells.len() < 4_096 {
-        return cells.iter().map(convert).collect();
+        return convert(&cells);
     }
     let per = cells.len().div_ceil(threads);
+    let convert = &convert;
     std::thread::scope(|scope| {
         let handles: Vec<_> = cells
             .chunks(per)
-            .map(|chunk| scope.spawn(move || chunk.iter().map(convert).collect::<Vec<_>>()))
+            .map(|chunk| scope.spawn(move || convert(chunk)))
             .collect();
         let mut out = Vec::with_capacity(cells.len());
         for (h, chunk) in handles.into_iter().zip(cells.chunks(per)) {
             match h.join() {
                 Ok(v) => out.extend(v),
                 // A worker never panics on valid input; convert its chunk here if it did.
-                Err(_) => out.extend(chunk.iter().map(convert)),
+                Err(_) => out.extend(convert(chunk)),
             }
         }
         out
@@ -1265,6 +1298,48 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Conversion through the memo gives what converting each formula on its own gives,
+    /// including dynamic arrays and array areas.
+    #[test]
+    fn memoized_file_formulas_match_per_formula() {
+        let fills: [fn(u32) -> String; 9] = [
+            |r| format!("A{r}*2+1"),
+            |r| format!("SUM($A$1:$A{r})+A{r}"),
+            |r| format!("IF(A{r}>5,\"x\",B{r})"),
+            |r| format!("_xlfn.CONCAT(A{r},\"A{r}\")"),
+            |r| format!("STDEV.S(A$1:A{r})"),
+            |r| format!("A{r}:A{}", r + 2),
+            |r| format!("SUM(A:A)+Sheet1!A{r}"),
+            |r| format!("INDEX(A{r}:B{r},1)"),
+            |r| format!("A{r}+B{}", r + 1),
+        ];
+        let mut sheet = sp_model::Sheet::new("Sheet1");
+        for r in 1..=40u32 {
+            sheet.set(
+                sp_core::CellAddr::new(r - 1, 0),
+                sp_model::Cell::constant(Value::Number(f64::from(r))),
+            );
+            for (c, f) in fills.iter().enumerate() {
+                sheet.set(
+                    sp_core::CellAddr::new(r - 1, c as u32 + 2),
+                    sp_model::Cell::formula(f(r)),
+                );
+            }
+        }
+        sheet.spills.push(sp_model::SpillArea {
+            range: sp_core::CellRange::parse("H5:H7").unwrap(),
+            fixed: false,
+            blocked: false,
+        });
+        let mut memo = FormulaMemo::new();
+        for (at, c) in sheet.iter() {
+            let Some(src) = c.formula_src() else { continue };
+            let a = formula_for_cell_memo(&mut memo, src, &sheet, at);
+            let b = formula_for_cell(src, &sheet, at);
+            assert_eq!((a.text, a.array), (b.text, b.array), "{src}");
+        }
+    }
 
     #[test]
     fn addresses_without_allocating() {

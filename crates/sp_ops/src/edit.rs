@@ -6,6 +6,7 @@
 use crate::history::Tx;
 use sp_core::{CellAddr, CellRange, MAX_CELLS_PER_OP, MAX_COLS, MAX_ROWS, Value};
 use sp_formula::eval::compare;
+use sp_formula::shared::FormulaMemo;
 use sp_formula::shift::{Axis, StructEdit, adjust_for_struct_edit, shift_for_copy};
 use sp_formula::{parse, to_formula};
 use sp_model::features::LineShift;
@@ -47,6 +48,42 @@ pub fn moved_cell(c: &Cell, dr: i64, dc: i64) -> Cell {
     match &c.content {
         Content::Formula(f) => Cell {
             content: Content::Formula(shifted_formula(f, dr, dc)),
+            value: Value::Empty,
+            style: c.style,
+        },
+        Content::Value(_) => c.clone(),
+    }
+}
+
+/// [`shifted_formula`] for the formula at `from`, computed once per filled-down group
+/// (`memo`) and instantiated for the others.
+pub fn shifted_formula_memo(
+    memo: &mut FormulaMemo,
+    src: &str,
+    from: CellAddr,
+    dr: i64,
+    dc: i64,
+) -> String {
+    let to = (
+        i64::from(from.row).checked_add(dr),
+        i64::from(from.col).checked_add(dc),
+    );
+    let (Some(r), Some(c)) = to else {
+        return shifted_formula(src, dr, dc);
+    };
+    if !(0..i64::from(MAX_ROWS)).contains(&r) || !(0..i64::from(MAX_COLS)).contains(&c) {
+        return shifted_formula(src, dr, dc);
+    }
+    let to = CellAddr::new(r as u32, c as u32);
+    memo.rewrite(src, from, to, "copy", |s| Some(shifted_formula(s, dr, dc)))
+        .unwrap_or_else(|| shifted_formula(src, dr, dc))
+}
+
+/// [`moved_cell`] for the cell at `from`, memoized like [`shifted_formula_memo`].
+pub fn moved_cell_memo(memo: &mut FormulaMemo, c: &Cell, from: CellAddr, dr: i64, dc: i64) -> Cell {
+    match &c.content {
+        Content::Formula(f) => Cell {
+            content: Content::Formula(shifted_formula_memo(memo, f, from, dr, dc)),
             value: Value::Empty,
             style: c.style,
         },
@@ -102,6 +139,7 @@ pub fn fill(tx: &mut Tx<'_>, sheet: usize, r: CellRange, dir: FillDir) -> Result
     check_size(&r)?;
     let s = tx.wb.sheet(sheet).ok_or(OpError::NoSheet)?;
     let mut writes: Vec<(CellAddr, Option<Cell>)> = Vec::new();
+    let mut memo = FormulaMemo::new();
     match dir {
         FillDir::Down | FillDir::Up => {
             let src_row = if dir == FillDir::Down {
@@ -116,9 +154,11 @@ pub fn fill(tx: &mut Tx<'_>, sheet: usize, r: CellRange, dir: FillDir) -> Result
                         continue;
                     }
                     let dr = i64::from(row) - i64::from(src_row);
+                    let from = CellAddr::new(src_row, col);
                     writes.push((
                         CellAddr::new(row, col),
-                        src.as_ref().map(|c| moved_cell(c, dr, 0)),
+                        src.as_ref()
+                            .map(|c| moved_cell_memo(&mut memo, c, from, dr, 0)),
                     ));
                 }
             }
@@ -136,9 +176,11 @@ pub fn fill(tx: &mut Tx<'_>, sheet: usize, r: CellRange, dir: FillDir) -> Result
                         continue;
                     }
                     let dc = i64::from(col) - i64::from(src_col);
+                    let from = CellAddr::new(row, src_col);
                     writes.push((
                         CellAddr::new(row, col),
-                        src.as_ref().map(|c| moved_cell(c, 0, dc)),
+                        src.as_ref()
+                            .map(|c| moved_cell_memo(&mut memo, c, from, 0, dc)),
                     ));
                 }
             }
@@ -228,14 +270,21 @@ pub fn sort_rows(
         .zip(snapshot.iter())
         .map(|((d, s), cells)| (*d, *s, cells))
         .collect();
-    let moved: Vec<Vec<Option<Cell>>> =
-        crate::par::par_map(&moves, |(dest_row, src_row, cells)| {
+    // Rows of a filled-down range share one shift per relative form (`FormulaMemo`).
+    let moved: Vec<Vec<Option<Cell>>> = crate::par::par_map_with(
+        &moves,
+        FormulaMemo::new,
+        |memo, (dest_row, src_row, cells)| {
             let dr = i64::from(*dest_row) - i64::from(*src_row);
-            cells
-                .iter()
-                .map(|c| c.as_ref().map(|c| moved_cell(c, dr, 0)))
+            (body.start.col..)
+                .zip(cells.iter())
+                .map(|(col, c)| {
+                    let from = CellAddr::new(*src_row, col);
+                    c.as_ref().map(|c| moved_cell_memo(memo, c, from, dr, 0))
+                })
                 .collect()
-        });
+        },
+    );
     for ((dest_row, _, _), cells) in moves.iter().zip(moved) {
         for (col, cell) in (body.start.col..=body.end.col).zip(cells) {
             tx.set_cell(sheet, CellAddr::new(*dest_row, col), cell);
@@ -259,6 +308,21 @@ pub(crate) fn rewrite_all_formulas(
     wb: &mut Workbook,
     f: &(dyn Fn(&mut sp_formula::Expr, &str) + Sync),
 ) {
+    rewrite_all_formulas_keyed(wb, f, None);
+}
+
+/// How a rewrite treats a formula's cell references (in text order, at the formula's
+/// position): writes a tag such that formulas of one relative form and equal tags are
+/// rewritten alike, or returns false when the formula must be rewritten on its own.
+pub(crate) type RefSignature = dyn Fn(&[sp_formula::ast::CellPart], &mut String) -> bool + Sync;
+
+/// [`rewrite_all_formulas`]; with `sig`, cell formulas are rewritten once per relative form
+/// and signature (`FormulaMemo`) and instantiated for the rest of a filled-down range.
+fn rewrite_all_formulas_keyed(
+    wb: &mut Workbook,
+    f: &(dyn Fn(&mut sp_formula::Expr, &str) + Sync),
+    sig: Option<&RefSignature>,
+) {
     let names: Vec<String> = wb.sheets.iter().map(|s| s.name.clone()).collect();
     for sheet in &mut wb.sheets {
         let name = sheet.name.clone();
@@ -269,7 +333,11 @@ pub(crate) fn rewrite_all_formulas(
             .iter()
             .filter_map(|(a, c)| Some((a, c.formula_src()?)))
             .collect();
-        let new = crate::par::par_map(&formulas, |(_, src)| rewritten(src, &g));
+        let new =
+            crate::par::par_map_with(&formulas, FormulaMemo::new, |memo, (at, src)| match sig {
+                Some(sig) => memo.rewrite_with(src, *at, *at, sig, |s| rewritten(s, &g)),
+                None => rewritten(src, &g),
+            });
         let updates: Vec<(sp_core::CellAddr, String)> = formulas
             .iter()
             .zip(new)
@@ -466,15 +534,48 @@ pub fn insert_delete(
         losses = crate::table_shift::shift_cf_and_tables(s, &sh);
     }
     let ed_name = name.clone();
-    rewrite_all_formulas(tx.wb, &move |e, formula_sheet| {
-        let ed = StructEdit {
-            sheet: &ed_name,
-            axis,
-            at,
-            count,
-        };
-        adjust_for_struct_edit(e, formula_sheet, &ed);
-    });
+    // A reference index before the edit point stays, one after it moves by `count`: formulas
+    // of one relative form whose relative indexes fall on the same sides are rewritten alike.
+    let sig = move |parts: &[sp_formula::ast::CellPart], out: &mut String| -> bool {
+        for p in parts {
+            let (v, abs) = match axis {
+                Axis::Rows => (p.row, p.row_abs),
+                Axis::Cols => (p.col, p.col_abs),
+            };
+            let (v, at) = (i64::from(v), i64::from(at));
+            let moves = if count > 0 {
+                v + count < i64::from(max)
+            } else {
+                v >= at - count
+            };
+            let side = if v < at {
+                '0'
+            } else if moves {
+                '1'
+            } else {
+                // Deleted, or pushed off the sheet.
+                if !abs {
+                    return false;
+                }
+                '2'
+            };
+            out.push(side);
+        }
+        true
+    };
+    rewrite_all_formulas_keyed(
+        tx.wb,
+        &move |e, formula_sheet| {
+            let ed = StructEdit {
+                sheet: &ed_name,
+                axis,
+                at,
+                count,
+            };
+            adjust_for_struct_edit(e, formula_sheet, &ed);
+        },
+        Some(&sig),
+    );
     crate::table_shift::invalidate_refs(tx.wb, &losses);
     Ok(())
 }
@@ -575,6 +676,133 @@ mod tests {
         h.undo(&mut wb);
         assert_eq!(src(&wb, "A5"), "5");
         assert_eq!(src(&wb, "B1"), "=SUM(A1:A5)");
+    }
+
+    /// Filled-down formulas of many shapes (relative, absolute, mixed, straddling the edit
+    /// point, other sheets, whole rows/columns).
+    fn filled_down(rows: u32) -> Workbook {
+        let mut wb = Workbook::new();
+        wb.sheets.push(sp_model::Sheet::new("Other"));
+        let fills: [fn(u32) -> String; 10] = [
+            |r| format!("A{r}*2+1"),
+            |r| format!("SUM($A$1:$A{r})+A{r}"),
+            |r| format!("A{}+A{}", r.saturating_sub(3).max(1), r + 4),
+            |r| format!("$A$12+A$3+$A{r}"),
+            |r| format!("Other!A{r}+Sheet1!A{r}"),
+            |r| format!("SUM(A{r}:B{})", r + 2),
+            |r| format!("IF(A{r}>5,\"x\",B{r})&\"A{r}\""),
+            |r| format!("SUM(A:A)+A{r}"),
+            |r| format!("SUM($9:$10)+COUNT(A{r}:A$20)"),
+            |r| format!("SUM(A$5:A{r})"),
+        ];
+        for r in 1..=rows {
+            wb.sheets[0].set(CellAddr::new(r - 1, 0), num(f64::from(r)));
+            for (c, f) in fills.iter().enumerate() {
+                wb.sheets[0].set(CellAddr::new(r - 1, 2 + c as u32), Cell::formula(f(r)));
+            }
+        }
+        wb
+    }
+
+    /// Insert/delete through the memo gives what rewriting each formula on its own gives.
+    #[test]
+    fn memoized_struct_edits_match_per_formula_rewrites() {
+        for (axis, at, count) in [
+            (Axis::Rows, 9, 3),
+            (Axis::Rows, 9, -4),
+            (Axis::Rows, 0, 1),
+            (Axis::Rows, 30, -2),
+            (Axis::Cols, 1, 2),
+            (Axis::Cols, 0, -1),
+        ] {
+            let mut wb = filled_down(40);
+            let before = wb.clone();
+            let mut tx = Tx::new(&mut wb);
+            insert_delete(&mut tx, 0, axis, at, count).unwrap();
+            let ed = StructEdit {
+                sheet: "Sheet1",
+                axis,
+                at,
+                count,
+            };
+            let sh = LineShift {
+                rows: axis == Axis::Rows,
+                at,
+                count,
+                max: if axis == Axis::Rows {
+                    MAX_ROWS
+                } else {
+                    MAX_COLS
+                },
+            };
+            for (old, c) in before.sheets[0].iter() {
+                let Some(f) = c.formula_src() else { continue };
+                let Some(new) = sh.addr(old) else { continue };
+                let want = rewritten(f, &|e| adjust_for_struct_edit(e, "Sheet1", &ed))
+                    .unwrap_or_else(|| f.to_string());
+                let got = wb.sheets[0].get(new).and_then(|c| c.formula_src());
+                assert_eq!(
+                    got,
+                    Some(want.as_str()),
+                    "{axis:?} {at} {count} at {}",
+                    new.to_a1()
+                );
+            }
+        }
+    }
+
+    /// Sort and fill through the memo give what shifting each formula on its own gives.
+    #[test]
+    fn memoized_moves_match_per_formula_shifts() {
+        let mut wb = filled_down(30);
+        let before = wb.clone();
+        let mut tx = Tx::new(&mut wb);
+        sort_rows(
+            &mut tx,
+            0,
+            CellRange::parse("A1:L30").unwrap(),
+            &[SortKey {
+                col: 0,
+                ascending: false,
+            }],
+            false,
+        )
+        .unwrap();
+        for r in 0..30u32 {
+            let from = 29 - r;
+            for c in 2..12u32 {
+                let f = before.sheets[0].get(CellAddr::new(from, c)).unwrap();
+                let want =
+                    shifted_formula(f.formula_src().unwrap(), i64::from(r) - i64::from(from), 0);
+                let got = wb.sheets[0]
+                    .get(CellAddr::new(r, c))
+                    .and_then(|c| c.formula_src());
+                assert_eq!(got, Some(want.as_str()));
+            }
+        }
+        let mut wb = filled_down(1);
+        let mut tx = Tx::new(&mut wb);
+        fill(
+            &mut tx,
+            0,
+            CellRange::parse("C1:L60").unwrap(),
+            FillDir::Down,
+        )
+        .unwrap();
+        for r in 1..60u32 {
+            for c in 2..12u32 {
+                let f = wb.sheets[0]
+                    .get(CellAddr::new(0, c))
+                    .unwrap()
+                    .formula_src()
+                    .unwrap();
+                let want = shifted_formula(f, i64::from(r), 0);
+                let got = wb.sheets[0]
+                    .get(CellAddr::new(r, c))
+                    .and_then(|c| c.formula_src());
+                assert_eq!(got, Some(want.as_str()));
+            }
+        }
     }
 
     #[test]

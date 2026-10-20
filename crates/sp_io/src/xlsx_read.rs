@@ -6,6 +6,7 @@ use crate::{IoError, LoadReport};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use sp_core::{CellAddr, CellRange, ErrorKind, Value};
+use sp_formula::shared::FormulaMemo;
 use sp_formula::shift::shift_for_copy;
 use sp_formula::{parse, to_formula};
 use sp_model::{
@@ -243,7 +244,8 @@ fn read_shared_strings(xml: &str) -> Result<Vec<String>, IoError> {
 
 struct SharedFormula {
     anchor: CellAddr,
-    /// The master formula, parsed once (`None`: unparseable).
+    /// The master formula's text and tree, parsed once (`None`: unparseable).
+    src: String,
     expr: Option<sp_formula::Expr>,
 }
 
@@ -303,6 +305,9 @@ struct SheetCtx<'a> {
     areas: Vec<(CellRange, bool, bool)>,
     /// `<f t="dataTable">` attributes (see `xlsx_pivots::apply_data_tables`).
     data_tables: Vec<Vec<(String, String)>>,
+    /// Formula rewrites (shared-formula expansion, normalization) done once per relative
+    /// form and instantiated for the rest of a filled-down range.
+    memo: FormulaMemo,
 }
 
 fn read_sheet(
@@ -317,6 +322,7 @@ fn read_sheet(
         rich,
         areas: Vec::new(),
         data_tables: Vec::new(),
+        memo: FormulaMemo::new(),
     };
     read_sheet_cells(xml, sheet, sst, xf_map, report, &mut ctx)?;
     crate::xlsx_pivots::apply_data_tables(sheet, &ctx.data_tables);
@@ -635,18 +641,27 @@ fn finish_cell(
     };
     let formula = match (c.f.take(), c.f_shared_si.take()) {
         (Some(src), Some(si)) if !src.trim().is_empty() => {
+            let master = src.trim().trim_start_matches('=');
             shared.insert(
                 si,
                 SharedFormula {
                     anchor: addr,
-                    expr: parse(src.trim().trim_start_matches('=')).ok(),
+                    src: master.to_string(),
+                    expr: parse(master).ok(),
                 },
             );
             Some(src)
         }
         (Some(_), Some(si)) => match shared.get(&si) {
             Some(master) => {
-                let f = expand_shared(master, addr);
+                let f = if master.expr.is_some() {
+                    ctx.memo
+                        .rewrite(&master.src, master.anchor, addr, "share", |_| {
+                            expand_shared(master, addr)
+                        })
+                } else {
+                    None
+                };
                 if f.is_none() {
                     report.warnings.push(format!(
                         "{}!{}: could not expand shared formula",
@@ -683,7 +698,7 @@ fn finish_cell(
         Some(src) => {
             report.formulas += 1;
             Cell {
-                content: Content::Formula(normalize_formula(&src, legacy)),
+                content: Content::Formula(normalize_formula_at(&mut ctx.memo, &src, addr, legacy)),
                 value,
                 style,
             }
@@ -698,6 +713,17 @@ fn finish_cell(
         report.cells += 1;
     }
     sheet.set(addr, cell);
+}
+
+/// [`normalize_formula`] of the formula at `at`, done once per relative form (`memo`).
+fn normalize_formula_at(memo: &mut FormulaMemo, src: &str, at: CellAddr, legacy: bool) -> String {
+    let src = src.trim().trim_start_matches('=');
+    if is_simple_canonical(src) {
+        return src.to_string();
+    }
+    let tag = if legacy { "legacy" } else { "dynamic" };
+    memo.rewrite(src, at, at, tag, |s| Some(normalize_formula(s, legacy)))
+        .unwrap_or_else(|| normalize_formula(src, legacy))
 }
 
 /// Canonical in-memory formula text: `_xlfn.`-style prefixes removed. Text we cannot parse
@@ -1142,6 +1168,47 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
 mod tests {
     use super::*;
 
+    /// Normalization and shared-formula expansion through the memo give what doing each
+    /// formula on its own gives.
+    #[test]
+    fn memoized_normalization_matches_per_formula() {
+        let fills: [fn(u32) -> String; 9] = [
+            |r| format!("A{r}*2+1"),
+            |r| format!("SUM($A$1:$A{r})+A{r}"),
+            |r| format!("IF(A{r}>5,\"x\",B{r})"),
+            |r| format!("_xlfn.CONCAT(A{r},\"A{r}\")"),
+            |r| format!("STDEV.S(A$1:A{r})"),
+            |r| format!("A{r}:A{}", r + 2),
+            |r| format!("SUM(A:A)+Sheet1!A{r}"),
+            |r| format!("INDEX(A{r}:B{r},1)"),
+            |r| format!("A{r}+B{}", r + 1),
+        ];
+        let mut memo = FormulaMemo::new();
+        for legacy in [true, false] {
+            for (c, f) in fills.iter().enumerate() {
+                let master = f(1);
+                let shared = SharedFormula {
+                    anchor: CellAddr::new(0, c as u32 + 2),
+                    src: master.clone(),
+                    expr: parse(&master).ok(),
+                };
+                for r in 1..40u32 {
+                    let at = CellAddr::new(r - 1, c as u32 + 2);
+                    let src = f(r);
+                    assert_eq!(
+                        normalize_formula_at(&mut memo, &src, at, legacy),
+                        normalize_formula(&src, legacy),
+                        "{src}"
+                    );
+                    let expanded = memo.rewrite(&shared.src, shared.anchor, at, "share", |_| {
+                        expand_shared(&shared, at)
+                    });
+                    assert_eq!(expanded, expand_shared(&shared, at), "{master} at {at:?}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn targets() {
         assert_eq!(
@@ -1219,6 +1286,7 @@ mod tests {
     fn shared_formula_expansion() {
         let m = SharedFormula {
             anchor: CellAddr::parse("F3").unwrap(),
+            src: "FV(A3,B3,C3,D3,E3)".into(),
             expr: parse("FV(A3,B3,C3,D3,E3)").ok(),
         };
         assert_eq!(

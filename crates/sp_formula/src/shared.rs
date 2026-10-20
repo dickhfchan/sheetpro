@@ -412,8 +412,9 @@ pub fn verify(expr: &Expr, key: &str, at: CellAddr) -> Verified {
 
 /// Learned outcome of a rewrite for one relative key.
 enum Memo {
-    /// Seen once; learn on the next sighting (unique formulas pay no verification).
-    Seen,
+    /// Seen, not learned yet (`n` failed attempts): learning starts at the second sighting,
+    /// so unique formulas pay no verification.
+    Seen(u8),
     Unchanged,
     /// Output as a relative key at the output position.
     Text(String),
@@ -423,6 +424,8 @@ enum Memo {
 
 /// Entries kept per memo (bounds memory on workbooks of unique formulas).
 const MAX_MEMO: usize = 1 << 18;
+/// Attempts to learn a key whose result could not be generalized before giving up on it.
+const MAX_LEARN_TRIES: u8 = 4;
 
 /// Memoizes a bulk formula-text rewrite by relative key: computed once per filled-down group
 /// and instantiated for each cell.
@@ -451,13 +454,57 @@ impl FormulaMemo {
         tag: &str,
         f: impl FnOnce(&str) -> Option<String>,
     ) -> Option<String> {
+        self.run(
+            src,
+            at,
+            out_at,
+            |_, _, out| {
+                out.push_str(tag);
+                true
+            },
+            f,
+        )
+    }
+
+    /// [`FormulaMemo::rewrite`] with a tag computed from the formula's cell references at
+    /// `at` (in text order): `tag` writes it and returns false when the result must not be
+    /// shared (computed directly).
+    pub fn rewrite_with(
+        &mut self,
+        src: &str,
+        at: CellAddr,
+        out_at: CellAddr,
+        tag: impl FnOnce(&[CellPart], &mut String) -> bool,
+        f: impl FnOnce(&str) -> Option<String>,
+    ) -> Option<String> {
+        self.run(
+            src,
+            at,
+            out_at,
+            |key, at, out| key_refs(key, at).is_some_and(|parts| tag(&parts, out)),
+            f,
+        )
+    }
+
+    fn run(
+        &mut self,
+        src: &str,
+        at: CellAddr,
+        out_at: CellAddr,
+        tag: impl FnOnce(&str, CellAddr, &mut String) -> bool,
+        f: impl FnOnce(&str) -> Option<String>,
+    ) -> Option<String> {
         if rel_key(src, at, &mut self.key) != (KeyKind::Relative { rel_span: false }) {
             return f(src);
         }
         let refs = ref_count(&self.key);
         let body_len = self.key.len();
+        self.tmp.clear();
+        if !tag(&self.key, at, &mut self.tmp) {
+            return f(src);
+        }
         self.key.push(LITERAL);
-        self.key.push_str(tag);
+        self.key.push_str(&self.tmp);
         match self.map.get(&self.key) {
             Some(Memo::Unchanged) => return None,
             Some(Memo::Text(k)) => {
@@ -469,20 +516,22 @@ impl FormulaMemo {
                 };
             }
             Some(Memo::Off) => return f(src),
-            Some(Memo::Seen) => {}
+            Some(Memo::Seen(_)) => {}
             None => {
                 if self.map.len() < MAX_MEMO {
-                    self.map.insert(self.key.clone(), Memo::Seen);
+                    self.map.insert(self.key.clone(), Memo::Seen(0));
                 }
                 return f(src);
             }
         }
         let r = f(src);
         let learned = self.learn(src, at, out_at, refs, body_len, r.as_deref());
-        if let Some(m) = learned
-            && let Some(slot) = self.map.get_mut(&self.key)
-        {
-            *slot = m;
+        if let Some(slot) = self.map.get_mut(&self.key) {
+            *slot = match (learned, &*slot) {
+                (Some(m), _) => m,
+                (None, Memo::Seen(n)) if *n + 1 < MAX_LEARN_TRIES => Memo::Seen(n + 1),
+                (None, _) => Memo::Off,
+            };
         }
         r
     }

@@ -28,6 +28,40 @@ pub fn par_map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec
     })
 }
 
+/// [`par_map`] with per-worker state: `init` makes one state per worker (e.g. a memo), and
+/// `f` gets it mutably for each item.
+pub fn par_map_with<T: Sync, R: Send, S>(
+    items: &[T],
+    init: impl Fn() -> S + Sync,
+    f: impl Fn(&mut S, &T) -> R + Sync,
+) -> Vec<R> {
+    const MIN_PARALLEL: usize = 4_096;
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(16));
+    let run = |chunk: &[T]| -> Vec<R> {
+        let mut state = init();
+        chunk.iter().map(|x| f(&mut state, x)).collect()
+    };
+    if threads < 2 || items.len() < MIN_PARALLEL {
+        return run(items);
+    }
+    let per = items.len().div_ceil(threads);
+    let run = &run;
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = items
+            .chunks(per)
+            .map(|chunk| scope.spawn(move || run(chunk)))
+            .collect();
+        let mut out = Vec::with_capacity(items.len());
+        for (h, chunk) in handles.into_iter().zip(items.chunks(per)) {
+            match h.join() {
+                Ok(v) => out.extend(v),
+                Err(_) => out.extend(run(chunk)),
+            }
+        }
+        out
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -43,5 +77,19 @@ mod tests {
         let out = par_map(&big, |x| x.to_string());
         assert_eq!(out.len(), big.len());
         assert!(out.iter().zip(&big).all(|(s, x)| *s == x.to_string()));
+    }
+
+    #[test]
+    fn with_state_preserves_order() {
+        let items: Vec<u32> = (0..10_000).collect();
+        let out = par_map_with(
+            &items,
+            || 0u32,
+            |seen, x| {
+                *seen += 1;
+                x * 2
+            },
+        );
+        assert_eq!(out, items.iter().map(|x| x * 2).collect::<Vec<_>>());
     }
 }
