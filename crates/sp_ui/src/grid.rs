@@ -43,6 +43,14 @@ pub fn font_family(name: &str, known: &[FontFamily]) -> FontFamily {
     }
 }
 
+/// Mark every section of `job` italic. The default fonts have no italic face, so egui draws
+/// a synthetic oblique (each glyph skewed by a quarter of its height).
+pub fn set_italics(job: &mut LayoutJob, italic: bool) {
+    for s in &mut job.sections {
+        s.format.italics = italic;
+    }
+}
+
 pub fn font_id(size_pt: f32, zoom: f32, family: FontFamily) -> FontId {
     FontId::new((size_pt * zoom * PT_TO_PX).max(1.0), family)
 }
@@ -129,6 +137,7 @@ pub fn draw_cell_text(p: &Painter, ct: &CellText<'_>) {
     let layout = |text: String| {
         let mut job = LayoutJob::simple(text, font.clone(), fg, wrap_width);
         job.halign = halign;
+        set_italics(&mut job, d.italic);
         p.layout_job(job)
     };
     let mut galley = layout(d.text.clone());

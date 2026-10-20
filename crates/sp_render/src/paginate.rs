@@ -238,6 +238,13 @@ pub fn content_range(sheet: &Sheet) -> Option<CellRange> {
         .charts
         .iter()
         .map(|c| CellRange::new(c.anchor.from, c.anchor.to))
+        .chain(
+            sheet
+                .analysis
+                .slicers
+                .iter()
+                .map(|sl| CellRange::new(sl.anchor.from, sl.anchor.to)),
+        )
         .chain(objects);
     for a in anchors {
         r = Some(match r {
@@ -807,6 +814,17 @@ impl PageScene {
 pub struct PrintData {
     pub charts: Vec<ChartData>,
     pub sparklines: Vec<Vec<Vec<Option<f64>>>>,
+    /// `slicers[i]`: the buttons of `sheet.analysis.slicers[i]`, in display order.
+    pub slicers: Vec<Vec<SlicerButton>>,
+}
+
+/// One slicer button as printed: its label, whether it is selected (not filtered out),
+/// and whether any record would still show with it (otherwise it prints greyed).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SlicerButton {
+    pub label: String,
+    pub selected: bool,
+    pub has_data: bool,
 }
 
 /// Print colours for chart paint roles (white paper).
@@ -1301,6 +1319,154 @@ fn drawing_items(
             }
         }
     }
+    // Slicers float above charts and objects, as on screen.
+    for (i, sl) in cx.sheet.analysis.slicers.iter().enumerate() {
+        let r = chart::anchor_rect(cx.sheet, CellAddr::default(), &sl.anchor);
+        if r.2 < 4.0 || r.3 < 4.0 {
+            continue;
+        }
+        if let Some(b) = place(r) {
+            let buttons = cx.data.slicers.get(i).map_or(&[][..], Vec::as_slice);
+            slicer_items(cx, items, sl, buttons, b);
+        }
+    }
+}
+
+const SLICER_BORDER: Color = Color(190, 190, 190);
+const SLICER_CAPTION: Color = Color(50, 50, 50);
+const SLICER_SELECTED_BG: Color = Color(204, 226, 245);
+const SLICER_SELECTED_BORDER: Color = Color(120, 170, 220);
+const SLICER_ITEM_BORDER: Color = Color(200, 200, 200);
+const SLICER_ITEM_TEXT: Color = Color(30, 30, 30);
+const SLICER_NODATA_TEXT: Color = Color(170, 170, 170);
+const SLICER_CLEAR: Color = Color(200, 60, 50);
+const SLICER_CLEAR_OFF: Color = Color(190, 190, 190);
+
+/// A slicer in the box `b` (pt): white body, caption, clear-filter icon and its buttons,
+/// laid out like the screen (`objects::slicer_layout`).
+fn slicer_items(
+    cx: &Ctx,
+    out: &mut Vec<Item>,
+    sl: &sp_model::pivot::Slicer,
+    buttons: &[SlicerButton],
+    (x, y, w, h): (f32, f32, f32, f32),
+) {
+    let k = cx.k;
+    let lay = geo::slicer_layout((x, y, w, h), buttons.len(), sl.columns, k);
+    let mut items = Vec::new();
+    let rect_line = |(rx, ry, rw, rh): (f32, f32, f32, f32), color: Color| Item::Line {
+        pts: vec![(rx, ry), (rx + rw, ry), (rx + rw, ry + rh), (rx, ry + rh)],
+        width: (0.75 * k).max(0.3),
+        color,
+        dash: None,
+        closed: true,
+    };
+    items.push(Item::Fill {
+        x,
+        y,
+        w,
+        h,
+        color: WHITE,
+    });
+    items.push(rect_line((x, y, w, h), SLICER_BORDER));
+    // Caption, clipped before the clear button.
+    let caption = if sl.caption.is_empty() {
+        &sl.name
+    } else {
+        &sl.caption
+    };
+    let face = Face::default();
+    let text_at = |text: &str, x: f32, mid_y: f32, size: f32, color: Color| {
+        let (asc, desc) = face.ascent_descent();
+        Item::Text {
+            x,
+            y: mid_y + (asc - desc) * size / 2.0,
+            text: text.to_string(),
+            face,
+            size,
+            color,
+            angle: 0.0,
+        }
+    };
+    let (hx, hy, _, hh) = lay.header;
+    let cap_w = (lay.clear.0 - 2.0 * k - hx).max(0.0);
+    items.push(Item::Clip {
+        x: hx,
+        y: hy,
+        w: cap_w,
+        h: hh,
+        items: vec![text_at(
+            caption,
+            hx + 8.0 * k,
+            hy + hh / 2.0,
+            (11.0 * cx.scale).max(1.0),
+            SLICER_CAPTION,
+        )],
+    });
+    // Clear-filter icon: a funnel with a cross, live when something is filtered out.
+    let filtered = buttons.iter().any(|b| !b.selected);
+    let ic = if filtered {
+        SLICER_CLEAR
+    } else {
+        SLICER_CLEAR_OFF
+    };
+    let (cx0, cy0, cw, ch) = lay.clear;
+    let sd = cw.min(ch);
+    let at = |fx: f32, fy: f32| (cx0 + fx * sd, cy0 + fy * sd);
+    let lw = (0.9 * k).max(0.3);
+    items.push(Item::Line {
+        pts: vec![
+            at(0.1, 0.2),
+            at(0.65, 0.2),
+            at(0.45, 0.5),
+            at(0.45, 0.85),
+            at(0.3, 0.75),
+            at(0.3, 0.5),
+        ],
+        width: lw,
+        color: ic,
+        dash: None,
+        closed: true,
+    });
+    for (a, b) in [((0.62, 0.55), (0.9, 0.85)), ((0.9, 0.55), (0.62, 0.85))] {
+        items.push(Item::Line {
+            pts: vec![at(a.0, a.1), at(b.0, b.1)],
+            width: lw,
+            color: ic,
+            dash: None,
+            closed: false,
+        });
+    }
+    let size = (10.0 * cx.scale).max(1.0);
+    for (it, &(bx, by, bw, bh)) in buttons.iter().zip(&lay.buttons) {
+        let (fill, border) = if it.selected && it.has_data {
+            (SLICER_SELECTED_BG, SLICER_SELECTED_BORDER)
+        } else {
+            (WHITE, SLICER_ITEM_BORDER)
+        };
+        items.push(Item::Fill {
+            x: bx,
+            y: by,
+            w: bw,
+            h: bh,
+            color: fill,
+        });
+        items.push(rect_line((bx, by, bw, bh), border));
+        let tc = if it.has_data {
+            SLICER_ITEM_TEXT
+        } else {
+            SLICER_NODATA_TEXT
+        };
+        let pad = 2.0 * k;
+        items.push(Item::Clip {
+            x: bx + pad,
+            y: by + pad,
+            w: (bw - 2.0 * pad).max(0.0),
+            h: (bh - 2.0 * pad).max(0.0),
+            items: vec![text_at(&it.label, bx + 6.0 * k, by + bh / 2.0, size, tc)],
+        });
+    }
+    out.push(Item::Clip { x, y, w, h, items });
 }
 
 /// One picture, shape, text box or line in the box `b` (pt).
@@ -1508,7 +1674,7 @@ fn cell_text(
 ) {
     let (x, y, w, h) = rect;
     let face = Face::for_font(&d.font_name, d.bold, d.italic);
-    let size = (d.font_size * scale).max(1.0);
+    let mut size = (d.font_size * scale).max(1.0);
     let color = d.color.unwrap_or(Color::BLACK);
     let pad = PAD_X * k;
     let indent = f32::from(d.indent) * INDENT_PX * k;
@@ -1542,10 +1708,21 @@ fn cell_text(
             let tw = lines
                 .first()
                 .map_or(0.0, |t| std14::text_width(face, t, size));
-            if tw > avail + 0.5 {
+            // Column widths are counted in digits of the sheet's default font, 7px wide at
+            // 11pt, and the screen font is sized to match; the standard-14 faces are wider
+            // (a Helvetica digit is ~17% wider). Decide ### the way the screen does, by the
+            // text's width in those digits, so a number that fits on screen also prints;
+            // when the PDF face is wider than the column, print it condensed to fit.
+            let digit = std14::text_width(face, "0", size).max(0.01);
+            let ref_digit = 7.0 * k * d.font_size / 11.0;
+            let ratio = (ref_digit / digit).min(1.0);
+            // Same threshold as the grid: the cell width less 4px.
+            if tw * ratio > w - 4.0 * k {
                 let hw = std14::text_width(face, "#", size).max(0.1);
                 let n = ((avail / hw).floor() as usize).clamp(1, 255);
                 lines = vec!["#".repeat(n)];
+            } else if tw > avail {
+                size = (size * avail / tw).max(1.0);
             }
         }
         let line_h = size * 1.2;
@@ -2021,6 +2198,72 @@ mod tests {
         ] {
             let _ = hf_sections(code, &ctx);
         }
+    }
+
+    #[test]
+    fn numbers_that_fit_on_screen_print_condensed_not_as_hashes() {
+        let mut wb = Workbook::new();
+        let date = wb.styles.intern(Style {
+            num_fmt: "m/d/yyyy".into(),
+            ..Style::default()
+        });
+        if let Some(sh) = wb.sheet_mut(0) {
+            for c in 0..2 {
+                let mut cell = Cell::constant(Value::Number(46081.0));
+                cell.style = date;
+                sh.set(CellAddr::new(0, c), cell);
+            }
+            let mut cell = Cell::constant(Value::Number(46315.0));
+            cell.style = date;
+            sh.set(CellAddr::new(2, 0), cell);
+            for (r, n) in [(1, 12345678.0), (3, 1234.5678), (4, 123456789.0)] {
+                sh.set(CellAddr::new(r, 0), Cell::constant(Value::Number(n)));
+            }
+            sh.col_widths.insert(1, 4.0);
+        }
+        let pg = paginate(&wb, 0, &PrintOptions::default());
+        let sc = page_scene(
+            &wb,
+            &pg,
+            &pg.pages[0],
+            &PrintData::default(),
+            &HfContext::default(),
+        );
+        fn walk<'a>(items: &'a [Item], out: &mut Vec<(&'a str, f32, f32)>) {
+            for it in items {
+                match it {
+                    Item::Text {
+                        text, size, face, ..
+                    } => {
+                        out.push((text, *size, std14::text_width(*face, text, *size)));
+                    }
+                    Item::Clip { items, .. } => walk(items, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut t = Vec::new();
+        walk(&sc.items, &mut t);
+        // A default column (64px = 48pt) holds 2/28/2026 on screen: it prints, condensed
+        // to fit inside the cell padding.
+        let (_, size, w) = t
+            .iter()
+            .find(|x| x.0 == "2/28/2026")
+            .copied()
+            .unwrap_or_else(|| panic!("{t:?}"));
+        assert!(size < 11.0 && size > 9.0, "{size}");
+        assert!(w <= 48.0 - 2.0 * PAD_X * PX_TO_PT + 0.01, "{w}");
+        // As on screen: 12345678 and 1234.5678 print (condensed), 10/20/2026 and 123456789
+        // don't fit a default column.
+        assert!(t.iter().any(|x| x.0 == "12345678" && x.2 <= 43.51), "{t:?}");
+        assert!(t.iter().any(|x| x.0 == "1234.5678"), "{t:?}");
+        assert_eq!(
+            t.iter().filter(|x| x.0.starts_with('#')).count(),
+            3,
+            "{t:?}"
+        );
+        // A narrow column still shows ###.
+        assert!(t.iter().any(|x| x.0.starts_with('#')), "{t:?}");
     }
 
     #[test]

@@ -712,6 +712,13 @@ impl App {
                 T.selection_border,
             );
         }
+        let geo = overlays::Geo {
+            view: &view,
+            origin: cells_origin,
+            area: cell_area,
+        };
+        // Filter buttons and comment marks sit in the cells, under charts and objects.
+        let mark_hots = self.paint_cell_marks(&painter, &geo);
         let object_hots = objdraw::paint_drawings(
             &painter,
             &mut self.textures,
@@ -722,12 +729,8 @@ impl App {
         );
         self.textures.end_frame();
         page_view::break_preview(&painter, s, &view, cells_origin, cell_area);
-        let geo = overlays::Geo {
-            view: &view,
-            origin: cells_origin,
-            area: cell_area,
-        };
         let mut hots = cell_hots;
+        hots.extend(mark_hots);
         hots.extend(object_hots);
         hots.extend(self.paint_overlays(ui, &painter, &geo));
         // Headings.

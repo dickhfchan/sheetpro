@@ -166,15 +166,10 @@ pub fn formulas(c: &mut Ctx) -> Result<()> {
     a.set(c, "K1", "=DATE(2026,2,28)");
     let d = a.cell("K1", "display");
     c.check("a DATE formula displays as a date", d == "2/28/2026", d);
-    // Known differences from the target.
+    // Text functions count UTF-16 units, as the target does.
     a.set(c, "K2", "=LEN(\"héllo 😀\")");
     let v = a.val("K2");
-    c.known(
-        "LEN counts an emoji as 2",
-        close(&v, 8.0),
-        v,
-        "the target counts UTF-16 units in all text functions",
-    );
+    c.check("LEN counts an emoji as 2", close(&v, 8.0), v);
 
     // Spill, #SPILL! when blocked, recovery when cleared.
     a.set(c, "M1", "=SEQUENCE(3)");

@@ -177,7 +177,7 @@ load back as `TABLE()` cells plus a `DataTable` record.
 `Sheet::page_setup`: paper size/orientation, margins, scale or fit-to N×M pages (fit ignores
 manual breaks), manual breaks, page order, repeated title rows/cols (`_xlnm.Print_Titles`) and
 headings. `page_scene` lays out one page in points (fills, gridlines, borders, display text
-measured with the standard-14 metrics in `sp_render::std14`, merges, charts, sparklines,
+measured with the standard-14 metrics in `sp_render::std14`, merges, charts, sparklines, slicers,
 header/footer with `&P &N &D &T &F &Z &A` and `&L/&C/&R` sections). `Pagination::bounds`
 gives page rectangles with edge kinds for the page break preview. `sp_io::pdf` writes the
 scenes as an uncompressed PDF 1.7 (standard-14 Type1 fonts, WinAnsi; characters outside

@@ -18,6 +18,58 @@ fn s1(ev: &mut Ev<'_>, args: &[Expr], f: fn(&str) -> String) -> EvalValue {
     })
 }
 
+// Text positions and lengths are counted in UTF-16 code units, as the target does: a
+// character outside the Basic Multilingual Plane (an emoji, say) counts as 2, so
+// `LEN("😀")` is 2. Our strings are Rust `String`s and cannot hold a lone surrogate, so
+// where the target would cut a surrogate pair in half (`LEFT("😀",1)`), the half that is
+// kept becomes U+FFFD (the replacement character). It is one code unit long, so lengths
+// and positions computed from the result still agree with the target's.
+
+/// Length of `s` in UTF-16 code units.
+pub(crate) fn u16_len(s: &str) -> usize {
+    s.chars().map(char::len_utf16).sum()
+}
+
+/// The UTF-16 code units `start..end` of `s` (clamped). A surrogate pair cut by either
+/// bound contributes U+FFFD for its kept half.
+pub(crate) fn u16_slice(s: &str, start: usize, end: usize) -> String {
+    let mut out = String::new();
+    if start >= end {
+        return out;
+    }
+    let mut pos = 0usize;
+    for c in s.chars() {
+        let w = c.len_utf16();
+        let (a, b) = (pos, pos + w);
+        pos = b;
+        if b <= start {
+            continue;
+        }
+        if a >= end {
+            break;
+        }
+        if a >= start && b <= end {
+            out.push(c);
+        } else {
+            out.push('\u{FFFD}');
+        }
+    }
+    out
+}
+
+/// UTF-16 offset of every character boundary of `s`, paired with its byte offset
+/// (including the end of the text).
+fn u16_boundaries(s: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::with_capacity(s.len() + 1);
+    let mut pos = 0usize;
+    for (b, c) in s.char_indices() {
+        out.push((pos, b));
+        pos += c.len_utf16();
+    }
+    out.push((pos, s.len()));
+    out
+}
+
 fn char_count_arg(
     ev: &mut Ev<'_>,
     args: &[Expr],
@@ -41,11 +93,11 @@ fn left_right(ev: &mut Ev<'_>, args: &[Expr], left: bool) -> EvalValue {
     lift1(ev, v, |x| match (to_text(x), n) {
         (Err(e), _) | (Ok(_), Err(e)) => Value::Error(e),
         (Ok(s), Ok(n)) => {
-            let len = s.chars().count();
+            let len = u16_len(&s);
             Value::text(if left {
-                s.chars().take(n).collect::<String>()
+                u16_slice(&s, 0, n)
             } else {
-                s.chars().skip(len.saturating_sub(n)).collect()
+                u16_slice(&s, len.saturating_sub(n), len)
             })
         }
     })
@@ -62,13 +114,9 @@ fn mid(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     if start < 1.0 || n < 0.0 {
         return EvalValue::err(ErrorKind::Value);
     }
-    let start = (start as usize).saturating_sub(1);
-    EvalValue::text(
-        s.chars()
-            .skip(start)
-            .take(n.min(MAX_TEXT_LEN as f64) as usize)
-            .collect::<String>(),
-    )
+    let start = (start.min(MAX_TEXT_LEN as f64 * 2.0) as usize).saturating_sub(1);
+    let n = n.min(MAX_TEXT_LEN as f64) as usize;
+    EvalValue::text(u16_slice(&s, start, start.saturating_add(n)))
 }
 
 fn proper(s: &str) -> String {
@@ -258,14 +306,16 @@ fn replace(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
     if start < 1.0 || n < 0.0 {
         return EvalValue::err(ErrorKind::Value);
     }
-    let chars: Vec<char> = s.chars().collect();
-    let st = ((start as usize) - 1).min(chars.len());
+    let len = u16_len(&s);
+    let st = (start.min(MAX_TEXT_LEN as f64 * 2.0) as usize)
+        .saturating_sub(1)
+        .min(len);
     let en = st
         .saturating_add(n.min(MAX_TEXT_LEN as f64) as usize)
-        .min(chars.len());
-    let mut out: String = chars.get(..st).unwrap_or(&[]).iter().collect();
+        .min(len);
+    let mut out = u16_slice(&s, 0, st);
     out.push_str(&new);
-    out.extend(chars.get(en..).unwrap_or(&[]).iter());
+    out.push_str(&u16_slice(&s, en, len));
     EvalValue::text(out)
 }
 
@@ -281,8 +331,9 @@ fn find(ev: &mut Ev<'_>, args: &[Expr], search: bool) -> EvalValue {
         Ok(s) => s.trunc(),
         Err(e) => return EvalValue::err(e),
     };
-    let hay_chars: Vec<char> = hay.chars().collect();
-    if start < 1.0 || start as usize > hay_chars.len() + 1 {
+    let bounds = u16_boundaries(&hay);
+    let len = bounds.last().map_or(0, |b| b.0);
+    if start < 1.0 || start > len as f64 + 1.0 {
         return EvalValue::err(ErrorKind::Value);
     }
     let st = start as usize - 1;
@@ -295,21 +346,24 @@ fn find(ev: &mut Ev<'_>, args: &[Expr], search: bool) -> EvalValue {
     if needle.is_empty() {
         return EvalValue::num(start);
     }
-    for i in st..hay_chars.len() {
-        let rest: String = hay_chars.get(i..).unwrap_or(&[]).iter().collect();
+    let pat = format!("{needle}*");
+    let lower_needle = needle.to_lowercase();
+    // Candidate positions are character boundaries at or after the start position (a start
+    // inside a surrogate pair begins at the next character).
+    for &(pos, byte) in bounds.iter().filter(|b| b.0 >= st && b.0 < len) {
+        let rest = hay.get(byte..).unwrap_or("");
         let hit = if search {
             // Wildcards: match the needle as a prefix pattern at this position.
-            let pat = format!("{needle}*");
             if wild {
-                wildcard_match(&pat, &rest)
+                wildcard_match(&pat, rest)
             } else {
-                rest.to_lowercase().starts_with(&needle.to_lowercase())
+                rest.to_lowercase().starts_with(&lower_needle)
             }
         } else {
             rest.starts_with(&needle)
         };
         if hit {
-            return EvalValue::num(i as f64 + 1.0);
+            return EvalValue::num(pos as f64 + 1.0);
         }
     }
     EvalValue::err(ErrorKind::Value)
@@ -542,12 +596,12 @@ fn before_after(ev: &mut Ev<'_>, args: &[Expr], before: bool) -> EvalValue {
         Ok(_) => return EvalValue::err(ErrorKind::Value),
         Err(e) => return EvalValue::err(e),
     };
-    let len = s.chars().count();
+    let len = u16_len(&s);
     let instance_given = !matches!(args.get(2), None | Some(Expr::Missing));
     if n == 0
         || n.unsigned_abs() as usize > len.max(1)
             && !(d.is_empty() && n.unsigned_abs() as usize == len + 1)
-        || instance_given && d.chars().count() > len
+        || instance_given && u16_len(&d) > len
     {
         return EvalValue::err(ErrorKind::Value);
     }
@@ -610,7 +664,7 @@ pub fn register(r: &mut Registry) {
         };
         let v = ev.eval(x);
         lift1(ev, v, |x| match to_text(x) {
-            Ok(s) => Value::Number(s.chars().count() as f64),
+            Ok(s) => Value::Number(u16_len(&s) as f64),
             Err(e) => Value::Error(e),
         })
     });
@@ -717,4 +771,20 @@ pub fn register(r: &mut Registry) {
     r.add("NUMBERVALUE", 1, 3, numbervalue);
     r.add("TEXTBEFORE", 2, 6, |ev, a| before_after(ev, a, true));
     r.add("TEXTAFTER", 2, 6, |ev, a| before_after(ev, a, false));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{u16_boundaries, u16_len, u16_slice};
+
+    #[test]
+    fn utf16_helpers() {
+        assert_eq!(u16_len("héllo 😀"), 8);
+        assert_eq!(u16_slice("a😀b", 0, 4), "a😀b");
+        assert_eq!(u16_slice("a😀b", 1, 2), "\u{FFFD}");
+        assert_eq!(u16_slice("a😀b", 2, 4), "\u{FFFD}b");
+        assert_eq!(u16_slice("a😀b", 3, 1), "");
+        assert_eq!(u16_slice("ab", 5, usize::MAX), "");
+        assert_eq!(u16_boundaries("a😀"), vec![(0, 0), (1, 1), (3, 5)]);
+    }
 }

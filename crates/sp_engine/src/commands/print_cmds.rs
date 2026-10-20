@@ -124,6 +124,25 @@ pub fn print_data(wb: &Workbook, si: usize) -> PrintData {
                     .collect()
             })
             .collect(),
+        slicers: sheet
+            .analysis
+            .slicers
+            .iter()
+            .map(|sl| {
+                sheet
+                    .analysis
+                    .pivot(&sl.pivot)
+                    .map(|pv| super::pivot_cmds::slicer_state(pv, sl.field))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|it| sp_render::paginate::SlicerButton {
+                        label: it.label,
+                        selected: it.selected,
+                        has_data: it.has_data,
+                    })
+                    .collect()
+            })
+            .collect(),
     }
 }
 
@@ -544,5 +563,52 @@ mod tests {
         let sc = job.scene(&s.wb, 0).unwrap_or_else(|| panic!("scene"));
         assert!(sc.texts().contains(&"Item 1".to_string()));
         assert!(job.scene(&s.wb, 99).is_none());
+    }
+
+    #[test]
+    fn slicers_print_with_caption_and_buttons() {
+        let mut s = Session::new();
+        let rows = [
+            ["Region", "Sales"],
+            ["East", "100"],
+            ["West", "150"],
+            ["North", "80"],
+        ];
+        for (r, row) in rows.iter().enumerate() {
+            for (c, v) in row.iter().enumerate() {
+                let a = sp_core::CellAddr::new(r as u32, c as u32).to_a1();
+                let _ = s.execute("cell.set", &json!({"cell": a, "input": v}));
+            }
+        }
+        let ok = |r: Result<Json, CmdError>| r.unwrap_or_else(|e| panic!("{e:?}"));
+        ok(s.execute(
+            "insert.pivot_table",
+            &json!({"source": "A1:B4", "dest": "D1", "rows": ["Region"], "values": ["Sales"]}),
+        ));
+        ok(s.execute(
+            "insert.slicer",
+            &json!({"pivot": "PivotTable1", "field": "Region", "caption": "Pick a region",
+                    "anchor": "H2:J12", "select": ["East"]}),
+        ));
+        let data = print_data(&s.wb, 0);
+        assert_eq!(data.slicers.len(), 1);
+        let sel: Vec<_> = data.slicers[0]
+            .iter()
+            .map(|b| (b.label.as_str(), b.selected))
+            .collect();
+        assert_eq!(sel, vec![("East", true), ("North", false), ("West", false)]);
+        let job = print_job(&s, "active", None).unwrap_or_else(|e| panic!("{e:?}"));
+        let sc = job.scene(&s.wb, 0).unwrap_or_else(|| panic!("scene"));
+        let t = sc.texts();
+        for want in ["Pick a region", "East", "North", "West"] {
+            assert!(t.iter().any(|x| x == want), "{want} in {t:?}");
+        }
+        // The printed range grows to cover the slicer (H2 to the top-left of K13).
+        let last = job.sheets[0].0.pages.iter().map(|p| p.cols.1).max();
+        assert_eq!(last, Some(10));
+        let path = tmp("slicer.pdf");
+        ok(s.execute("file.export.pdf", &json!({"path": path.to_string_lossy()})));
+        let bytes = std::fs::read(&path).unwrap_or_default();
+        assert!(sp_io::pdf::validate(&bytes).is_ok());
     }
 }

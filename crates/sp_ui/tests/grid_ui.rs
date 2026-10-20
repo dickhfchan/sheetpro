@@ -359,3 +359,100 @@ fn render_grid_ui_png() {
     let img = h.render().unwrap();
     img.save(root.join("docs/img/grid-ui.png")).unwrap();
 }
+
+/// Every text shape painted last frame as (text, italics).
+fn painted_texts(h: &Harness<'static, App>) -> Vec<(String, bool)> {
+    let mut out = Vec::new();
+    for cs in &h.output().shapes {
+        if let egui::Shape::Text(t) = &cs.shape {
+            let italic = t.galley.job.sections.iter().any(|s| s.format.italics);
+            out.push((t.galley.text().to_string(), italic));
+        }
+    }
+    out
+}
+
+#[test]
+fn italic_cells_and_text_boxes_draw_oblique() {
+    let mut s = session();
+    exec(
+        &mut s,
+        "cell.set",
+        json!({"cell": "D1", "input": "slanted"}),
+    );
+    exec(&mut s, "select.range", json!({"range": "D1"}));
+    exec(&mut s, "home.font.italic", json!({}));
+    exec(
+        &mut s,
+        "insert.text_box",
+        json!({"text": "boxed", "italic": true, "cell": "F3", "width": 120, "height": 40}),
+    );
+    let h = harness(App::new(s));
+    let t = painted_texts(&h);
+    // (The formula bar also shows "slanted", upright.)
+    let has = |w: &str, it: bool| t.iter().any(|x| x.0 == w && x.1 == it);
+    assert!(has("slanted", true), "{t:?}");
+    assert!(has("boxed", true), "{t:?}");
+    assert!(
+        has("North", false) && !has("North", true),
+        "upright cells stay upright"
+    );
+}
+
+#[test]
+fn charts_and_objects_cover_filter_buttons() {
+    let mut s = session();
+    exec(&mut s, "data.filter", json!({"range": "A1:B6", "on": true}));
+    // A chart over A1 and a text box over B1 hide those cells' filter buttons.
+    exec(
+        &mut s,
+        "insert.chart.column",
+        json!({"range": "A1:B6", "anchor": "A1:A8"}),
+    );
+    exec(
+        &mut s,
+        "insert.text_box",
+        json!({"text": "note", "cell": "B1", "width": 64, "height": 60}),
+    );
+    let mut h = harness(App::new(s));
+    let origin = sp_ui::overlays::cells_origin(&h.ctx).expect("grid painted");
+    // The filter button sits at the bottom-right corner of the header cell.
+    let sh = h.state().session.wb.sheet(0).unwrap();
+    let a_w = sp_render::col_width_px(sh.col_width(0));
+    let b_w = sp_render::col_width_px(sh.col_width(1));
+    let r1 = sp_render::row_height_px(sh.row_height(0));
+    let a_btn = origin + Vec2::new(a_w - 8.0, r1 - 8.0);
+    let b_btn = origin + Vec2::new(a_w + b_w - 8.0, r1 - 8.0);
+    // Paint order: the dropdown arrows are drawn before the chart and the text box.
+    let shapes = &h.output().shapes;
+    let last_text_box = shapes
+        .iter()
+        .rposition(|c| matches!(&c.shape, egui::Shape::Text(t) if t.galley.text() == "note"))
+        .expect("text box painted");
+    let first_arrow = shapes
+        .iter()
+        .position(|c| match &c.shape {
+            egui::Shape::Path(p) => {
+                p.points.len() == 3
+                    && p.points
+                        .iter()
+                        .all(|q| (q.x - b_btn.x).abs() < 10.0 && (q.y - b_btn.y).abs() < 10.0)
+            }
+            _ => false,
+        })
+        .expect("filter arrow painted");
+    assert!(first_arrow < last_text_box, "arrow under the text box");
+    for (at, what) in [(a_btn, "chart"), (b_btn, "object")] {
+        h.hover_at(at);
+        h.run_steps(1);
+        h.drag_at(at);
+        h.run_steps(1);
+        h.drop_at(at);
+        h.run_steps(2);
+        assert!(h.state().ui.dialog.is_none(), "{what}: no filter dropdown");
+        match what {
+            "chart" => assert_eq!(h.state().ui.grid.chart, Some(0)),
+            _ => assert_eq!(h.state().ui.grid.object, Some(0)),
+        }
+    }
+}

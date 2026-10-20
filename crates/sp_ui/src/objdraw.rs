@@ -313,6 +313,7 @@ fn draw_text(p: &Painter, t: &ObjText, zoom: f32, families: &[FontFamily]) {
                 para.text.clone()
             };
             let mut job = LayoutJob::simple(text, font, c, wrap_w);
+            grid::set_italics(&mut job, para.italic);
             job.halign = match para.align {
                 Align::Left => egui::Align::Min,
                 Align::Center => egui::Align::Center,
@@ -457,6 +458,9 @@ pub(crate) fn paint_drawings(
             ZItem::Chart(i) => {
                 if let Some((_, r)) = charts.get(i) {
                     crate::chart::paint_chart(&p, s, i, *r, cell_area);
+                    if r.intersects(cell_area) {
+                        hots.push(Hot::Chart { rect: *r, idx: i });
+                    }
                 }
             }
             ZItem::Object(i) => {
