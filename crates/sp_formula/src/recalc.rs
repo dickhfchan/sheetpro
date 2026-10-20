@@ -773,6 +773,14 @@ fn set_area(s: &mut sp_model::Sheet, area: SpillArea) {
     s.spills.insert(at, area);
 }
 
+/// Identical values (numbers compared by bits, so `-0` replaces `0`).
+fn same_value(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => x.to_bits() == y.to_bits(),
+        _ => a == b,
+    }
+}
+
 /// Write computed values and spills into the workbook. Returns cells newly covered by a
 /// spill (readers evaluated earlier may have seen them blank).
 fn write_back(wb: &mut Workbook, results: Computed) -> Vec<Key> {
@@ -781,9 +789,14 @@ fn write_back(wb: &mut Workbook, results: Computed) -> Vec<Key> {
     // make every lookup a cache-missing descent through a million-row sheet).
     for ((si, a), v) in results.values.into_sorted() {
         let Some(s) = wb.sheet_mut(si) else { continue };
-        let Some(c) = s.get_mut(a) else { continue };
-        c.value = v;
-        if c.formula_src().is_none() {
+        let Some(c) = s.get(a) else { continue };
+        // An unchanged value is not written: rows shared with undo/redo snapshots stay
+        // shared (writing would copy every row of a big sheet).
+        if !same_value(&c.value, &v) {
+            let Some(c) = s.get_mut(a) else { continue };
+            c.value = v;
+        }
+        if s.get(a).and_then(|c| c.formula_src()).is_none() {
             continue;
         }
         let old = s.spill_at_anchor(a).copied();
@@ -2016,5 +2029,28 @@ mod tests {
             incremental += usize::from(edit_and_compare(&mut wb, &mut cache, &refs).incremental);
         }
         assert!(incremental > 200, "{incremental} incremental");
+    }
+
+    /// A recalc that changes no value leaves rows shared with snapshots (undo/redo history)
+    /// instead of copying every row; changed values still land.
+    #[test]
+    fn unchanged_values_keep_rows_shared() {
+        let mut wb = wb_with(&[
+            ("A1", "1"),
+            ("B1", "=A1*2"),
+            ("A2", "0"),
+            ("B2", "=A2&\"x\""),
+        ]);
+        let snapshot = wb.sheets[0].clone();
+        recalc(&mut wb, &mut AstCache::default(), OPTS);
+        for (r, row) in &wb.sheets[0].cells {
+            assert!(Arc::ptr_eq(row, &snapshot.cells[r]), "row {r} was copied");
+        }
+        wb.sheets[0].set(CellAddr::new(0, 0), MCell::constant(n(5.0)));
+        let snapshot = wb.sheets[0].clone();
+        recalc(&mut wb, &mut AstCache::default(), OPTS);
+        assert_eq!(v(&wb, "B1"), n(10.0));
+        assert!(!Arc::ptr_eq(&wb.sheets[0].cells[&0], &snapshot.cells[&0]));
+        assert!(Arc::ptr_eq(&wb.sheets[0].cells[&1], &snapshot.cells[&1]));
     }
 }
