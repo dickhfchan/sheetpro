@@ -1508,7 +1508,7 @@ fn cell_text(
 ) {
     let (x, y, w, h) = rect;
     let face = Face::for_font(&d.font_name, d.bold, d.italic);
-    let size = (d.font_size * scale).max(1.0);
+    let mut size = (d.font_size * scale).max(1.0);
     let color = d.color.unwrap_or(Color::BLACK);
     let pad = PAD_X * k;
     let indent = f32::from(d.indent) * INDENT_PX * k;
@@ -1542,10 +1542,21 @@ fn cell_text(
             let tw = lines
                 .first()
                 .map_or(0.0, |t| std14::text_width(face, t, size));
-            if tw > avail + 0.5 {
+            // Column widths are counted in digits of the sheet's default font, 7px wide at
+            // 11pt, and the screen font is sized to match; the standard-14 faces are wider
+            // (a Helvetica digit is ~17% wider). Decide ### the way the screen does, by the
+            // text's width in those digits, so a number that fits on screen also prints;
+            // when the PDF face is wider than the column, print it condensed to fit.
+            let digit = std14::text_width(face, "0", size).max(0.01);
+            let ref_digit = 7.0 * k * d.font_size / 11.0;
+            let ratio = (ref_digit / digit).min(1.0);
+            // Same threshold as the grid: the cell width less 4px.
+            if tw * ratio > w - 4.0 * k {
                 let hw = std14::text_width(face, "#", size).max(0.1);
                 let n = ((avail / hw).floor() as usize).clamp(1, 255);
                 lines = vec!["#".repeat(n)];
+            } else if tw > avail {
+                size = (size * avail / tw).max(1.0);
             }
         }
         let line_h = size * 1.2;
@@ -2021,6 +2032,72 @@ mod tests {
         ] {
             let _ = hf_sections(code, &ctx);
         }
+    }
+
+    #[test]
+    fn numbers_that_fit_on_screen_print_condensed_not_as_hashes() {
+        let mut wb = Workbook::new();
+        let date = wb.styles.intern(Style {
+            num_fmt: "m/d/yyyy".into(),
+            ..Style::default()
+        });
+        if let Some(sh) = wb.sheet_mut(0) {
+            for c in 0..2 {
+                let mut cell = Cell::constant(Value::Number(46081.0));
+                cell.style = date;
+                sh.set(CellAddr::new(0, c), cell);
+            }
+            let mut cell = Cell::constant(Value::Number(46315.0));
+            cell.style = date;
+            sh.set(CellAddr::new(2, 0), cell);
+            for (r, n) in [(1, 12345678.0), (3, 1234.5678), (4, 123456789.0)] {
+                sh.set(CellAddr::new(r, 0), Cell::constant(Value::Number(n)));
+            }
+            sh.col_widths.insert(1, 4.0);
+        }
+        let pg = paginate(&wb, 0, &PrintOptions::default());
+        let sc = page_scene(
+            &wb,
+            &pg,
+            &pg.pages[0],
+            &PrintData::default(),
+            &HfContext::default(),
+        );
+        fn walk<'a>(items: &'a [Item], out: &mut Vec<(&'a str, f32, f32)>) {
+            for it in items {
+                match it {
+                    Item::Text {
+                        text, size, face, ..
+                    } => {
+                        out.push((text, *size, std14::text_width(*face, text, *size)));
+                    }
+                    Item::Clip { items, .. } => walk(items, out),
+                    _ => {}
+                }
+            }
+        }
+        let mut t = Vec::new();
+        walk(&sc.items, &mut t);
+        // A default column (64px = 48pt) holds 2/28/2026 on screen: it prints, condensed
+        // to fit inside the cell padding.
+        let (_, size, w) = t
+            .iter()
+            .find(|x| x.0 == "2/28/2026")
+            .copied()
+            .unwrap_or_else(|| panic!("{t:?}"));
+        assert!(size < 11.0 && size > 9.0, "{size}");
+        assert!(w <= 48.0 - 2.0 * PAD_X * PX_TO_PT + 0.01, "{w}");
+        // As on screen: 12345678 and 1234.5678 print (condensed), 10/20/2026 and 123456789
+        // don't fit a default column.
+        assert!(t.iter().any(|x| x.0 == "12345678" && x.2 <= 43.51), "{t:?}");
+        assert!(t.iter().any(|x| x.0 == "1234.5678"), "{t:?}");
+        assert_eq!(
+            t.iter().filter(|x| x.0.starts_with('#')).count(),
+            3,
+            "{t:?}"
+        );
+        // A narrow column still shows ###.
+        assert!(t.iter().any(|x| x.0.starts_with('#')), "{t:?}");
     }
 
     #[test]
