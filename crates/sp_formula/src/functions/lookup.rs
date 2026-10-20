@@ -607,7 +607,7 @@ fn indirect(ev: &mut Ev<'_>, args: &[Expr]) -> EvalValue {
             range: rg,
         }),
         Err(_) => match ev.host.defined_name(body, ev.sheet) {
-            Some(expr) => ev.eval(&expr),
+            Some(expr) => ev.eval_detached(&expr),
             None => EvalValue::err(ErrorKind::Ref),
         },
     }

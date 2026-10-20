@@ -1,6 +1,6 @@
 //! Expression evaluator.
 
-use crate::ast::{BinOp, Expr, RefExpr, RefKind, UnOp};
+use crate::ast::{BinOp, CellPart, Expr, RefExpr, RefKind, UnOp};
 use crate::functions::{self, Registry};
 use sp_core::parse::parse_numeric_input;
 use sp_core::{CellAddr, CellRange, ErrorKind, MAX_CELLS_PER_OP, MAX_COLS, MAX_ROWS, Value};
@@ -202,6 +202,8 @@ pub struct Lambda {
     pub params: Vec<String>,
     pub body: Arc<Expr>,
     pub captured: Vec<(String, EvalValue)>,
+    /// Reference offset of the formula the body came from (see [`Ev::with_origin`]).
+    pub delta: (i64, i64),
 }
 
 /// Something that can be applied to argument values: a lambda or a built-in function
@@ -257,6 +259,9 @@ pub struct Ev<'h> {
     depth: usize,
     locals: Vec<(String, EvalValue)>,
     lambdas: Vec<Lambda>,
+    /// Offset (rows, cols) added to the relative parts of cell references: non-zero while
+    /// evaluating a shared tree parsed at another position (`crate::shared`).
+    delta: (i64, i64),
 }
 
 impl<'h> Ev<'h> {
@@ -269,7 +274,50 @@ impl<'h> Ev<'h> {
             depth: 0,
             locals: Vec::new(),
             lambdas: Vec::new(),
+            delta: (0, 0),
         }
+    }
+
+    /// Evaluate trees whose cell references were written for a formula at `origin` (a
+    /// shared tree, see `crate::shared`): relative parts are moved by `cell - origin`.
+    /// Defined names and anything else not part of the formula evaluate unmoved
+    /// ([`Ev::eval_detached`]).
+    pub fn with_origin(mut self, origin: Option<CellAddr>) -> Self {
+        self.delta = origin.map_or((0, 0), |o| {
+            (
+                i64::from(self.cell.row) - i64::from(o.row),
+                i64::from(self.cell.col) - i64::from(o.col),
+            )
+        });
+        self
+    }
+
+    /// Evaluate an expression that is not part of the formula's own text (a defined name's
+    /// formula): its references are not moved by the shared-formula offset.
+    pub fn eval_detached(&mut self, e: &Expr) -> EvalValue {
+        let saved = std::mem::take(&mut self.delta);
+        let r = self.eval(e);
+        self.delta = saved;
+        r
+    }
+
+    /// A reference part moved by the shared-formula offset (`None`: off the sheet).
+    fn part_addr(&self, c: &CellPart) -> Option<CellAddr> {
+        let (dr, dc) = self.delta;
+        if (dr, dc) == (0, 0) {
+            return Some(CellAddr::new(c.row, c.col));
+        }
+        let mv = |v: u32, abs: bool, d: i64, max: u32| -> Option<u32> {
+            if abs {
+                return Some(v);
+            }
+            let n = i64::from(v).checked_add(d)?;
+            (0..i64::from(max)).contains(&n).then_some(n as u32)
+        };
+        Some(CellAddr::new(
+            mv(c.row, c.row_abs, dr, MAX_ROWS)?,
+            mv(c.col, c.col_abs, dc, MAX_COLS)?,
+        ))
     }
 
     pub fn eval(&mut self, e: &Expr) -> EvalValue {
@@ -376,11 +424,21 @@ impl<'h> Ev<'h> {
     ) -> Option<EvalValue> {
         // Array-shaped results (plus functions taking whole ranges by design).
         const KEEP_RANGES: &[&str] = &[
-            "GROUPBY", "PIVOTBY", "FILTERXML", "XLOOKUP", "INDEX", "OFFSET", "INDIRECT", "LET",
-            "TEXTBEFORE", "TEXTAFTER",
+            "GROUPBY",
+            "PIVOTBY",
+            "FILTERXML",
+            "XLOOKUP",
+            "INDEX",
+            "OFFSET",
+            "INDIRECT",
+            "LET",
+            "TEXTBEFORE",
+            "TEXTAFTER",
         ];
         let upper = name.to_ascii_uppercase();
-        let base = upper.trim_start_matches("_XLFN.").trim_start_matches("_XLWS.");
+        let base = upper
+            .trim_start_matches("_XLFN.")
+            .trim_start_matches("_XLWS.");
         if functions::arrays::ARRAY_RESULT.contains(&base)
             || KEEP_RANGES.contains(&base)
             || self.registry.get(name).is_none()
@@ -473,6 +531,7 @@ impl<'h> Ev<'h> {
             params,
             body: Arc::new(body.clone()),
             captured,
+            delta: self.delta,
         });
         lambda_marker(self.lambdas.len() - 1)
     }
@@ -540,7 +599,9 @@ impl<'h> Ev<'h> {
                     self.push_local(p, v);
                 }
                 self.depth += 1;
+                let saved = std::mem::replace(&mut self.delta, l.delta);
                 let r = self.eval(&l.body);
+                self.delta = saved;
                 self.depth -= 1;
                 self.pop_locals(n);
                 r
@@ -568,7 +629,7 @@ impl<'h> Ev<'h> {
             return v.clone();
         }
         match self.host.defined_name(n, self.sheet) {
-            Some(expr) => self.eval(&expr),
+            Some(expr) => self.eval_detached(&expr),
             None => EvalValue::err(ErrorKind::Name),
         }
     }
@@ -607,10 +668,14 @@ impl<'h> Ev<'h> {
             return EvalValue::err(ErrorKind::Ref);
         };
         let range = match &r.kind {
-            RefKind::Cell(c) => CellRange::single(CellAddr::new(c.row, c.col)),
-            RefKind::Area(a, b) => {
-                CellRange::new(CellAddr::new(a.row, a.col), CellAddr::new(b.row, b.col))
-            }
+            RefKind::Cell(c) => match self.part_addr(c) {
+                Some(a) => CellRange::single(a),
+                None => return EvalValue::err(ErrorKind::Ref),
+            },
+            RefKind::Area(a, b) => match (self.part_addr(a), self.part_addr(b)) {
+                (Some(a), Some(b)) => CellRange::new(a, b),
+                _ => return EvalValue::err(ErrorKind::Ref),
+            },
             RefKind::Cols { c0, c1, .. } => {
                 CellRange::new(CellAddr::new(0, *c0), CellAddr::new(MAX_ROWS - 1, *c1))
             }
@@ -700,7 +765,7 @@ impl<'h> Ev<'h> {
         }
         let Some(spec) = self.registry.get(name) else {
             if let Some(expr) = self.host.defined_name(name, self.sheet) {
-                let v = self.eval(&expr);
+                let v = self.eval_detached(&expr);
                 return match lambda_id(&v) {
                     Some(id) => {
                         let vals = self.eval_args(args);
@@ -725,8 +790,14 @@ impl<'h> Ev<'h> {
     /// broadcast shape (Excel's implicit array lifting), otherwise once with the values.
     fn call_lifted(&mut self, imp: functions::FnImp, args: &[Expr]) -> EvalValue {
         const NAMES: [&str; 8] = [
-            "\u{1}lift0", "\u{1}lift1", "\u{1}lift2", "\u{1}lift3", "\u{1}lift4",
-            "\u{1}lift5", "\u{1}lift6", "\u{1}lift7",
+            "\u{1}lift0",
+            "\u{1}lift1",
+            "\u{1}lift2",
+            "\u{1}lift3",
+            "\u{1}lift4",
+            "\u{1}lift5",
+            "\u{1}lift6",
+            "\u{1}lift7",
         ];
         if args.len() > NAMES.len() {
             return imp(self, args);
@@ -762,8 +833,20 @@ impl<'h> Ev<'h> {
             match v {
                 Some(v) if functions::is_multi(v) => match self.to_array(v.clone()) {
                     Ok(a) => {
-                        rows = if rows == 1 { a.rows } else if a.rows == 1 { rows } else { rows.max(a.rows) };
-                        cols = if cols == 1 { a.cols } else if a.cols == 1 { cols } else { cols.max(a.cols) };
+                        rows = if rows == 1 {
+                            a.rows
+                        } else if a.rows == 1 {
+                            rows
+                        } else {
+                            rows.max(a.rows)
+                        };
+                        cols = if cols == 1 {
+                            a.cols
+                        } else if a.cols == 1 {
+                            cols
+                        } else {
+                            cols.max(a.cols)
+                        };
                         arrays.push(Some(a));
                     }
                     Err(e) => return EvalValue::err(e),

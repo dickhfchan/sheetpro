@@ -30,28 +30,101 @@ use std::sync::Arc;
 
 pub use crate::deps::Key;
 
-/// Parsed-formula cache keyed by cell; entries are re-parsed when the source text changes.
-/// Also holds the dependency graph built by the last full recalc (for `recalc_dirty`).
+/// A parsed formula: its tree, and the position the tree's cell references were written
+/// for when several cells share it (`None`: the formula's own position).
+#[derive(Debug, Clone)]
+pub struct Parsed {
+    pub expr: Arc<Expr>,
+    pub origin: Option<CellAddr>,
+}
+
+enum CacheEntry {
+    Tree(Result<Parsed, ParseError>),
+    /// A relative key whose tree did not match it: use the literal key.
+    Unshared,
+}
+
+/// Parsed-formula cache keyed by *relative key* (`crate::shared`): every cell of a
+/// filled-down range shares one tree, evaluated with its own position offset. Entries not
+/// used by the last full recalc are dropped by the next one. Also holds the dependency graph
+/// built by the last full recalc (for `recalc_dirty`).
 #[derive(Default)]
 pub struct AstCache {
-    map: FxMap<Key, (String, Result<Arc<Expr>, ParseError>)>,
+    map: FxMap<Box<str>, CacheEntry>,
+    /// Entries before the current full recalc (moved back into `map` when used).
+    prev: FxMap<Box<str>, CacheEntry>,
     deps: Option<DepGraph>,
+    key: String,
 }
 
 impl AstCache {
-    pub fn get(&mut self, key: Key, src: &str) -> Result<Arc<Expr>, ParseError> {
-        if let Some((s, r)) = self.map.get(&key)
-            && s == src
-        {
+    /// The parsed formula `src` of cell `key`.
+    pub fn get(&mut self, key: Key, src: &str) -> Result<Parsed, ParseError> {
+        let at = key.1;
+        if crate::shared::rel_key(src, at, &mut self.key) != crate::shared::KeyKind::Literal {
+            match self.lookup() {
+                Some(CacheEntry::Tree(r)) => return r.clone(),
+                Some(CacheEntry::Unshared) => {}
+                None => {
+                    let r = parse(src);
+                    let entry = match r {
+                        Ok(e) if crate::shared::verify(&e, &self.key, at).shareable => {
+                            CacheEntry::Tree(Ok(Parsed {
+                                expr: Arc::new(e),
+                                origin: Some(at),
+                            }))
+                        }
+                        _ => CacheEntry::Unshared,
+                    };
+                    let k: Box<str> = self.key.as_str().into();
+                    let out = match &entry {
+                        CacheEntry::Tree(r) => Some(r.clone()),
+                        CacheEntry::Unshared => None,
+                    };
+                    self.map.insert(k, entry);
+                    if let Some(r) = out {
+                        return r;
+                    }
+                }
+            }
+            self.key.clear();
+            self.key.push('\u{0}');
+            self.key.push_str(src);
+        }
+        if let Some(CacheEntry::Tree(r)) = self.lookup() {
             return r.clone();
         }
-        let r = parse(src).map(Arc::new);
-        self.map.insert(key, (src.to_string(), r.clone()));
+        let r = parse(src).map(|e| Parsed {
+            expr: Arc::new(e),
+            origin: None,
+        });
+        self.map
+            .insert(self.key.as_str().into(), CacheEntry::Tree(r.clone()));
         r
+    }
+
+    /// Entry for `self.key`, reviving it from before the last full recalc.
+    fn lookup(&mut self) -> Option<&CacheEntry> {
+        if !self.map.contains_key(self.key.as_str()) {
+            let (k, v) = self.prev.remove_entry(self.key.as_str())?;
+            self.map.insert(k, v);
+        }
+        self.map.get(self.key.as_str())
+    }
+
+    /// Start a full recalc: entries it does not use are dropped by [`AstCache::end_pass`].
+    fn begin_pass(&mut self) {
+        self.prev = std::mem::take(&mut self.map);
+        self.deps = None;
+    }
+
+    fn end_pass(&mut self) {
+        self.prev = FxMap::default();
     }
 
     pub fn clear(&mut self) {
         self.map.clear();
+        self.prev.clear();
         self.deps = None;
     }
 
@@ -548,10 +621,10 @@ fn compute(
             };
             let value = match cache.get(top, src) {
                 Err(_) => unparsable_value(src),
-                Ok(expr) => {
+                Ok(parsed) => {
                     host.pending.borrow_mut().clear();
-                    let mut ev = Ev::new(&host, top.0, top.1);
-                    let r = ev.eval(&expr);
+                    let mut ev = Ev::new(&host, top.0, top.1).with_origin(parsed.origin);
+                    let r = ev.eval(&parsed.expr);
                     // Finalizing may read a returned reference's cell: do it before checking
                     // for pending precedents so those reads are tracked too.
                     let (v, spill) = finalize_formula(&ev, wb, top, r);
@@ -763,6 +836,7 @@ pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> R
         }
     }
     stats.formulas = formulas.len();
+    cache.begin_pass();
     drop_dead_areas(wb, None);
     let results = compute(wb, cache, &formulas, None, opts, &mut stats);
     let grown = write_back(wb, results);
@@ -771,9 +845,15 @@ pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> R
         let Some(src) = formula_src(wb, *key) else {
             continue;
         };
-        let expr = cache.get(*key, src).ok();
-        graph.insert(wb, *key, expr.as_deref());
+        let parsed = cache.get(*key, src).ok();
+        graph.insert_at(
+            wb,
+            *key,
+            parsed.as_ref().map(|p| &*p.expr),
+            parsed.as_ref().and_then(|p| p.origin),
+        );
     }
+    cache.end_pass();
     graph.has_cycles = stats.cycles > 0;
     if !grown.is_empty() && !graph.has_cycles {
         settle_spills(wb, cache, &mut graph, grown, opts, &mut stats);
@@ -806,8 +886,13 @@ pub fn recalc_dirty(
             .map(str::to_string);
         match src {
             Some(src) => {
-                let expr = cache.get(key, &src).ok();
-                graph.insert(wb, key, expr.as_deref());
+                let parsed = cache.get(key, &src).ok();
+                graph.insert_at(
+                    wb,
+                    key,
+                    parsed.as_ref().map(|p| &*p.expr),
+                    parsed.as_ref().and_then(|p| p.origin),
+                );
             }
             None => graph.remove(key),
         }
@@ -1629,5 +1714,58 @@ mod tests {
         recalc(&mut wb, &mut AstCache::default(), opts);
         assert_eq!(v(&wb, "A8"), Value::Number(11.0));
         assert_eq!(v(&wb, "B2"), Value::Number(3.0));
+    }
+
+    /// Filled-down formulas share one tree per relative form; every cell must still get
+    /// exactly what evaluating its own text gives (names, lambdas, spills, INDIRECT, ROW).
+    #[test]
+    fn shared_trees_evaluate_like_their_own_text() {
+        let mut wb = Workbook::new();
+        wb.names.push(sp_model::DefinedName {
+            name: "Base".into(),
+            formula: "Sheet1!$A$1+Sheet1!A1".into(),
+            scope: None,
+        });
+        wb.names.push(sp_model::DefinedName {
+            name: "Twice".into(),
+            formula: "LAMBDA(x,x*2+A2)".into(),
+            scope: None,
+        });
+        let s = &mut wb.sheets[0];
+        let fills: [fn(u32) -> String; 12] = [
+            |r| format!("A{r}*2+1"),
+            |r| format!("SUM($A$1:A{r})"),
+            |r| format!("Base+A{r}"),
+            |r| format!("Twice(A{r})"),
+            |r| format!("LET(f,LAMBDA(x,x+A{r}),f(1))"),
+            |r| format!("ROW()+ROW(A{r})+COLUMN(B{r})"),
+            |r| format!("INDIRECT(\"A{r}\")+INDIRECT(\"Base\")"),
+            |r| format!("IF(A{r}>3,\"hi\",\"lo\")"),
+            |r| format!("SUM(A{r}:A{})", r + 1),
+            |r| format!("SUM(OFFSET(A{r},0,0,2,1))"),
+            |r| format!("A{r} A$1:A$9"),
+            |r| format!("N(L{r})+1"),
+        ];
+        for r in 1..=12u32 {
+            s.set(CellAddr::new(r - 1, 0), MCell::constant(n(f64::from(r))));
+            for (c, f) in fills.iter().enumerate() {
+                s.set(CellAddr::new(r - 1, 1 + c as u32), MCell::formula(f(r)));
+            }
+        }
+        let mut cache = AstCache::default();
+        recalc(&mut wb, &mut cache, OPTS);
+        // A handful of trees serve all 144 formulas.
+        assert!(cache.len() < 40, "{} cache entries", cache.len());
+        for (a, c) in wb.sheets[0].iter() {
+            let Some(src) = c.formula_src() else { continue };
+            let own = eval_formula(&wb, 0, a, src);
+            assert_eq!(c.value, own, "{} = {src}", a.to_a1());
+        }
+        assert_eq!(v(&wb, "D3"), n(1.0 + 1.0 + 3.0));
+        assert_eq!(v(&wb, "E3"), n(3.0 * 2.0 + 2.0));
+        // Incremental recalc through shared trees and their dependency entries.
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A5", "100")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "-1")]);
+        edit_and_compare(&mut wb, &mut cache, &[(0, "B7", "=A7*2+1")]);
     }
 }

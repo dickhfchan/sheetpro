@@ -95,10 +95,28 @@ struct Collector<'a> {
     sheet: usize,
     /// The formula's cell, for unqualified table references (`[@Col]`).
     cell: Option<CellAddr>,
+    /// Shared-formula offset applied to relative reference parts (see `Ev::with_origin`).
+    delta: (i64, i64),
     visited: usize,
 }
 
 impl Collector<'_> {
+    /// A reference part moved by the shared-formula offset (`None`: off the sheet).
+    fn part(&self, c: &crate::ast::CellPart) -> Option<CellAddr> {
+        let (dr, dc) = self.delta;
+        let mv = |v: u32, abs: bool, d: i64, max: u32| -> Option<u32> {
+            if abs || d == 0 {
+                return Some(v);
+            }
+            let n = i64::from(v).checked_add(d)?;
+            (0..i64::from(max)).contains(&n).then_some(n as u32)
+        };
+        Some(CellAddr::new(
+            mv(c.row, c.row_abs, dr, MAX_ROWS)?,
+            mv(c.col, c.col_abs, dc, MAX_COLS)?,
+        ))
+    }
+
     fn add(&self, out: &mut Precedents, sheet: usize, rg: CellRange) {
         if rg.is_single() {
             out.cells.push((sheet, rg.start));
@@ -124,10 +142,15 @@ impl Collector<'_> {
                     return;
                 };
                 let rg = match &r.kind {
-                    RefKind::Cell(c) => CellRange::single(CellAddr::new(c.row, c.col)),
-                    RefKind::Area(a, b) => {
-                        CellRange::new(CellAddr::new(a.row, a.col), CellAddr::new(b.row, b.col))
-                    }
+                    // Off the sheet: the formula evaluates to #REF!, depending on nothing.
+                    RefKind::Cell(c) => match self.part(c) {
+                        Some(a) => CellRange::single(a),
+                        None => return,
+                    },
+                    RefKind::Area(a, b) => match (self.part(a), self.part(b)) {
+                        (Some(a), Some(b)) => CellRange::new(a, b),
+                        _ => return,
+                    },
                     RefKind::Cols { c0, c1, .. } => {
                         CellRange::new(CellAddr::new(0, *c0), CellAddr::new(MAX_ROWS - 1, *c1))
                     }
@@ -158,7 +181,10 @@ impl Collector<'_> {
                         out.always = true;
                         return;
                     }
+                    // A name's formula is not moved by the shared-formula offset.
+                    let saved = std::mem::take(&mut self.delta);
                     self.collect(&expr, depth + 1, out);
+                    self.delta = saved;
                 }
             }
             Expr::Binary(BinOp::Range, a, b) => {
@@ -264,8 +290,16 @@ fn collect_with(
     names: &NameMap,
     sheet: usize,
     cell: Option<CellAddr>,
+    origin: Option<CellAddr>,
     expr: &Expr,
 ) -> Precedents {
+    let delta = match (cell, origin) {
+        (Some(c), Some(o)) => (
+            i64::from(c.row) - i64::from(o.row),
+            i64::from(c.col) - i64::from(o.col),
+        ),
+        _ => (0, 0),
+    };
     let mut out = Precedents {
         always: expr.is_volatile(),
         ..Precedents::default()
@@ -275,6 +309,7 @@ fn collect_with(
         names,
         sheet,
         cell,
+        delta,
         visited: 0,
     };
     c.collect(expr, 0, &mut out);
@@ -288,7 +323,7 @@ fn collect_with(
 
 /// Precedents of a formula on `sheet`, with defined names resolved against `wb`.
 pub fn precedents(wb: &Workbook, sheet: usize, expr: &Expr) -> Precedents {
-    collect_with(wb, &name_map(wb), sheet, None, expr)
+    collect_with(wb, &name_map(wb), sheet, None, None, expr)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -423,9 +458,21 @@ impl DepGraph {
 
     /// Register formula `key`. `expr` is `None` for a formula that failed to parse.
     pub fn insert(&mut self, wb: &Workbook, key: Key, expr: Option<&Expr>) {
+        self.insert_at(wb, key, expr, None);
+    }
+
+    /// Register formula `key` whose tree was written for a formula at `origin` (a shared
+    /// tree; `None`: written for `key` itself).
+    pub fn insert_at(
+        &mut self,
+        wb: &Workbook,
+        key: Key,
+        expr: Option<&Expr>,
+        origin: Option<CellAddr>,
+    ) {
         self.remove(key);
         let p = match expr {
-            Some(e) => collect_with(wb, &self.names, key.0, Some(key.1), e),
+            Some(e) => collect_with(wb, &self.names, key.0, Some(key.1), origin, e),
             None => Precedents::default(),
         };
         self.next_generation += 1;

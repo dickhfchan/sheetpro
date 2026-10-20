@@ -7,6 +7,7 @@ pub mod functions;
 pub mod parser;
 pub mod pivot;
 pub mod print;
+pub mod shared;
 pub mod recalc;
 pub mod shift;
 pub mod structref;
