@@ -1238,7 +1238,18 @@ fn edit_fields(pv: &mut PivotTable, p: &Json) -> Result<bool, CmdError> {
     }
     match area {
         Some(None) => remove_field(pv, field),
-        Some(Some(a)) => place(pv, field, a, position),
+        Some(Some(a)) => {
+            // Dragging a row/column/filter field to Values moves it there ("move": true);
+            // from the field list it is added and stays where it is.
+            if a == Area::Values && bool_opt(p, "move").unwrap_or(false) {
+                for other in [Area::Filters, Area::Cols, Area::Rows] {
+                    if let Some(v) = axis_mut(pv, other) {
+                        v.retain(|f| *f != field);
+                    }
+                }
+            }
+            place(pv, field, a, position)
+        }
         None if bool_opt(p, "remove").unwrap_or(false) => remove_field(pv, field),
         None => {}
     }
@@ -1494,7 +1505,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("data.refresh_all", "{}", refresh_all),
         CommandSpec::new(
             "pivot.field",
-            r#"{"pivot"?: "PivotTable1" (default: pivot at the active cell), "field"?: "Region", "area"?: "rows|cols|filters|values|none", "position"?: 0, "check"?: bool (add to Rows, numbers to Values / remove), "remove"?: bool, "value"?: N (a Values entry: with "func"?, "show_as"?, "num_fmt"?, "name"?, "area"?, "position"?, "remove"?), "layout"?: "compact|outline|tabular", "grand_totals"?: bool, "subtotals"?: bool, "refresh"?: bool, "overwrite"?: bool} → the pivot's fields and areas"#,
+            r#"{"pivot"?: "PivotTable1" (default: pivot at the active cell), "field"?: "Region", "area"?: "rows|cols|filters|values|none", "position"?: 0, "move"?: bool (with area values: take it out of rows/cols/filters), "check"?: bool (add to Rows, numbers to Values / remove), "remove"?: bool, "value"?: N (a Values entry: with "func"?, "show_as"?, "num_fmt"?, "name"?, "area"?, "position"?, "remove"?), "layout"?: "compact|outline|tabular", "grand_totals"?: bool, "subtotals"?: bool, "refresh"?: bool, "overwrite"?: bool} → the pivot's fields and areas"#,
             pivot_field,
         ),
         CommandSpec::new(
@@ -1624,6 +1635,30 @@ mod tests {
         ] {
             assert!(s.execute("insert.pivot_table", &bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn values_drop_moves_from_an_axis_only_with_move() {
+        let mut s = sales();
+        s.execute(
+            "insert.pivot_table",
+            &json!({"source": "A1:D6", "dest": "F1", "rows": ["Region"], "values": ["Sales"]}),
+        )
+        .unwrap();
+        // From the field list: added to Values, still in Rows.
+        s.execute("pivot.field", &json!({"field": "Region", "area": "values"}))
+            .unwrap();
+        let pv = &s.wb.sheets[0].analysis.pivots[0];
+        assert_eq!((pv.rows.len(), pv.values.len()), (1, 2));
+        s.execute("edit.undo", &json!({})).unwrap();
+        // Dragged from Rows: moved.
+        s.execute(
+            "pivot.field",
+            &json!({"field": "Region", "area": "values", "move": true}),
+        )
+        .unwrap();
+        let pv = &s.wb.sheets[0].analysis.pivots[0];
+        assert_eq!((pv.rows.len(), pv.values.len()), (0, 2));
     }
 
     #[test]

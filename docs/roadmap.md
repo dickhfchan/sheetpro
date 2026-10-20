@@ -1,6 +1,6 @@
 # Roadmap
 
-Status legend: ✅ done · 🟡 in progress · ⬜ not started. Updated 2026-10-19.
+Status legend: ✅ done · 🟡 in progress · ⬜ not started. Updated 2026-10-20.
 
 **Parity metrics.** `cargo xtask parity` measures how much of the target's catalog (ribbon /
 keyboard commands and worksheet functions) is *wired* (`parity.md`). It does **not** measure
@@ -19,8 +19,8 @@ oracle results (`cargo xtask test-corpus`), the scorecard, and the honest assess
 | M7 Dynamic arrays | 🟡 | spill, `#SPILL!`, FILTER/SORT/UNIQUE/SEQUENCE, LAMBDA family |
 | M8 Data tools | 🟡 | sort, AutoFilter + dropdowns, validation lists, tables + dialogs, what-if (goal seek, data tables, scenarios), consolidate, forecast sheet |
 | M9 Charts & objects | 🟡 | charts (mouse select/move/resize), sparklines, comment/note cards; pictures, shapes, text boxes, lines, cell checkboxes and backgrounds drawn on screen and in PDF, mouse select/move/delete |
-| M10 Print & PDF | 🟡 | pagination, PDF export (standard-14 fonts), header/footer, page break preview, page layout view; no OS print dialog |
-| M11 Pivot tables | 🟡 | model, layout, refresh, PivotTable Fields pane (menus, no drag-and-drop), value number formats, clickable slicers (not printed, not movable), GETPIVOTDATA/GROUPBY/PIVOTBY, .xlsx adopt-or-pass-through |
+| M10 Print & PDF | 🟡 | pagination, PDF export (standard-14 fonts), header/footer, page break preview, page layout view, slicers printed; no OS print dialog |
+| M11 Pivot tables | 🟡 | model, layout, refresh, PivotTable Fields pane (menus and drag-and-drop), value number formats, slicers (click to filter, mouse move/resize, printed), GETPIVOTDATA/GROUPBY/PIVOTBY, .xlsx adopt-or-pass-through |
 | M12 Automation | ✅ | control channel, `sp mcp` server (10 tools), macros commands; DoD met: agent workflow tasks pass in the gate |
 
 ## Honest parity assessment (2026-10-19)
@@ -46,15 +46,18 @@ round-trip; all perf budgets met at 20k rows (quick run).
 3. Editing ergonomics: clipboard, fill, undo, keyboard navigation feel.
 4. Grid performance at 1M rows.
 
-## Current focus (wave 7)
+## Current focus (wave 8)
 
-Wave 6 (2026-10-19) landed: objects/slicers/pivot pane drawn, oracle 209/218, M5 audit, 1M-row
-perf suite (`cargo xtask perf --million`). The assessment above predates it.
+Wave 7 (2026-10-20) landed: shared parse trees (1M-row recalc 5.6 -> 2.3 s, sort/insert ~2x
+faster, formula engine memory 3.2 -> 0.35 GB), trial polish (PDF ###, italic, slicers print and
+move, fields-pane drag-and-drop, UTF-16 text functions). `cargo xtask smoke --full` (231
+end-to-end checks on the release build) guards every merge.
 
 1. Real-user trial: hand out `cargo xtask package` builds, turn every bug into a regression test
-   and a scorecard row.
-2. Memory at 1M rows (7.2 GB peak): share one parse tree across filled-down formulas, evaluate
-   with an offset. Also cuts cold recalc, load, save, sort and insert time.
-3. Remaining oracle: XIRR/IRR iteration (13 cells), table-filter state for SUBTOTAL (7 cells).
-4. Polish from wave 6: slicers in PDF and movable, italic font face, rotated hit-testing,
-   drag-and-drop in the fields pane.
+   and a smoke check.
+2. Peak memory at 1M rows (~4.3 GB): undo history copies the sheet per whole-sheet operation;
+   take the redo snapshot after the post-transaction recalc, keep values when sort moves rows.
+3. Load: stream sheet XML instead of one large string. Save: choose the deflate level.
+4. Remaining oracle: XIRR/IRR iteration (13 cells), table-filter state for SUBTOTAL (7 cells).
+5. Polish: italic chart text (needs a font style in the chart model), rotated-object
+   hit-testing.

@@ -235,3 +235,23 @@ Numbers: oracle 192 -> 209/218 files, cells 72802 -> 73219/73244 (99.97%); comma
 
 Still open: 9 oracle files (XIRR/IRR precision, MAX(ROW(B:B)), table-filter SUBTOTAL, 2 locale
 and 1 ill-conditioned artifact); 1M-row memory; slicers not printed or movable.
+
+## 2026-10-20 — Wave 7 (2 parallel arcs)
+
+Landed:
+- parse: formulas keyed by relative form (`sp_formula::shared::rel_key`) share one parse tree;
+  the evaluator and dependency collector shift relative refs by the cell offset. Bulk rewrites
+  (sort, fill, insert/delete, xlsx load/save) run once per key (`FormulaMemo`). Filled-down
+  runs of 8+ register once in the dependency graph. 1M x 10 (4M formulas): cold recalc 5.6 ->
+  2.3 s, sort 6.5 -> 3.3 s, insert 6.2 -> 2.9 s, load 4.7 -> 4.1 s, save 5.0 -> 4.3 s; peak RSS
+  5.7 -> ~4.3 GB (engine memory 3.2 -> 0.35 GB; the rest is undo snapshots). Budgets re-set.
+- polish: PDF prints numbers that fit on screen (condensed if Helvetica is wider) instead of
+  ###; objects cover filter buttons and take the click; synthetic italic; slicers select,
+  move, resize, delete and print; fields-pane drag-and-drop; text functions count UTF-16 units
+  (a split surrogate becomes U+FFFD).
+
+Integration: no conflicts. Added `pivot.field` "move": dragging a row/column/filter field to
+Values (or Move to Values) moves it; from the field list it adds, as in the target.
+Gate green; `cargo xtask smoke --full` 231/231, 0 known issues; perf --quick within budgets.
+
+Still open: undo snapshots dominate 1M-row peak memory; italic chart text; rotated hit-testing.

@@ -63,6 +63,10 @@ fn drop_edit(drag: &PaneDrag, area: &str, position: usize) -> Option<Json> {
                 let at = adjust(*fi);
                 (at != *fi).then(|| json!({ "field": name, "area": a, "position": at }))
             }
+            // From an axis to Values is a move; from the field list it adds.
+            ("values", Some(_)) => {
+                Some(json!({ "field": name, "area": "values", "position": position, "move": true }))
+            }
             (a, _) => Some(json!({ "field": name, "area": a, "position": position })),
         },
         PaneDrag::Value(i) => match area {
@@ -383,7 +387,7 @@ fn field_menu(ui: &mut Ui, name: &str, area: &str, i: usize, n: usize, edits: &m
     ui.separator();
     for (a, title) in AREAS {
         if a != area && ui.button(format!("Move to {title}")).clicked() {
-            push(ui, json!({ "field": name, "area": a }));
+            push(ui, json!({ "field": name, "area": a, "move": true }));
         }
     }
     ui.separator();
@@ -471,6 +475,15 @@ mod tests {
         assert_eq!(
             drop_edit(&field("Year", Some(("rows", 2))), "rows", 0),
             Some(json!({"field": "Year", "area": "rows", "position": 0}))
+        );
+        // To Values: from an axis it moves, from the list it adds.
+        assert_eq!(
+            drop_edit(&field("Region", Some(("rows", 0))), "values", 0),
+            Some(json!({"field": "Region", "area": "values", "position": 0, "move": true}))
+        );
+        assert_eq!(
+            drop_edit(&field("Region", None), "values", 0),
+            Some(json!({"field": "Region", "area": "values", "position": 0}))
         );
         // Values: reorder, move out to an axis, remove.
         assert_eq!(
