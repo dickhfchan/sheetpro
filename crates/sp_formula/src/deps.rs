@@ -10,11 +10,11 @@
 //! Index entries are invalidated lazily: each formula node carries a generation, and an
 //! entry is live only while its generation matches. Stale entries are compacted in bulk.
 
-use crate::ast::{BinOp, Expr, RefKind};
+use crate::ast::{BinOp, CellPart, Expr, RefKind};
 use crate::parser::parse;
 use sp_core::{CellAddr, CellRange, MAX_COLS, MAX_ROWS};
 use sp_model::Workbook;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Arc;
 
@@ -77,6 +77,10 @@ const MAX_NAME_DEPTH: u32 = 16;
 const MAX_COLLECT_NODES: usize = 100_000;
 /// Range-index probe work allowed per propagation before falling back to a full recalc.
 const MAX_PROBE_WORK: u64 = 50_000_000;
+/// Shortest vertical run of one shared tree registered as a [`Group`].
+pub const MIN_GROUP: u32 = 8;
+/// Point entries of one column probed per changed cell; longer lists are probed in bulk.
+const MAX_EAGER_POINTS: usize = 8;
 
 /// Statically known precedents of one formula.
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -381,6 +385,120 @@ struct Node {
     full_sheets: Vec<usize>,
 }
 
+/// A row bound of a group precedent: `v`, plus the member's row when `rel`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RowBound {
+    v: i64,
+    rel: bool,
+}
+
+impl RowBound {
+    fn abs(v: u32) -> Self {
+        RowBound {
+            v: i64::from(v),
+            rel: false,
+        }
+    }
+
+    fn at(self, r: u32) -> i64 {
+        if self.rel {
+            self.v + i64::from(r)
+        } else {
+            self.v
+        }
+    }
+}
+
+/// One precedent of every member of a group, as a function of the member's row: columns
+/// `c0..=c1` (the same for every member: a group is one column), rows between `lo` and `hi`.
+#[derive(Debug, Clone, Copy)]
+struct GroupPrec {
+    sheet: usize,
+    c0: u32,
+    c1: u32,
+    lo: RowBound,
+    hi: RowBound,
+}
+
+impl GroupPrec {
+    /// One cell at a fixed offset from each member: a change dirties at most one member.
+    fn is_point(&self) -> bool {
+        self.lo == self.hi && self.lo.rel && self.c0 == self.c1
+    }
+
+    /// Members among rows `r0..=r1` whose range contains row `x`, as up to two row
+    /// intervals: the range is `lo..=hi`, or `hi..=lo` where the bounds cross (the
+    /// evaluator orders a range's corners).
+    fn members(&self, x: u32, r0: u32, r1: u32, out: &mut Vec<(u32, u32)>) {
+        let x = i64::from(x);
+        for (a, b) in [(self.lo, self.hi), (self.hi, self.lo)] {
+            // a(r) <= x <= b(r)
+            let (mut lo, mut hi) = (i64::from(r0), i64::from(r1));
+            if a.rel {
+                hi = hi.min(x - a.v);
+            } else if a.v > x {
+                continue;
+            }
+            if b.rel {
+                lo = lo.max(x - b.v);
+            } else if b.v < x {
+                continue;
+            }
+            if lo <= hi {
+                out.push((lo as u32, hi as u32));
+            }
+            if a == b {
+                break;
+            }
+        }
+    }
+
+    /// The precedent's range for the member at row `r`.
+    fn range_at(&self, r: u32) -> Option<CellRange> {
+        let (a, b) = (self.lo.at(r), self.hi.at(r));
+        let ok = |v: i64| (0..i64::from(MAX_ROWS)).contains(&v);
+        (ok(a) && ok(b)).then(|| {
+            CellRange::new(
+                CellAddr::new(a as u32, self.c0),
+                CellAddr::new(b as u32, self.c1),
+            )
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GroupEntry {
+    gid: usize,
+    prec: GroupPrec,
+    generation: u64,
+}
+
+/// A vertical run of formula cells sharing one tree (a filled-down range), registered
+/// once instead of per cell. Members removed later (edited cells) become holes.
+#[derive(Debug)]
+struct Group {
+    sheet: usize,
+    col: u32,
+    r0: u32,
+    r1: u32,
+    expr: Arc<Expr>,
+    origin: CellAddr,
+    holes: FxSet<u32>,
+    generation: u64,
+    entries: usize,
+    full_sheets: Vec<usize>,
+}
+
+impl Group {
+    fn size(&self) -> usize {
+        (self.r1 - self.r0) as usize + 1
+    }
+
+    fn has(&self, r: u32) -> bool {
+        (self.r0..=self.r1).contains(&r) && !self.holes.contains(&r)
+    }
+}
+
 /// Precedent → dependents index over every formula of a workbook.
 #[derive(Debug, Default)]
 pub struct DepGraph {
@@ -397,6 +515,19 @@ pub struct DepGraph {
     tables: Vec<String>,
     defined: Vec<(String, String, Option<usize>)>,
     names: NameMap,
+    /// Shared-tree groups by id (`None`: removed).
+    groups: Vec<Option<Group>>,
+    /// Group ids by (sheet, column), keyed by first row.
+    group_at: FxMap<(usize, u32), BTreeMap<u32, usize>>,
+    /// Group precedents by precedent column: single cells (`gpoint`), narrow ranges
+    /// (`gcols`, one entry per column) and wide ranges (`gwide`, per sheet).
+    gpoint: FxMap<(usize, u32), Vec<GroupEntry>>,
+    gcols: FxMap<(usize, u32), Vec<GroupEntry>>,
+    gwide: FxMap<usize, Vec<GroupEntry>>,
+    /// Groups with whole-row/column refs into a sheet.
+    gfull: FxMap<usize, FxSet<usize>>,
+    /// Live group members.
+    members: usize,
     next_generation: u64,
     live: usize,
     stale: usize,
@@ -438,16 +569,289 @@ impl DepGraph {
             && self.tables == table_sig(wb)
     }
 
+    /// Registered formulas.
     pub fn len(&self) -> usize {
-        self.nodes.len()
+        self.nodes.len() + self.members
     }
 
     pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
+        self.len() == 0
+    }
+
+    /// Shared-tree groups and the formulas they hold (for statistics).
+    pub fn group_stats(&self) -> (usize, usize) {
+        (self.groups.iter().flatten().count(), self.members)
     }
 
     pub fn contains(&self, key: Key) -> bool {
-        self.nodes.contains_key(&key)
+        self.nodes.contains_key(&key) || self.member(key).is_some()
+    }
+
+    /// The group holding formula `key`.
+    fn member(&self, key: Key) -> Option<usize> {
+        let (_, &gid) = self
+            .group_at
+            .get(&(key.0, key.1.col))?
+            .range(..=key.1.row)
+            .next_back()?;
+        let g = self.groups.get(gid)?.as_ref()?;
+        g.has(key.1.row).then_some(gid)
+    }
+
+    /// True if `key` is registered as part of a group sharing `expr` written at `origin`
+    /// (its registration is current for that tree).
+    pub fn member_has(&self, key: Key, expr: &Arc<Expr>, origin: Option<CellAddr>) -> bool {
+        self.member(key)
+            .and_then(|gid| self.groups.get(gid)?.as_ref())
+            .is_some_and(|g| Arc::ptr_eq(&g.expr, expr) && Some(g.origin) == origin)
+    }
+
+    fn group_live(&self, e: &GroupEntry) -> Option<&Group> {
+        self.groups
+            .get(e.gid)?
+            .as_ref()
+            .filter(|g| g.generation == e.generation)
+    }
+
+    /// Precedents of every member of a group in `col` sharing `expr` (written at `origin`),
+    /// or `None` when they cannot be stated per member row (volatile, structured or
+    /// computed-range references, unknown sheets, ...): the members are then registered one
+    /// by one.
+    fn group_precs(
+        &self,
+        wb: &Workbook,
+        sheet: usize,
+        col: u32,
+        expr: &Expr,
+        origin: CellAddr,
+    ) -> Option<Vec<GroupPrec>> {
+        if expr.is_volatile() {
+            return None;
+        }
+        let dc = i64::from(col) - i64::from(origin.col);
+        let mut out = Vec::new();
+        let mut ok = true;
+        let mut visited = 0usize;
+        let absolute = |p: Precedents, out: &mut Vec<GroupPrec>| -> bool {
+            if p.always {
+                return false;
+            }
+            let all = p
+                .cells
+                .iter()
+                .map(|(s, a)| (*s, CellRange::single(*a)))
+                .chain(p.ranges.iter().copied());
+            for (s, r) in all {
+                out.push(GroupPrec {
+                    sheet: s,
+                    c0: r.start.col,
+                    c1: r.end.col,
+                    lo: RowBound::abs(r.start.row),
+                    hi: RowBound::abs(r.end.row),
+                });
+            }
+            true
+        };
+        expr.walk(&mut |e| {
+            if !ok {
+                return;
+            }
+            visited += 1;
+            if visited > MAX_COLLECT_NODES {
+                ok = false;
+                return;
+            }
+            match e {
+                Expr::Ref(r) => {
+                    let s = match &r.sheet {
+                        None => Some(sheet),
+                        Some(n) => wb.sheet_index(n),
+                    };
+                    let Some(s) = s else {
+                        ok = false;
+                        return;
+                    };
+                    let col_of = |c: &CellPart| -> Option<u32> {
+                        if c.col_abs {
+                            return Some(c.col);
+                        }
+                        let n = i64::from(c.col) + dc;
+                        (0..i64::from(MAX_COLS)).contains(&n).then_some(n as u32)
+                    };
+                    let row_of = |c: &CellPart| RowBound {
+                        v: if c.row_abs {
+                            i64::from(c.row)
+                        } else {
+                            i64::from(c.row) - i64::from(origin.row)
+                        },
+                        rel: !c.row_abs,
+                    };
+                    let p = match &r.kind {
+                        RefKind::Cell(c) => col_of(c).map(|cc| GroupPrec {
+                            sheet: s,
+                            c0: cc,
+                            c1: cc,
+                            lo: row_of(c),
+                            hi: row_of(c),
+                        }),
+                        RefKind::Area(a, b) => match (col_of(a), col_of(b)) {
+                            (Some(ca), Some(cb)) => Some(GroupPrec {
+                                sheet: s,
+                                c0: ca.min(cb),
+                                c1: ca.max(cb),
+                                lo: row_of(a),
+                                hi: row_of(b),
+                            }),
+                            _ => None,
+                        },
+                        RefKind::Cols { c0, c1, .. } => Some(GroupPrec {
+                            sheet: s,
+                            c0: *c0,
+                            c1: *c1,
+                            lo: RowBound::abs(0),
+                            hi: RowBound::abs(MAX_ROWS - 1),
+                        }),
+                        RefKind::Rows { r0, r1, .. } => Some(GroupPrec {
+                            sheet: s,
+                            c0: 0,
+                            c1: MAX_COLS - 1,
+                            lo: RowBound::abs(*r0),
+                            hi: RowBound::abs(*r1),
+                        }),
+                    };
+                    match p {
+                        Some(p) => out.push(p),
+                        None => ok = false,
+                    }
+                }
+                // Names resolve to the same cells for every member.
+                Expr::Name(n) => {
+                    let p =
+                        collect_with(wb, &self.names, sheet, None, None, &Expr::Name(n.clone()));
+                    ok &= absolute(p, &mut out);
+                }
+                Expr::Call(name, _)
+                    if !self.names.is_empty()
+                        && crate::functions::registry().get(name).is_none() =>
+                {
+                    let p = collect_with(
+                        wb,
+                        &self.names,
+                        sheet,
+                        None,
+                        None,
+                        &Expr::Name(name.clone()),
+                    );
+                    ok &= absolute(p, &mut out);
+                }
+                Expr::Table(_) | Expr::Binary(BinOp::Range, ..) => ok = false,
+                _ => {}
+            }
+        });
+        ok.then_some(out)
+    }
+
+    /// Register rows `r0..=r1` of column `col` on `sheet` — formulas sharing `expr`, written
+    /// for a formula at `origin` — as one group. The cells must not be registered yet.
+    /// False (nothing registered) when the group's precedents cannot be stated per member.
+    pub fn insert_group(
+        &mut self,
+        wb: &Workbook,
+        sheet: usize,
+        col: u32,
+        rows: (u32, u32),
+        expr: &Arc<Expr>,
+        origin: CellAddr,
+    ) -> bool {
+        let (r0, r1) = rows;
+        if r1 < r0 {
+            return false;
+        }
+        let Some(precs) = self.group_precs(wb, sheet, col, expr, origin) else {
+            return false;
+        };
+        self.next_generation += 1;
+        let generation = self.next_generation;
+        let gid = self.groups.len();
+        let mut entries = 0usize;
+        let mut full_sheets = Vec::new();
+        for p in precs {
+            let e = GroupEntry {
+                gid,
+                prec: p,
+                generation,
+            };
+            let full =
+                |r: Option<CellRange>| r.is_some_and(|r| r.is_full_cols() || r.is_full_rows());
+            if full(p.range_at(r0)) || full(p.range_at(r1)) {
+                full_sheets.push(p.sheet);
+            }
+            if p.is_point() {
+                self.gpoint.entry((p.sheet, p.c0)).or_default().push(e);
+                entries += 1;
+            } else if p.c1 - p.c0 + 1 > WIDE_COLS {
+                self.gwide.entry(p.sheet).or_default().push(e);
+                entries += 1;
+            } else {
+                for c in p.c0..=p.c1 {
+                    self.gcols.entry((p.sheet, c)).or_default().push(e);
+                    entries += 1;
+                }
+            }
+        }
+        full_sheets.sort_unstable();
+        full_sheets.dedup();
+        for s in &full_sheets {
+            self.gfull.entry(*s).or_default().insert(gid);
+        }
+        self.group_at
+            .entry((sheet, col))
+            .or_default()
+            .insert(r0, gid);
+        let g = Group {
+            sheet,
+            col,
+            r0,
+            r1,
+            expr: expr.clone(),
+            origin,
+            holes: FxSet::default(),
+            generation,
+            entries,
+            full_sheets,
+        };
+        self.members += g.size();
+        self.live += entries;
+        self.groups.push(Some(g));
+        true
+    }
+
+    /// Remove member `key` from its group (a hole); the last member removes the group.
+    fn remove_member(&mut self, gid: usize, row: u32) {
+        let Some(Some(g)) = self.groups.get_mut(gid) else {
+            return;
+        };
+        if !g.holes.insert(row) {
+            return;
+        }
+        self.members = self.members.saturating_sub(1);
+        if g.holes.len() < g.size() {
+            return;
+        }
+        let (sheet, col, r0, entries) = (g.sheet, g.col, g.r0, g.entries);
+        for s in std::mem::take(&mut g.full_sheets) {
+            if let Some(set) = self.gfull.get_mut(&s) {
+                set.remove(&gid);
+            }
+        }
+        if let Some(slot) = self.groups.get_mut(gid) {
+            *slot = None;
+        }
+        if let Some(m) = self.group_at.get_mut(&(sheet, col)) {
+            m.remove(&r0);
+        }
+        self.live = self.live.saturating_sub(entries);
+        self.stale += entries;
     }
 
     fn is_live(&self, dep: Key, generation: u64) -> bool {
@@ -532,6 +936,12 @@ impl DepGraph {
     /// Forget formula `key` (no-op if it is not registered).
     pub fn remove(&mut self, key: Key) {
         let Some(n) = self.nodes.remove(&key) else {
+            if let Some(gid) = self.member(key) {
+                self.remove_member(gid, key.1.row);
+                if self.stale > self.live + 65_536 {
+                    self.compact();
+                }
+            }
             return;
         };
         if n.always {
@@ -563,7 +973,53 @@ impl DepGraph {
             v.retain(|e| live(&e.dep, e.generation));
             !v.is_empty()
         });
+        let groups = &self.groups;
+        let glive = |e: &GroupEntry| {
+            groups
+                .get(e.gid)
+                .and_then(Option::as_ref)
+                .is_some_and(|g| g.generation == e.generation)
+        };
+        self.gpoint.retain(|_, v| {
+            v.retain(glive);
+            !v.is_empty()
+        });
+        self.gcols.retain(|_, v| {
+            v.retain(glive);
+            !v.is_empty()
+        });
+        self.gwide.retain(|_, v| {
+            v.retain(glive);
+            !v.is_empty()
+        });
         self.stale = 0;
+    }
+
+    /// Dirty the members of `g` in the merged row intervals `ivs` (sorted, merged here).
+    fn dirty_members(
+        g: &Group,
+        ivs: &mut Vec<(u32, u32)>,
+        dirty: &mut FxSet<Key>,
+        queue: &mut Vec<Key>,
+        work: &mut u64,
+    ) {
+        ivs.sort_unstable();
+        let mut next = 0u64;
+        for &(a, b) in ivs.iter() {
+            let a = u64::from(a).max(next);
+            for r in a..=u64::from(b) {
+                *work += 1;
+                let r = r as u32;
+                if !g.holes.contains(&r) {
+                    let k = (g.sheet, CellAddr::new(r, g.col));
+                    if dirty.insert(k) {
+                        queue.push(k);
+                    }
+                }
+            }
+            next = next.max(u64::from(b) + 1);
+        }
+        ivs.clear();
     }
 
     /// Formula cells that must be recomputed after `changed` cells were edited: changed
@@ -585,7 +1041,7 @@ impl DepGraph {
             })
             .collect();
         for &k in changed {
-            if self.nodes.contains_key(&k) {
+            if self.contains(k) {
                 dirty.insert(k);
             }
             queue.push(k);
@@ -613,15 +1069,57 @@ impl DepGraph {
                         }
                     }
                 }
+                if let Some(set) = self.gfull.get(&s) {
+                    for g in set.iter().filter_map(|gid| self.groups.get(*gid)?.as_ref()) {
+                        for r in g.r0..=g.r1 {
+                            let k = (g.sheet, CellAddr::new(r, g.col));
+                            if g.has(r) && dirty.insert(k) {
+                                queue.push(k);
+                            }
+                        }
+                    }
+                }
             }
         }
 
         let mut work: u64 = 0;
+        let mut ivs: Vec<(u32, u32)> = Vec::new();
         loop {
             // Phase 1: exhaust single-cell edges, recording positions for range probes.
             let mut col_probes: FxMap<(usize, u32), Vec<u32>> = FxMap::default();
             let mut sheet_probes: FxMap<usize, Vec<CellAddr>> = FxMap::default();
+            let mut gcol_probes: FxMap<(usize, u32), Vec<u32>> = FxMap::default();
+            let mut gsheet_probes: FxMap<usize, Vec<CellAddr>> = FxMap::default();
             while let Some(p) = queue.pop() {
+                // Groups reading this cell at a fixed offset: one member each.
+                let pkey = (p.0, p.1.col);
+                if let Some(v) = self.gpoint.get(&pkey) {
+                    if v.len() <= MAX_EAGER_POINTS {
+                        for e in v {
+                            work += 1;
+                            let Some(g) = self.group_live(e) else {
+                                continue;
+                            };
+                            let r = i64::from(p.1.row) - e.prec.lo.v;
+                            if let Ok(r) = u32::try_from(r)
+                                && g.has(r)
+                            {
+                                let k = (g.sheet, CellAddr::new(r, g.col));
+                                if dirty.insert(k) {
+                                    queue.push(k);
+                                }
+                            }
+                        }
+                    } else {
+                        gcol_probes.entry(pkey).or_default().push(p.1.row);
+                    }
+                }
+                if self.gcols.contains_key(&pkey) {
+                    gcol_probes.entry(pkey).or_default().push(p.1.row);
+                }
+                if self.gwide.contains_key(&p.0) {
+                    gsheet_probes.entry(p.0).or_default().push(p.1);
+                }
                 if let Some(r) = areas.get(&p) {
                     work += r.cell_count();
                     if work > MAX_PROBE_WORK {
@@ -674,6 +1172,49 @@ impl DepGraph {
                     if addrs.iter().any(|a| e.range.contains(*a)) && dirty.insert(e.dep) {
                         queue.push(e.dep);
                     }
+                }
+            }
+            // Groups: per entry, the members reading any changed row (merged intervals).
+            for ((s, c), mut rows) in gcol_probes {
+                rows.sort_unstable();
+                rows.dedup();
+                let point = self
+                    .gpoint
+                    .get(&(s, c))
+                    .filter(|v| v.len() > MAX_EAGER_POINTS);
+                let lists = [point, self.gcols.get(&(s, c))];
+                for e in lists.into_iter().flatten().flatten() {
+                    let Some(g) = self.group_live(e) else {
+                        continue;
+                    };
+                    for &x in &rows {
+                        work += 1;
+                        e.prec.members(x, g.r0, g.r1, &mut ivs);
+                    }
+                    Self::dirty_members(g, &mut ivs, &mut dirty, &mut queue, &mut work);
+                }
+                if work > MAX_PROBE_WORK {
+                    return None;
+                }
+            }
+            for (s, addrs) in gsheet_probes {
+                let Some(v) = self.gwide.get(&s) else {
+                    continue;
+                };
+                for e in v {
+                    let Some(g) = self.group_live(e) else {
+                        continue;
+                    };
+                    for a in &addrs {
+                        work += 1;
+                        if (e.prec.c0..=e.prec.c1).contains(&a.col) {
+                            e.prec.members(a.row, g.r0, g.r1, &mut ivs);
+                        }
+                    }
+                    Self::dirty_members(g, &mut ivs, &mut dirty, &mut queue, &mut work);
+                }
+                if work > MAX_PROBE_WORK {
+                    return None;
                 }
             }
             if work > MAX_PROBE_WORK {

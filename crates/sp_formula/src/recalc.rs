@@ -823,6 +823,83 @@ fn settle_spills(
     }
 }
 
+/// A vertical run of cells sharing one tree, being collected for the graph.
+struct Run {
+    r0: u32,
+    r1: u32,
+    expr: Arc<Expr>,
+    origin: CellAddr,
+}
+
+/// Register a finished run: as one group when long enough, else cell by cell.
+fn flush_run(graph: &mut DepGraph, wb: &Workbook, at: (usize, u32), run: Run) {
+    let (sheet, col) = at;
+    if run.r1 - run.r0 + 1 >= crate::deps::MIN_GROUP
+        && graph.insert_group(wb, sheet, col, (run.r0, run.r1), &run.expr, run.origin)
+    {
+        return;
+    }
+    for r in run.r0..=run.r1 {
+        graph.insert_at(
+            wb,
+            (sheet, CellAddr::new(r, col)),
+            Some(&run.expr),
+            Some(run.origin),
+        );
+    }
+}
+
+/// Dependency graph of `formulas` (sheet, then row-major order). Filled-down ranges (a
+/// column of cells sharing one tree) are registered as groups, the rest cell by cell.
+fn build_graph(wb: &Workbook, cache: &mut AstCache, formulas: &[Key]) -> DepGraph {
+    let mut graph = DepGraph::new(wb);
+    let mut runs: FxMap<(usize, u32), Run> = FxMap::default();
+    for key in formulas {
+        let Some(src) = formula_src(wb, *key) else {
+            continue;
+        };
+        let parsed = cache.get(*key, src).ok();
+        let Some(Parsed {
+            expr,
+            origin: Some(origin),
+        }) = parsed
+        else {
+            graph.insert_at(
+                wb,
+                *key,
+                parsed.as_ref().map(|p| &*p.expr),
+                parsed.as_ref().and_then(|p| p.origin),
+            );
+            continue;
+        };
+        let (sheet, a) = *key;
+        let fresh = Run {
+            r0: a.row,
+            r1: a.row,
+            expr,
+            origin,
+        };
+        match runs.entry((sheet, a.col)) {
+            std::collections::hash_map::Entry::Occupied(mut e) => {
+                let run = e.get_mut();
+                if run.r1.checked_add(1) == Some(a.row) && Arc::ptr_eq(&run.expr, &fresh.expr) {
+                    run.r1 = a.row;
+                } else {
+                    let done = std::mem::replace(run, fresh);
+                    flush_run(&mut graph, wb, (sheet, a.col), done);
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(fresh);
+            }
+        }
+    }
+    for (at, run) in runs {
+        flush_run(&mut graph, wb, at, run);
+    }
+    graph
+}
+
 /// Recalculate every formula in the workbook, writing results into each cell's `value`,
 /// and rebuild the dependency graph used by `recalc_dirty`.
 pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> RecalcStats {
@@ -840,19 +917,7 @@ pub fn recalc(wb: &mut Workbook, cache: &mut AstCache, opts: RecalcOptions) -> R
     drop_dead_areas(wb, None);
     let results = compute(wb, cache, &formulas, None, opts, &mut stats);
     let grown = write_back(wb, results);
-    let mut graph = DepGraph::new(wb);
-    for key in &formulas {
-        let Some(src) = formula_src(wb, *key) else {
-            continue;
-        };
-        let parsed = cache.get(*key, src).ok();
-        graph.insert_at(
-            wb,
-            *key,
-            parsed.as_ref().map(|p| &*p.expr),
-            parsed.as_ref().and_then(|p| p.origin),
-        );
-    }
+    let mut graph = build_graph(wb, cache, &formulas);
     cache.end_pass();
     graph.has_cycles = stats.cycles > 0;
     if !grown.is_empty() && !graph.has_cycles {
@@ -876,6 +941,7 @@ pub fn recalc_dirty(
         return recalc(wb, cache, opts);
     };
     if graph.has_cycles || !graph.matches(wb) {
+        drop(graph);
         return recalc(wb, cache, opts);
     }
     for &key in changed {
@@ -887,6 +953,12 @@ pub fn recalc_dirty(
         match src {
             Some(src) => {
                 let parsed = cache.get(key, &src).ok();
+                // Still the same member of a group: its registration stands.
+                if let Some(p) = &parsed
+                    && graph.member_has(key, &p.expr, p.origin)
+                {
+                    continue;
+                }
                 graph.insert_at(
                     wb,
                     key,
@@ -915,6 +987,7 @@ pub fn recalc_dirty(
     changed.extend(cleared);
     changed.extend(anchors);
     let Some(dirty) = graph.dirty_from(wb, &changed) else {
+        drop(graph);
         return recalc(wb, cache, opts);
     };
     // Same visiting order as a full recalc (sheet, then row-major).
@@ -927,11 +1000,13 @@ pub fn recalc_dirty(
     let results = compute(wb, cache, &order, Some(&dirty), opts, &mut stats);
     if stats.cycles > 0 {
         // A new circular reference: resolve it exactly as a full recalc would.
+        drop(graph);
         return recalc(wb, cache, opts);
     }
     let grown = write_back(wb, results);
     settle_spills(wb, cache, &mut graph, grown, opts, &mut stats);
     if stats.cycles > 0 {
+        drop(graph);
         return recalc(wb, cache, opts);
     }
     cache.deps = Some(graph);
@@ -1106,7 +1181,11 @@ mod tests {
     }
 
     /// Apply edits, recalc incrementally, and check against a cold full recalc.
-    fn edit_and_compare(wb: &mut Workbook, cache: &mut AstCache, edits: &[(usize, &str, &str)]) {
+    fn edit_and_compare(
+        wb: &mut Workbook,
+        cache: &mut AstCache,
+        edits: &[(usize, &str, &str)],
+    ) -> RecalcStats {
         let mut changed = Vec::new();
         for (si, a, input) in edits {
             let addr = CellAddr::parse(a).unwrap();
@@ -1120,7 +1199,7 @@ mod tests {
             }
             changed.push((*si, addr));
         }
-        recalc_dirty(wb, cache, &changed, OPTS);
+        let stats = recalc_dirty(wb, cache, &changed, OPTS);
         let mut full = wb.clone();
         recalc(&mut full, &mut AstCache::default(), OPTS);
         for (si, (a, b)) in wb.sheets.iter().zip(&full.sheets).enumerate() {
@@ -1138,6 +1217,7 @@ mod tests {
             }
         }
         assert_eq!(*wb, full, "incremental != full after {edits:?}");
+        stats
     }
 
     fn base(cells: &[(&str, &str)]) -> (Workbook, AstCache) {
@@ -1767,5 +1847,96 @@ mod tests {
         edit_and_compare(&mut wb, &mut cache, &[(0, "A5", "100")]);
         edit_and_compare(&mut wb, &mut cache, &[(0, "A1", "-1")]);
         edit_and_compare(&mut wb, &mut cache, &[(0, "B7", "=A7*2+1")]);
+    }
+
+    /// Incremental recalc through shared-tree groups (filled-down ranges registered once)
+    /// matches a full recalc under random edits: inputs, members overwritten (holes),
+    /// re-entered and cleared, ranges whose corners cross, names and other sheets.
+    #[test]
+    fn grouped_ranges_match_full_on_random_edits() {
+        let mut rng: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut next = move |n: u64| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng % n
+        };
+        const ROWS: u32 = 40;
+        let fills: [fn(u32) -> String; 9] = [
+            |r| format!("=A{r}*2+B{r}"),
+            |r| format!("=SUM($A$1:A{r})"),
+            |r| format!("=SUM($A$20:A{r})+Rate"),
+            |r| format!("=A{}+A{}", r + 3, r.saturating_sub(2).max(1)),
+            |r| format!("=Two!B{r}+COUNT(A{r}:B{})", r + 5),
+            |r| format!("=IF(C{r}>100,D{r},E{r})"),
+            |r| format!("=SUM(A:A)-A{r}"),
+            |r| {
+                if r == 1 {
+                    "=A1".into()
+                } else {
+                    format!("=J{}+A{r}", r - 1)
+                }
+            },
+            |r| format!("=SUM(A{r}:B$10)"),
+        ];
+        let mut wb = Workbook::new();
+        wb.sheets.push(sp_model::Sheet::new("Two"));
+        wb.names.push(sp_model::DefinedName {
+            name: "Rate".into(),
+            formula: "Two!$A$1".into(),
+            scope: None,
+        });
+        for r in 1..=ROWS {
+            for c in 0..2u32 {
+                wb.sheets[0].set(
+                    CellAddr::new(r - 1, c),
+                    MCell::constant(n(f64::from(r + c))),
+                );
+                wb.sheets[1].set(
+                    CellAddr::new(r - 1, c),
+                    MCell::constant(n(f64::from(r * 2))),
+                );
+            }
+            for (i, f) in fills.iter().enumerate() {
+                wb.sheets[0].set(
+                    CellAddr::new(r - 1, 2 + i as u32),
+                    parse_input(&f(r)).unwrap(),
+                );
+            }
+        }
+        let mut cache = AstCache::default();
+        recalc(&mut wb, &mut cache, OPTS);
+        let (groups, members) = cache.deps().map_or((0, 0), |g| g.group_stats());
+        assert!(
+            groups >= 8 && members >= 8 * 30,
+            "{groups} groups, {members} members"
+        );
+        let col = |c: u64| (b'A' + c as u8) as char;
+        let mut incremental = 0;
+        for _ in 0..300 {
+            let mut edits: Vec<(usize, String, String)> = Vec::new();
+            for _ in 0..1 + next(3) {
+                let r = 1 + next(u64::from(ROWS) + 3) as u32;
+                let (sheet, c, input) = match next(10) {
+                    0..=3 => (0, next(2), format!("{}", next(300))),
+                    4 => (1, next(2), format!("{}", next(300))),
+                    5 => (0, 2 + next(9), format!("{}", next(50))),
+                    6 => {
+                        let i = next(9);
+                        (0, 2 + i, fills[i as usize](r))
+                    }
+                    7 => (0, next(11), String::new()),
+                    8 => (0, 2 + next(9), format!("=A{r}-1")),
+                    _ => (1, 0, format!("{}", next(9))),
+                };
+                edits.push((sheet, format!("{}{r}", col(c)), input));
+            }
+            let refs: Vec<(usize, &str, &str)> = edits
+                .iter()
+                .map(|(s, a, i)| (*s, a.as_str(), i.as_str()))
+                .collect();
+            incremental += usize::from(edit_and_compare(&mut wb, &mut cache, &refs).incremental);
+        }
+        assert!(incremental > 200, "{incremental} incremental");
     }
 }
