@@ -171,9 +171,88 @@ enum SpillOut {
     Blocked(CellRange),
 }
 
+/// Values computed in one pass, in a slot per formula of the pass (sorted keys, indexed by
+/// row): about a third of the memory of a hash map over millions of formulas, and already
+/// in write-back order. Keys outside the pass go to a small map.
+#[derive(Default)]
+struct Slots {
+    keys: Vec<Key>,
+    /// (sheet, row) -> range of `keys` in that row.
+    rows: FxMap<(usize, u32), (u32, u32)>,
+    vals: Vec<Option<Value>>,
+    extra: FxMap<Key, Value>,
+}
+
+impl Slots {
+    /// Slots for `keys` (sorted, unique).
+    fn new(keys: &[Key]) -> Self {
+        let mut rows: FxMap<(usize, u32), (u32, u32)> = FxMap::default();
+        let mut i = 0usize;
+        while let Some(&(s, a)) = keys.get(i) {
+            let start = i;
+            while keys.get(i).is_some_and(|k| k.0 == s && k.1.row == a.row) {
+                i += 1;
+            }
+            if let (Ok(st), Ok(n)) = (u32::try_from(start), u32::try_from(i - start)) {
+                rows.insert((s, a.row), (st, n));
+            }
+        }
+        Slots {
+            keys: keys.to_vec(),
+            rows,
+            vals: vec![None; keys.len()],
+            extra: FxMap::default(),
+        }
+    }
+
+    fn index(&self, k: &Key) -> Option<usize> {
+        let &(st, n) = self.rows.get(&(k.0, k.1.row))?;
+        let (st, n) = (st as usize, n as usize);
+        let row = self.keys.get(st..st + n)?;
+        row.binary_search_by_key(&k.1.col, |x| x.1.col)
+            .ok()
+            .map(|i| st + i)
+    }
+
+    fn get(&self, k: &Key) -> Option<&Value> {
+        match self.index(k) {
+            Some(i) => self.vals.get(i)?.as_ref(),
+            None => self.extra.get(k),
+        }
+    }
+
+    fn contains_key(&self, k: &Key) -> bool {
+        self.get(k).is_some()
+    }
+
+    fn insert(&mut self, k: Key, v: Value) {
+        match self.index(&k).and_then(|i| self.vals.get_mut(i)) {
+            Some(slot) => *slot = Some(v),
+            None => {
+                self.extra.insert(k, v);
+            }
+        }
+    }
+
+    /// Every computed value, sorted by key.
+    fn into_sorted(self) -> Box<dyn Iterator<Item = (Key, Value)>> {
+        let slots = self
+            .keys
+            .into_iter()
+            .zip(self.vals)
+            .filter_map(|(k, v)| Some((k, v?)));
+        if self.extra.is_empty() {
+            return Box::new(slots);
+        }
+        let mut out: Vec<(Key, Value)> = slots.chain(self.extra).collect();
+        out.sort_unstable_by_key(|(k, _)| *k);
+        Box::new(out.into_iter())
+    }
+}
+
 struct WbHost<'a> {
     wb: &'a Workbook,
-    computed: RefCell<FxMap<Key, Value>>,
+    computed: RefCell<Slots>,
     /// Array outputs of formulas computed in this pass, plus an index of spilled areas.
     spills: RefCell<FxMap<Key, SpillOut>>,
     spill_index: RefCell<Vec<(usize, CellRange)>>,
@@ -204,7 +283,7 @@ impl<'a> WbHost<'a> {
         }
         WbHost {
             wb,
-            computed: RefCell::new(FxMap::default()),
+            computed: RefCell::new(Slots::default()),
             spills: RefCell::new(FxMap::default()),
             spill_index: RefCell::new(Vec::new()),
             pending: RefCell::new(Vec::new()),
@@ -568,7 +647,7 @@ fn finalize_formula(
 
 /// Values and array outputs of one evaluation pass.
 struct Computed {
-    values: FxMap<Key, Value>,
+    values: Slots,
     spills: FxMap<Key, SpillOut>,
 }
 
@@ -598,7 +677,8 @@ fn compute(
     opts: RecalcOptions,
     stats: &mut RecalcStats,
 ) -> Computed {
-    let host = WbHost::new(wb, false, dirty, opts);
+    let mut host = WbHost::new(wb, false, dirty, opts);
+    host.computed = RefCell::new(Slots::new(order));
     // Formulas evaluated at least once and waiting for pending precedents. They are exactly
     // the current evaluation path, so reaching one again is a genuine circular reference
     // (cells merely queued on the stack are not: they are pushed again and evaluated first).
@@ -699,9 +779,7 @@ fn write_back(wb: &mut Workbook, results: Computed) -> Vec<Key> {
     let mut grown = Vec::new();
     // Row-major order: consecutive lookups walk the same B-tree paths (hash order would
     // make every lookup a cache-missing descent through a million-row sheet).
-    let mut values: Vec<(Key, Value)> = results.values.into_iter().collect();
-    values.sort_unstable_by_key(|(k, _)| *k);
-    for ((si, a), v) in values {
+    for ((si, a), v) in results.values.into_sorted() {
         let Some(s) = wb.sheet_mut(si) else { continue };
         let Some(c) = s.get_mut(a) else { continue };
         c.value = v;

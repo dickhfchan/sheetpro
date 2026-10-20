@@ -210,6 +210,9 @@ pub struct SortKey {
     pub ascending: bool,
 }
 
+/// Rows moved per block of a sort (bounds the memory of moved cells in flight).
+const SORT_BLOCK_ROWS: usize = 65_536;
+
 /// Sort the rows of `r` by `keys`. Blanks always sort last; formulas move with their row
 /// (relative references shift by the row delta).
 pub fn sort_rows(
@@ -254,40 +257,29 @@ pub fn sort_rows(
         }
         Ordering::Equal
     });
-    let snapshot: Vec<Vec<Option<Cell>>> = order
-        .iter()
-        .map(|src_row| {
-            (body.start.col..=body.end.col)
-                .map(|c| s.get(CellAddr::new(*src_row, c)).cloned())
-                .collect()
-        })
-        .collect();
-    // Shifting formulas (parse + print) dominates big sorts: compute moved rows on all
-    // cores, then record them in order.
-    let moves: Vec<(u32, u32, &Vec<Option<Cell>>)> = rows
-        .iter()
-        .zip(order.iter())
-        .zip(snapshot.iter())
-        .map(|((d, s), cells)| (*d, *s, cells))
-        .collect();
-    // Rows of a filled-down range share one shift per relative form (`FormulaMemo`).
-    let moved: Vec<Vec<Option<Cell>>> = crate::par::par_map_with(
-        &moves,
-        FormulaMemo::new,
-        |memo, (dest_row, src_row, cells)| {
-            let dr = i64::from(*dest_row) - i64::from(*src_row);
-            (body.start.col..)
-                .zip(cells.iter())
-                .map(|(col, c)| {
-                    let from = CellAddr::new(*src_row, col);
-                    c.as_ref().map(|c| moved_cell_memo(memo, c, from, dr, 0))
-                })
-                .collect()
-        },
-    );
-    for ((dest_row, _, _), cells) in moves.iter().zip(moved) {
-        for (col, cell) in (body.start.col..=body.end.col).zip(cells) {
-            tx.set_cell(sheet, CellAddr::new(*dest_row, col), cell);
+    // Source rows are read from a copy-on-write copy of the rows (cheap: rows are shared
+    // until written), so sorted rows can be written block by block without a full snapshot.
+    let before: sp_model::Cells = s.cells.clone();
+    let moves: Vec<(u32, u32)> = rows.iter().copied().zip(order.iter().copied()).collect();
+    for block in moves.chunks(SORT_BLOCK_ROWS) {
+        // Shifting formulas dominates big sorts: compute moved rows on all cores, sharing
+        // one shift per relative form within each worker (`FormulaMemo`), then record them.
+        let moved: Vec<Vec<Option<Cell>>> =
+            crate::par::par_map_with(block, FormulaMemo::new, |memo, (dest_row, src_row)| {
+                let dr = i64::from(*dest_row) - i64::from(*src_row);
+                let row = before.get(src_row);
+                (body.start.col..=body.end.col)
+                    .map(|col| {
+                        let c = row.and_then(|r| r.get(&col))?;
+                        let from = CellAddr::new(*src_row, col);
+                        Some(moved_cell_memo(memo, c, from, dr, 0))
+                    })
+                    .collect()
+            });
+        for ((dest_row, _), cells) in block.iter().zip(moved) {
+            for (col, cell) in (body.start.col..=body.end.col).zip(cells) {
+                tx.set_cell(sheet, CellAddr::new(*dest_row, col), cell);
+            }
         }
     }
     Ok(())
@@ -311,6 +303,10 @@ pub(crate) fn rewrite_all_formulas(
     rewrite_all_formulas_keyed(wb, f, None);
 }
 
+/// Rows of formulas rewritten per block by [`rewrite_all_formulas`] (bounds the memory of
+/// rewritten text in flight).
+const REWRITE_BLOCK_ROWS: usize = 65_536;
+
 /// How a rewrite treats a formula's cell references (in text order, at the formula's
 /// position): writes a tag such that formulas of one relative form and equal tags are
 /// rewritten alike, or returns false when the formula must be rewritten on its own.
@@ -327,25 +323,40 @@ fn rewrite_all_formulas_keyed(
     for sheet in &mut wb.sheets {
         let name = sheet.name.clone();
         let g = |e: &mut sp_formula::Expr| f(e, &name);
-        // Parse/rewrite/print every formula on all cores, then apply the changes, unsharing
-        // (copy-on-write) only rows whose formulas actually change.
-        let formulas: Vec<(sp_core::CellAddr, &str)> = sheet
-            .iter()
-            .filter_map(|(a, c)| Some((a, c.formula_src()?)))
-            .collect();
-        let new =
-            crate::par::par_map_with(&formulas, FormulaMemo::new, |memo, (at, src)| match sig {
-                Some(sig) => memo.rewrite_with(src, *at, *at, sig, |s| rewritten(s, &g)),
-                None => rewritten(src, &g),
-            });
-        let updates: Vec<(sp_core::CellAddr, String)> = formulas
-            .iter()
-            .zip(new)
-            .filter_map(|((a, _), n)| Some((*a, n?)))
-            .collect();
-        for (a, new) in updates {
-            if let Some(cell) = sheet.get_mut(a) {
-                cell.content = Content::Formula(new);
+        // Parse/rewrite/print the formulas of a block of rows on all cores, then apply the
+        // changes, unsharing (copy-on-write) only rows whose formulas actually change.
+        let row_keys: Vec<u32> = sheet.cells.keys().copied().collect();
+        for block in row_keys.chunks(REWRITE_BLOCK_ROWS) {
+            let (Some(&first), Some(&last)) = (block.first(), block.last()) else {
+                continue;
+            };
+            let formulas: Vec<(sp_core::CellAddr, &str)> = sheet
+                .cells
+                .range(first..=last)
+                .flat_map(|(r, row)| {
+                    row.iter().filter_map(move |(c, cell)| {
+                        Some((sp_core::CellAddr::new(*r, *c), cell.formula_src()?))
+                    })
+                })
+                .collect();
+            let new =
+                crate::par::par_map_with(
+                    &formulas,
+                    FormulaMemo::new,
+                    |memo, (at, src)| match sig {
+                        Some(sig) => memo.rewrite_with(src, *at, *at, sig, |s| rewritten(s, &g)),
+                        None => rewritten(src, &g),
+                    },
+                );
+            let updates: Vec<(sp_core::CellAddr, String)> = formulas
+                .iter()
+                .zip(new)
+                .filter_map(|((a, _), n)| Some((*a, n?)))
+                .collect();
+            for (a, new) in updates {
+                if let Some(cell) = sheet.get_mut(a) {
+                    cell.content = Content::Formula(new);
+                }
             }
         }
         let texts = sheet
