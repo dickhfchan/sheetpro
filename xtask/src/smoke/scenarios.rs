@@ -163,15 +163,10 @@ pub fn formulas(c: &mut Ctx) -> Result<()> {
         c.check(f, ok, &got);
     }
 
-    // Known differences from the target.
     a.set(c, "K1", "=DATE(2026,2,28)");
     let d = a.cell("K1", "display");
-    c.known(
-        "a DATE formula displays as a date",
-        d == "2/28/2026",
-        d,
-        "the target formats a cell whose formula returns a date",
-    );
+    c.check("a DATE formula displays as a date", d == "2/28/2026", d);
+    // Known differences from the target.
     a.set(c, "K2", "=LEN(\"héllo 😀\")");
     let v = a.val("K2");
     c.known(

@@ -8,7 +8,7 @@ Commands 304/304 · Functions 502/514 (details: `docs/parity.md`)
 
 ## Oracle corpus (behaviour)
 
-Measured 2026-10-19 against IronCalc test files @ `c88f07f0c7`.
+Measured 2026-10-20 against IronCalc test files @ `c88f07f0c7`.
 
 | Metric | Result | Floor |
 |---|---|---|

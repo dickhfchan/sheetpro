@@ -7,6 +7,26 @@ use sp_core::parse::{FormatHint, parse_numeric_input};
 use sp_core::{CellAddr, ErrorKind, Value};
 use sp_model::{Cell, Content, StyleId, StyleTable};
 
+/// The number format the target gives a General cell when a formula is entered: the format
+/// of its leading date/time function (`=DATE(…)`, `=TODAY()+7`, `=(NOW())`).
+fn formula_format(e: &sp_formula::Expr) -> Option<&'static str> {
+    use sp_formula::Expr;
+    use sp_formula::ast::BinOp;
+    match e {
+        Expr::Call(name, _) => match name.as_str() {
+            "DATE" | "DATEVALUE" | "EDATE" | "EOMONTH" | "TODAY" | "WORKDAY" | "WORKDAY.INTL" => {
+                Some("m/d/yyyy")
+            }
+            "NOW" => Some("m/d/yyyy h:mm"),
+            "TIME" | "TIMEVALUE" => Some("h:mm AM/PM"),
+            _ => None,
+        },
+        Expr::Paren(x) => formula_format(x),
+        Expr::Binary(BinOp::Add | BinOp::Sub, l, _) => formula_format(l),
+        _ => None,
+    }
+}
+
 /// Interpret typed input the way cell entry does. Returns the new cell (style preserved
 /// from `old`) or an error message for an invalid formula.
 pub fn parse_input(
@@ -28,6 +48,13 @@ pub fn parse_input(
     if let Some(f) = input.strip_prefix('=').filter(|f| !f.trim().is_empty()) {
         let e = sp_formula::parse(f)
             .map_err(|e| CmdError::Param(format!("There's a problem with this formula: {e}")))?;
+        // A formula led by a date/time function formats a General cell as a date or time.
+        let style = match formula_format(&e) {
+            Some(code) if styles.get(style).num_fmt.eq_ignore_ascii_case("General") => {
+                styles.derive(style, |s| s.num_fmt = code.to_string())
+            }
+            _ => style,
+        };
         return Ok(Some(Cell {
             content: Content::Formula(sp_formula::to_formula(&e)),
             value: Value::Empty,
@@ -305,6 +332,29 @@ pub fn specs() -> Vec<CommandSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn date_time_formulas_format_a_general_cell() {
+        let mut st = StyleTable::default();
+        let fmt = |input: &str, st: &mut StyleTable| {
+            let c = parse_input(input, None, st).unwrap().unwrap();
+            st.get(c.style).num_fmt.clone()
+        };
+        assert_eq!(fmt("=DATE(2026,2,28)", &mut st), "m/d/yyyy");
+        assert_eq!(fmt("=today()+7", &mut st), "m/d/yyyy");
+        assert_eq!(fmt("=(EOMONTH(A1,1))", &mut st), "m/d/yyyy");
+        assert_eq!(fmt("=NOW()", &mut st), "m/d/yyyy h:mm");
+        assert_eq!(fmt("=TIME(13,30,0)", &mut st), "h:mm AM/PM");
+        assert_eq!(fmt("=SUM(1,2)", &mut st), "General");
+        assert_eq!(fmt("=1+DATE(2026,1,1)", &mut st), "General");
+        assert_eq!(fmt("=YEAR(TODAY())", &mut st), "General");
+        // A cell that already has a format keeps it.
+        let pct = parse_input("50%", None, &mut st).unwrap().unwrap();
+        let c = parse_input("=DATE(2026,1,1)", Some(&pct), &mut st)
+            .unwrap()
+            .unwrap();
+        assert_eq!(st.get(c.style).num_fmt, "0%");
+    }
 
     #[test]
     fn typed_inputs() {
