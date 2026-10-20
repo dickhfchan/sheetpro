@@ -398,3 +398,61 @@ fn italic_cells_and_text_boxes_draw_oblique() {
         "upright cells stay upright"
     );
 }
+
+#[test]
+fn charts_and_objects_cover_filter_buttons() {
+    let mut s = session();
+    exec(&mut s, "data.filter", json!({"range": "A1:B6", "on": true}));
+    // A chart over A1 and a text box over B1 hide those cells' filter buttons.
+    exec(
+        &mut s,
+        "insert.chart.column",
+        json!({"range": "A1:B6", "anchor": "A1:A8"}),
+    );
+    exec(
+        &mut s,
+        "insert.text_box",
+        json!({"text": "note", "cell": "B1", "width": 64, "height": 60}),
+    );
+    let mut h = harness(App::new(s));
+    let origin = sp_ui::overlays::cells_origin(&h.ctx).expect("grid painted");
+    // The filter button sits at the bottom-right corner of the header cell.
+    let sh = h.state().session.wb.sheet(0).unwrap();
+    let a_w = sp_render::col_width_px(sh.col_width(0));
+    let b_w = sp_render::col_width_px(sh.col_width(1));
+    let r1 = sp_render::row_height_px(sh.row_height(0));
+    let a_btn = origin + Vec2::new(a_w - 8.0, r1 - 8.0);
+    let b_btn = origin + Vec2::new(a_w + b_w - 8.0, r1 - 8.0);
+    // Paint order: the dropdown arrows are drawn before the chart and the text box.
+    let shapes = &h.output().shapes;
+    let last_text_box = shapes
+        .iter()
+        .rposition(|c| matches!(&c.shape, egui::Shape::Text(t) if t.galley.text() == "note"))
+        .expect("text box painted");
+    let first_arrow = shapes
+        .iter()
+        .position(|c| match &c.shape {
+            egui::Shape::Path(p) => {
+                p.points.len() == 3
+                    && p.points
+                        .iter()
+                        .all(|q| (q.x - b_btn.x).abs() < 10.0 && (q.y - b_btn.y).abs() < 10.0)
+            }
+            _ => false,
+        })
+        .expect("filter arrow painted");
+    assert!(first_arrow < last_text_box, "arrow under the text box");
+    for (at, what) in [(a_btn, "chart"), (b_btn, "object")] {
+        h.hover_at(at);
+        h.run_steps(1);
+        h.drag_at(at);
+        h.run_steps(1);
+        h.drop_at(at);
+        h.run_steps(2);
+        assert!(h.state().ui.dialog.is_none(), "{what}: no filter dropdown");
+        match what {
+            "chart" => assert_eq!(h.state().ui.grid.chart, Some(0)),
+            _ => assert_eq!(h.state().ui.grid.object, Some(0)),
+        }
+    }
+}

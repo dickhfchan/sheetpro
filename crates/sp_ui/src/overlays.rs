@@ -285,10 +285,10 @@ pub fn cells_origin(ctx: &egui::Context) -> Option<Pos2> {
 }
 
 impl App {
-    /// Paint objects over the cells and return their hit areas (topmost last).
-    pub(crate) fn paint_overlays(&self, ui: &egui::Ui, painter: &Painter, geo: &Geo) -> Vec<Hot> {
-        ui.ctx()
-            .data_mut(|d| d.insert_temp(origin_id(), geo.origin));
+    /// Paint the in-cell marks (AutoFilter and table header buttons, note/comment corner
+    /// marks) and return their hit areas. They belong to the cells: charts, pictures, shapes
+    /// and slicers are painted over them and take clicks first, as in the target.
+    pub(crate) fn paint_cell_marks(&self, painter: &Painter, geo: &Geo) -> Vec<Hot> {
         let mut hots = Vec::new();
         let s = &self.session;
         let si = s.sheet_index();
@@ -390,6 +390,19 @@ impl App {
                 cell: c.addr,
             });
         }
+        hots
+    }
+
+    /// Paint objects over the cells and return their hit areas (topmost last).
+    pub(crate) fn paint_overlays(&self, ui: &egui::Ui, painter: &Painter, geo: &Geo) -> Vec<Hot> {
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(origin_id(), geo.origin));
+        let mut hots = Vec::new();
+        let s = &self.session;
+        let Some(sheet) = s.wb.sheet(s.sheet_index()) else {
+            return hots;
+        };
+        let p = painter.with_clip_rect(geo.area.intersect(painter.clip_rect()));
         // Validation: list arrow and input message for the active cell.
         let active = s.sel.active;
         if let (Some(rule), Some(cr)) = (sheet.validation_at(active), geo.cell_rect(active)) {
@@ -476,6 +489,11 @@ impl App {
         if self.ui.dialog.is_none()
             && self.ui.grid.drag.is_none()
             && let Some(hp) = hover.filter(|p| geo.area.contains(*p))
+            // A chart or object over the cell hides its note.
+            && !crate::chart::chart_rects(s, geo.origin)
+                .iter()
+                .chain(&crate::objdraw::object_rects(s, geo.origin))
+                .any(|(_, r)| r.contains(hp))
             && let Some(a) = geo.cell_at(hp)
             && let Some(c) = sheet.comment_at(a)
             && !(c.kind == CommentKind::Note && c.visible)
