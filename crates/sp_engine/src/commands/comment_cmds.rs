@@ -374,6 +374,12 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         CommandSpec::new("review.comment.delete", r#"{"range"?: "A1:C9"}"#, |s, p| {
             delete_in(s, p, "Delete Comment", true)
+        })
+        // Something to delete in the selection (as delete_in checks).
+        .when(|s| {
+            let r = s.sel.range();
+            s.wb.sheet(s.sheet_index())
+                .is_some_and(|sh| sh.comments.iter().any(|c| r.contains(c.addr)))
         }),
         CommandSpec::new("review.comment.previous", "{}", |s, _| {
             step_comment(s, false)

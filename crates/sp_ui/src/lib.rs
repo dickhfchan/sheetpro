@@ -69,6 +69,11 @@ impl App {
         a
     }
 
+    /// The error the status bar shows for the last command, if it failed.
+    pub fn last_error(&self) -> Option<String> {
+        self.last_error.clone()
+    }
+
     /// Run a command; failures go to the status bar instead of panicking or vanishing.
     pub fn exec(&mut self, id: &str, params: Json) {
         match self.session.execute(id, &params) {

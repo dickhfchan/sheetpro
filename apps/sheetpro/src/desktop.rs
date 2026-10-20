@@ -15,22 +15,8 @@ use sp_ui::App;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-/// Command ids the desktop handles natively when the ribbon activates them.
-pub const INTERCEPTED: [&str; 13] = [
-    "file.new",
-    "file.open",
-    "file.close",
-    "file.save",
-    "file.save_as",
-    "file.save_copy",
-    "file.export.csv",
-    "file.exit",
-    "file.recent",
-    "file.options",
-    "file.inspect",
-    "data.get_from_text",
-    "app.report_problem",
-];
+/// Command ids the desktop handles natively (native file dialogs, quitting).
+pub use sp_ui::shell_hook::DESKTOP_INTERCEPTED as INTERCEPTED;
 
 const WORKBOOK_EXTS: [&str; 5] = ["xlsx", "xlsm", "csv", "tsv", "txt"];
 const TEXT_EXTS: [&str; 4] = ["csv", "tsv", "txt", "tab"];

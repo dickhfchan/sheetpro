@@ -344,6 +344,11 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         CommandSpec::new("layout.page_break.remove", r#"{"cell"?: "A20"}"#, |s, p| {
             page_break(s, p, false)
+        })
+        .when(|s| {
+            s.wb.sheet(s.sheet_index()).is_some_and(|sh| {
+                !sh.page_setup.row_breaks.is_empty() || !sh.page_setup.col_breaks.is_empty()
+            })
         }),
         CommandSpec::new("layout.page_break.reset", "{}", |s, _| {
             edit_page(s, "Reset All Page Breaks", |ps| {

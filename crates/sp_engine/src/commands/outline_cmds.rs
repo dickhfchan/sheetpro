@@ -32,6 +32,12 @@ fn span(r: CellRange, rows: bool) -> (u32, u32) {
     }
 }
 
+/// The active sheet has row or column outline groups (Ungroup / Show / Hide Detail).
+fn has_outline(s: &Session) -> bool {
+    s.wb.sheet(s.sheet_index())
+        .is_some_and(|sh| !sh.outline.rows.is_empty() || !sh.outline.cols.is_empty())
+}
+
 fn levels(sh: &mut Sheet, rows: bool) -> &mut BTreeMap<u32, u8> {
     if rows {
         &mut sh.outline.rows
@@ -355,9 +361,9 @@ pub fn specs() -> Vec<CommandSpec> {
     let g = r#"{"range"?: "A2:A9", "by"?: "rows|columns"}"#;
     vec![
         CommandSpec::new("data.group", g, |s, p| group(s, p, 1)),
-        CommandSpec::new("data.ungroup", g, |s, p| group(s, p, -1)),
-        CommandSpec::new("data.show_detail", g, |s, p| detail(s, p, true)),
-        CommandSpec::new("data.hide_detail", g, |s, p| detail(s, p, false)),
+        CommandSpec::new("data.ungroup", g, |s, p| group(s, p, -1)).when(has_outline),
+        CommandSpec::new("data.show_detail", g, |s, p| detail(s, p, true)).when(has_outline),
+        CommandSpec::new("data.hide_detail", g, |s, p| detail(s, p, false)).when(has_outline),
         CommandSpec::new(
             "data.subtotal",
             r#"{"range"?: "A1:D50", "by"?: "A" (at each change in), "function"?: "sum|count|average|max|min|product|counta|stdev|stdevp|var|varp", "columns"?: ["C","D"], "replace"?: true}"#,

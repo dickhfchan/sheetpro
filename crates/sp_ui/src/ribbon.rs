@@ -100,7 +100,8 @@ fn column_widths(ui: &Ui, items: &[&catalog::CatalogItem]) -> Vec<f32> {
         .collect()
 }
 
-fn collapsed_label(name: &str) -> String {
+/// Label of a collapsed group's drop-down button.
+pub fn collapsed_label(name: &str) -> String {
     format!("{name} ⏷")
 }
 

@@ -140,6 +140,11 @@ pub fn dialog_for_command(id: &str) -> Option<&'static str> {
         "home.styles.format_as_table" => "format_as_table",
         "table.design" => "table_design",
         "review.spelling" => "spelling",
+        // Every parameter is optional, but the command needs one of them to do anything.
+        "insert.hyperlink" => "params:insert.hyperlink",
+        "layout.margins" => "params:layout.margins",
+        "layout.scale_to_fit" => "params:layout.scale_to_fit",
+        "data.what_if.data_table" => "params:data.what_if.data_table",
         _ => return None,
     })
 }

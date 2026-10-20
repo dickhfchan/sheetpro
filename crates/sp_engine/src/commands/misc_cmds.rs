@@ -419,7 +419,8 @@ pub fn specs() -> Vec<CommandSpec> {
             "home.clipboard.paste_link",
             r#"{"cell"?: "D1", "absolute"?: true}"#,
             paste_link,
-        ),
+        )
+        .when(|s| s.clipboard.is_some()),
     ]
 }
 

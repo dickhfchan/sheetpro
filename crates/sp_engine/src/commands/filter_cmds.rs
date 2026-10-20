@@ -420,6 +420,21 @@ fn filter(s: &mut Session, p: &Json) -> CmdResult {
     Ok(json!({ "filter": r.to_a1(), "shown": shown }))
 }
 
+fn has_auto_filter(s: &Session) -> bool {
+    s.wb.sheet(s.sheet_index())
+        .is_some_and(|sh| sh.auto_filter.is_some())
+}
+
+/// An AutoFilter, or an in-place Advanced Filter (Clear Filter handles both).
+fn has_any_filter(s: &Session) -> bool {
+    let sheet = s.sheet_index();
+    has_auto_filter(s)
+        || s.wb
+            .names
+            .iter()
+            .any(|n| n.scope == Some(sheet) && n.name.eq_ignore_ascii_case(FILTER_DB))
+}
+
 fn filter_clear(s: &mut Session, _: &Json) -> CmdResult {
     let sheet = s.sheet_index();
     if s.wb.sheet(sheet).is_some_and(|sh| sh.auto_filter.is_some()) {
@@ -660,8 +675,8 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("data.filter", f, filter),
         CommandSpec::new("home.editing.filter", f, filter),
-        CommandSpec::new("data.filter_clear", "{}", filter_clear),
-        CommandSpec::new("data.filter_reapply", "{}", filter_reapply),
+        CommandSpec::new("data.filter_clear", "{}", filter_clear).when(has_any_filter),
+        CommandSpec::new("data.filter_reapply", "{}", filter_reapply).when(has_auto_filter),
         CommandSpec::new(
             "data.advanced_filter",
             r#"{"range"?: "A1:D50", "criteria": "F1:G3", "unique"?: bool, "copy_to"?: "I1"}"#,

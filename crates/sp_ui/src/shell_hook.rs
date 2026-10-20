@@ -87,6 +87,24 @@ pub(crate) fn name_box_reference(text: &str) -> String {
 }
 
 /// Route ribbon activations of these command ids to [`take_pending`] (this thread only).
+/// Command ids the desktop app handles natively (file dialogs, closing, options) when the
+/// ribbon activates them; it registers them with [`set_intercepted`].
+pub const DESKTOP_INTERCEPTED: [&str; 13] = [
+    "file.new",
+    "file.open",
+    "file.close",
+    "file.save",
+    "file.save_as",
+    "file.save_copy",
+    "file.export.csv",
+    "file.exit",
+    "file.recent",
+    "file.options",
+    "file.inspect",
+    "data.get_from_text",
+    "app.report_problem",
+];
+
 pub fn set_intercepted(ids: &[&str]) {
     INTERCEPTED.with(|i| *i.borrow_mut() = ids.iter().map(|s| s.to_string()).collect());
 }
