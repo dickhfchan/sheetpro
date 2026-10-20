@@ -3,11 +3,11 @@
 # Tighten budgets as performance improves; loosening one needs a devlog entry saying why.
 
 [bench.recalc_full_cold]
-ms = 1500.0
+ms = 200.0
 description = "Full recalculation, cold AST cache (parse + evaluate 200k formulas)"
 
 [bench.recalc_full_warm]
-ms = 800.0
+ms = 200.0
 description = "Full recalculation, warm AST cache"
 
 [bench.edit_one_cell]
@@ -15,11 +15,11 @@ ms = 50.0
 description = "Type one value into a 100k-row sheet (undo record + recalc). Target app: instant."
 
 [bench.xlsx_save]
-ms = 1500.0
+ms = 400.0
 description = "Save 400k cells to .xlsx"
 
 [bench.xlsx_load]
-ms = 1500.0
+ms = 300.0
 description = "Load 400k cells from .xlsx"
 
 [bench.grid_layout_screen]
@@ -27,7 +27,7 @@ ms = 8.0
 description = "Lay out one 1600x1000 screen at row 50k (must fit in a frame)"
 
 [bench.sort_rows]
-ms = 2000.0
+ms = 550.0
 description = "Sort 100k rows x 4 cols descending by column A"
 
 [bench.pdf_export]
@@ -38,22 +38,24 @@ description = "Export a 10k-row x 10-col report to PDF (paginate, lay out pages,
 # A number, B unique text, C =A*2+1, D 17 categories, E number, F date, G bool,
 # H =IF(E>500,"hi","lo"), I =C+E, J running total =J(n-1)+I: 10M cells, 4M formulas.
 # Set 2026-10-19 at ~1.6-1.8x the low-load (load avg ~5) measurement, so a 2x regression
-# fails. Frame-time benches use an absolute frame budget instead (sub-ms measurements).
+# fails; recalc, save, load, sort, insert, edit chain and peak RSS re-set 2026-10-20 the same
+# way after shared parse trees (load avg ~4). Frame-time benches use an absolute frame budget
+# instead (sub-ms measurements).
 
 [bench.recalc_full_cold_1m]
-ms = 8000.0
+ms = 3500.0
 description = "1M rows: full recalculation, cold AST cache (parse + evaluate 4M formulas)"
 
 [bench.recalc_full_warm_1m]
-ms = 5500.0
+ms = 3500.0
 description = "1M rows: full recalculation, warm AST cache"
 
 [bench.xlsx_save_1m]
-ms = 8500.0
+ms = 7500.0
 description = "1M rows: save 10M cells (4M formulas) to .xlsx"
 
 [bench.xlsx_load_1m]
-ms = 8000.0
+ms = 7000.0
 description = "1M rows: load the 80 MB .xlsx back"
 
 [bench.grid_layout_screen_1m]
@@ -73,11 +75,11 @@ ms = 25.0
 description = "1M rows: type into a cell nothing depends on (undo record + recalc)"
 
 [bench.edit_chain_1m]
-ms = 1800.0
+ms = 1400.0
 description = "1M rows: type into A2, which feeds a 1M-long running total (~1M dependents)"
 
 [bench.undo_edit_chain_1m]
-ms = 1800.0
+ms = 1400.0
 description = "1M rows: undo that edit (incremental: ~1M dependents)"
 
 [bench.find_all_1m]
@@ -97,13 +99,13 @@ ms = 150.0
 description = "1M rows: turn the AutoFilter off (unhide 941k rows)"
 
 [bench.sort_rows_1m]
-ms = 10000.0
+ms = 5500.0
 description = "1M rows: sort 1M x 10 cols descending (shift 4M formulas + recalc)"
 
 [bench.insert_row_1m]
-ms = 9500.0
+ms = 5000.0
 description = "1M rows: insert a row at the top (rewrite 4M formulas + recalc)"
 
 [bench.peak_rss_1m_mb]
-ms = 8192.0
+ms = 6500.0
 description = "1M rows: peak resident memory of the whole 1M suite, in MB"
