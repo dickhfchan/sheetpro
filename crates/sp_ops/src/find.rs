@@ -15,6 +15,8 @@ pub struct Pattern {
     toks: Vec<Tok>,
     match_case: bool,
     whole: bool,
+    /// The folded text when the pattern has no wildcards: matched without the NFA.
+    literal: Option<String>,
 }
 
 fn fold(c: char, match_case: bool) -> char {
@@ -41,10 +43,18 @@ impl Pattern {
                 c => Tok::Lit(fold(c, match_case)),
             });
         }
+        let literal = toks
+            .iter()
+            .map(|t| match t {
+                Tok::Lit(c) => Some(*c),
+                _ => None,
+            })
+            .collect::<Option<String>>();
         Pattern {
             toks,
             match_case,
             whole,
+            literal,
         }
     }
 
@@ -95,12 +105,41 @@ impl Pattern {
         best
     }
 
+    /// `is_match` for a wildcard-free pattern (most searches), without allocating for
+    /// ASCII text: Find All runs this over every cell.
+    fn literal_match(&self, lit: &str, text: &str) -> bool {
+        if self.match_case {
+            return if self.whole {
+                text == lit
+            } else {
+                text.contains(lit)
+            };
+        }
+        if text.is_ascii() && lit.is_ascii() {
+            let (t, l) = (text.as_bytes(), lit.as_bytes());
+            return if self.whole {
+                t.eq_ignore_ascii_case(l)
+            } else {
+                l.is_empty() || t.windows(l.len()).any(|w| w.eq_ignore_ascii_case(l))
+            };
+        }
+        let folded: String = text.chars().map(|c| fold(c, false)).collect();
+        if self.whole {
+            folded == *lit
+        } else {
+            folded.contains(lit)
+        }
+    }
+
     fn chars(&self, text: &str) -> Vec<char> {
         text.chars().map(|c| fold(c, self.match_case)).collect()
     }
 
     /// Does `text` match (the whole text, or somewhere inside it)?
     pub fn is_match(&self, text: &str) -> bool {
+        if let Some(lit) = &self.literal {
+            return self.literal_match(lit, text);
+        }
         let t = self.chars(text);
         if self.whole {
             return self.longest_from(&t, 0) == Some(t.len());
@@ -156,6 +195,42 @@ mod tests {
         assert!(!Pattern::new("a~*b", false, false).is_match("axb"));
         assert!(!Pattern::new("Apple", true, false).is_match("apple"));
         assert!(Pattern::new("*", false, true).is_match(""));
+    }
+
+    #[test]
+    fn literal_fast_path_agrees_with_the_matcher() {
+        // The same pattern through the fast path and through the wildcard matcher
+        // (a trailing `*` forces the NFA without changing what matches, when not whole).
+        let texts = [
+            "Apples",
+            "apple pie",
+            "APPLE",
+            "",
+            "pineapple",
+            "ÄPFEL äpfel",
+            "Kelvin K",
+            "a~b",
+        ];
+        // (Not the empty pattern: `*` deliberately skips empty cells, `""` matches them.)
+        for what in ["apple", "APPLE", "äpfel", "k", "~~"] {
+            for case in [false, true] {
+                let fast = Pattern::new(what, case, false);
+                let slow = Pattern::new(&format!("{what}*"), case, false);
+                assert!(fast.literal.is_some() && slow.literal.is_none());
+                for t in texts {
+                    assert_eq!(
+                        fast.is_match(t),
+                        slow.is_match(t),
+                        "{what:?} in {t:?} case={case}"
+                    );
+                }
+            }
+        }
+        assert!(Pattern::new("apple", false, true).is_match("APPLE"));
+        assert!(!Pattern::new("apple", false, true).is_match("apples"));
+        assert!(Pattern::new("äpfel", false, true).is_match("ÄPFEL"));
+        assert!(!Pattern::new("Apple", true, true).is_match("apple"));
+        assert!(Pattern::new("", false, true).is_match(""));
     }
 
     #[test]

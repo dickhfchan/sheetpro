@@ -33,31 +33,31 @@ Measured 2026-10-20 (release build).
 
 | Benchmark | Measured | Budget | Status | What |
 |---|---|---|---|---|
-| `autofilter_apply_1m` | 255.8 ms | 500 ms | ok | 1M rows: AutoFilter one category of 17 (941k rows hidden; no full recalc) |
-| `autofilter_clear_1m` | 66.1 ms | 150 ms | ok | 1M rows: turn the AutoFilter off (unhide 941k rows) |
-| `edit_chain_1m` | 816.4 ms | 1400 ms | ok | 1M rows: type into A2, which feeds a 1M-long running total (~1M dependents) |
+| `autofilter_apply_1m` | 257.0 ms | 500 ms | ok | 1M rows: AutoFilter one category of 17 (941k rows hidden; no full recalc) |
+| `autofilter_clear_1m` | 68.6 ms | 150 ms | ok | 1M rows: turn the AutoFilter off (unhide 941k rows) |
+| `edit_chain_1m` | 817.1 ms | 1400 ms | ok | 1M rows: type into A2, which feeds a 1M-long running total (~1M dependents) |
 | `edit_one_cell` | 1.9 ms | 50 ms | ok | Type one value into a 100k-row sheet (undo record + recalc). Target app: instant. |
-| `edit_one_cell_1m` | 10.6 ms | 25 ms | ok | 1M rows: type into a cell nothing depends on (undo record + recalc) |
-| `find_all_1m` | 1494.5 ms | 1600 ms | ok | 1M rows: Find All over 10M cells |
+| `edit_one_cell_1m` | 10.8 ms | 25 ms | ok | 1M rows: type into a cell nothing depends on (undo record + recalc) |
+| `find_all_1m` | 732.0 ms | 1300 ms | ok | 1M rows: Find All over 10M cells |
 | `grid_layout_filtered_1m` | 0.2 ms | 4 ms | ok | 1M rows: lay out a screen at row 900k with 941k rows filtered out (frame budget) |
-| `grid_layout_screen` | 0.2 ms | 8 ms | ok | Lay out one 1600x1000 screen at row 50k (must fit in a frame) |
-| `grid_layout_screen_1m` | 0.2 ms | 4 ms | ok | 1M rows: lay out one 1600x1000 screen at row 900k (frame budget) |
-| `insert_row_1m` | 3098.8 ms | 5000 ms | ok | 1M rows: insert a row at the top (rewrite 4M formulas + recalc) |
-| `jump_end_1m` | 50.3 ms | 100 ms | ok | 1M rows: Ctrl+Down from A1 to the last row, plus laying out that screen |
-| `pdf_export` | 182.1 ms | 600 ms | ok | Export a 10k-row x 10-col report to PDF (paginate, lay out pages, write file) |
-| `peak_rss_1m_mb` | 4421.1 MB | 6500 MB | ok | 1M rows: peak resident memory of the whole 1M suite, in MB |
-| `recalc_full_cold` | 106.5 ms | 200 ms | ok | Full recalculation, cold AST cache (parse + evaluate 200k formulas) |
-| `recalc_full_cold_1m` | 2284.7 ms | 3500 ms | ok | 1M rows: full recalculation, cold AST cache (parse + evaluate 4M formulas) |
-| `recalc_full_warm` | 97.3 ms | 200 ms | ok | Full recalculation, warm AST cache |
-| `recalc_full_warm_1m` | 2120.1 ms | 3500 ms | ok | 1M rows: full recalculation, warm AST cache |
-| `scroll_frame_1m` | 0.1 ms | 4 ms | ok | 1M rows: worst of 120 scroll frames (3 rows/frame) from row 900k (frame budget) |
-| `sort_rows` | 282.6 ms | 550 ms | ok | Sort 100k rows x 4 cols descending by column A |
-| `sort_rows_1m` | 3401.1 ms | 5500 ms | ok | 1M rows: sort 1M x 10 cols descending (shift 4M formulas + recalc) |
-| `undo_edit_chain_1m` | 808.3 ms | 1400 ms | ok | 1M rows: undo that edit (incremental: ~1M dependents) |
-| `xlsx_load` | 160.0 ms | 300 ms | ok | Load 400k cells from .xlsx |
-| `xlsx_load_1m` | 4124.4 ms | 7000 ms | ok | 1M rows: load the 80 MB .xlsx back |
-| `xlsx_save` | 214.8 ms | 400 ms | ok | Save 400k cells to .xlsx |
-| `xlsx_save_1m` | 4351.3 ms | 7500 ms | ok | 1M rows: save 10M cells (4M formulas) to .xlsx |
+| `grid_layout_screen` | 0.1 ms | 8 ms | ok | Lay out one 1600x1000 screen at row 50k (must fit in a frame) |
+| `grid_layout_screen_1m` | 0.1 ms | 4 ms | ok | 1M rows: lay out one 1600x1000 screen at row 900k (frame budget) |
+| `insert_row_1m` | 2995.8 ms | 5000 ms | ok | 1M rows: insert a row at the top (rewrite 4M formulas + recalc) |
+| `jump_end_1m` | 49.5 ms | 100 ms | ok | 1M rows: Ctrl+Down from A1 to the last row, plus laying out that screen |
+| `pdf_export` | 183.5 ms | 600 ms | ok | Export a 10k-row x 10-col report to PDF (paginate, lay out pages, write file) |
+| `peak_rss_1m_mb` | 4139.9 MB | 6500 MB | ok | 1M rows: peak resident memory of the whole 1M suite, in MB |
+| `recalc_full_cold` | 107.7 ms | 200 ms | ok | Full recalculation, cold AST cache (parse + evaluate 200k formulas) |
+| `recalc_full_cold_1m` | 2251.0 ms | 3500 ms | ok | 1M rows: full recalculation, cold AST cache (parse + evaluate 4M formulas) |
+| `recalc_full_warm` | 99.0 ms | 200 ms | ok | Full recalculation, warm AST cache |
+| `recalc_full_warm_1m` | 2169.5 ms | 3500 ms | ok | 1M rows: full recalculation, warm AST cache |
+| `scroll_frame_1m` | 0.3 ms | 4 ms | ok | 1M rows: worst of 120 scroll frames (3 rows/frame) from row 900k (frame budget) |
+| `sort_rows` | 284.9 ms | 550 ms | ok | Sort 100k rows x 4 cols descending by column A |
+| `sort_rows_1m` | 3462.8 ms | 5500 ms | ok | 1M rows: sort 1M x 10 cols descending (shift 4M formulas + recalc) |
+| `undo_edit_chain_1m` | 825.7 ms | 1400 ms | ok | 1M rows: undo that edit (incremental: ~1M dependents) |
+| `xlsx_load` | 163.9 ms | 300 ms | ok | Load 400k cells from .xlsx |
+| `xlsx_load_1m` | 4176.6 ms | 7000 ms | ok | 1M rows: load the 80 MB .xlsx back |
+| `xlsx_save` | 122.4 ms | 400 ms | ok | Save 400k cells to .xlsx |
+| `xlsx_save_1m` | 2414.2 ms | 4500 ms | ok | 1M rows: save 10M cells (4M formulas) to .xlsx |
 
 ## Area checklists
 

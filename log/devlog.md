@@ -255,3 +255,11 @@ Values (or Move to Values) moves it; from the field list it adds, as in the targ
 Gate green; `cargo xtask smoke --full` 231/231, 0 known issues; perf --quick within budgets.
 
 Still open: undo snapshots dominate 1M-row peak memory; italic chart text; rotated hit-testing.
+
+## 2026-10-20 — Save speed, Find All
+
+- xlsx save uses deflate level 2 (`SAVE_DEFLATE_LEVEL`), chosen for speed: 1M-row save 4.36 ->
+  2.45 s measured back to back at the same load; files ~15% larger. Budget 7500 -> 4500 ms.
+- Find: wildcard-free patterns skip the NFA (exact / substring / allocation-free ASCII
+  case-insensitive compare); a test checks they agree with the matcher. find_all_1m 1.49 ->
+  0.73 s (it had slowed from 0.87 s with the wave 6 find rewrite). Budget 1600 -> 1300 ms.

@@ -51,7 +51,7 @@ ms = 3500.0
 description = "1M rows: full recalculation, warm AST cache"
 
 [bench.xlsx_save_1m]
-ms = 7500.0
+ms = 4500.0
 description = "1M rows: save 10M cells (4M formulas) to .xlsx"
 
 [bench.xlsx_load_1m]
@@ -83,7 +83,7 @@ ms = 1400.0
 description = "1M rows: undo that edit (incremental: ~1M dependents)"
 
 [bench.find_all_1m]
-ms = 1600.0
+ms = 1300.0
 description = "1M rows: Find All over 10M cells"
 
 [bench.autofilter_apply_1m]
