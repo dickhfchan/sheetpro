@@ -313,6 +313,7 @@ fn draw_text(p: &Painter, t: &ObjText, zoom: f32, families: &[FontFamily]) {
                 para.text.clone()
             };
             let mut job = LayoutJob::simple(text, font, c, wrap_w);
+            grid::set_italics(&mut job, para.italic);
             job.halign = match para.align {
                 Align::Left => egui::Align::Min,
                 Align::Center => egui::Align::Center,

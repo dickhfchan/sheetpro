@@ -359,3 +359,42 @@ fn render_grid_ui_png() {
     let img = h.render().unwrap();
     img.save(root.join("docs/img/grid-ui.png")).unwrap();
 }
+
+/// Every text shape painted last frame as (text, italics).
+fn painted_texts(h: &Harness<'static, App>) -> Vec<(String, bool)> {
+    let mut out = Vec::new();
+    for cs in &h.output().shapes {
+        if let egui::Shape::Text(t) = &cs.shape {
+            let italic = t.galley.job.sections.iter().any(|s| s.format.italics);
+            out.push((t.galley.text().to_string(), italic));
+        }
+    }
+    out
+}
+
+#[test]
+fn italic_cells_and_text_boxes_draw_oblique() {
+    let mut s = session();
+    exec(
+        &mut s,
+        "cell.set",
+        json!({"cell": "D1", "input": "slanted"}),
+    );
+    exec(&mut s, "select.range", json!({"range": "D1"}));
+    exec(&mut s, "home.font.italic", json!({}));
+    exec(
+        &mut s,
+        "insert.text_box",
+        json!({"text": "boxed", "italic": true, "cell": "F3", "width": 120, "height": 40}),
+    );
+    let h = harness(App::new(s));
+    let t = painted_texts(&h);
+    // (The formula bar also shows "slanted", upright.)
+    let has = |w: &str, it: bool| t.iter().any(|x| x.0 == w && x.1 == it);
+    assert!(has("slanted", true), "{t:?}");
+    assert!(has("boxed", true), "{t:?}");
+    assert!(
+        has("North", false) && !has("North", true),
+        "upright cells stay upright"
+    );
+}

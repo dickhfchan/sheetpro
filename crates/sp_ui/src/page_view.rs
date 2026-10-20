@@ -377,7 +377,13 @@ fn draw_items(p: &Painter, o: Pos2, k: f32, items: &[Item], tex: &mut Textures) 
                     FontFamily::Proportional
                 };
                 let c = color(*c);
-                let galley = p.layout_no_wrap(text.clone(), FontId::new(px, family), c);
+                let mut job = egui::text::LayoutJob::simple_singleline(
+                    text.clone(),
+                    FontId::new(px, family),
+                    c,
+                );
+                crate::grid::set_italics(&mut job, face.italic);
+                let galley = p.layout_job(job);
                 // (x, y) is the baseline start; egui places the galley by its top-left.
                 let ascent = galley
                     .rows
