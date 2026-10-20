@@ -901,8 +901,9 @@ impl App {
                     modifiers,
                     ..
                 } => {
-                    if let Some(sc) = shortcut_string(key, modifiers) {
-                        self.on_shortcut(&sc);
+                    let names = shortcut_names(key, modifiers);
+                    if !names.is_empty() {
+                        self.on_key(&names);
                     }
                 }
                 egui::Event::Copy => self.exec("home.clipboard.copy", json!({})),
@@ -921,6 +922,16 @@ impl App {
     }
 
     pub fn on_shortcut(&mut self, sc: &str) {
+        self.on_key(&[sc.to_string()]);
+    }
+
+    /// A key press, under every name it can be written as (`shortcut_names`): built-in keys
+    /// first, then the first name a command is registered under. A greyed-out command's
+    /// shortcut does nothing, like its button.
+    fn on_key(&mut self, names: &[String]) {
+        let Some(sc) = names.first().map(String::as_str) else {
+            return;
+        };
         if self.chart_key(sc) {
             return;
         }
@@ -935,10 +946,86 @@ impl App {
             "Enter" => return self.exec("nav.enter_next", json!({})),
             _ => {}
         }
-        if let Some(cmd) = registry().by_shortcut(sc) {
+        if let Some(cmd) = names.iter().find_map(|n| registry().by_shortcut(n))
+            && (cmd.spec.enabled)(&self.session)
+        {
             self.activate_command(cmd.id);
         }
     }
+}
+
+/// Punctuation keys by the character they type (unshifted, US layout).
+fn key_symbol(key: Key) -> Option<char> {
+    Some(match key {
+        Key::Semicolon => ';',
+        Key::Quote => '\'',
+        Key::Minus => '-',
+        Key::Equals => '=',
+        Key::Backtick => '`',
+        Key::Comma => ',',
+        Key::Period => '.',
+        Key::Slash => '/',
+        Key::Backslash => '\\',
+        Key::OpenBracket => '[',
+        Key::CloseBracket => ']',
+        Key::Plus => '+',
+        Key::Colon => ':',
+        Key::Pipe => '|',
+        Key::Questionmark => '?',
+        Key::Exclamationmark => '!',
+        Key::OpenCurlyBracket => '{',
+        Key::CloseCurlyBracket => '}',
+        _ => return None,
+    })
+}
+
+/// (unshifted, shifted) pairs of a US keyboard: shortcuts are documented both ways
+/// (`Ctrl+Shift+$` is Ctrl+Shift+4; `Ctrl+Shift+;` is Ctrl+Shift+:).
+const US_SHIFT: [(char, char); 21] = [
+    ('1', '!'),
+    ('2', '@'),
+    ('3', '#'),
+    ('4', '$'),
+    ('5', '%'),
+    ('6', '^'),
+    ('7', '&'),
+    ('8', '*'),
+    ('9', '('),
+    ('0', ')'),
+    ('`', '~'),
+    ('-', '_'),
+    ('=', '+'),
+    (';', ':'),
+    ('\'', '"'),
+    ('[', '{'),
+    (']', '}'),
+    ('\\', '|'),
+    (',', '<'),
+    ('.', '>'),
+    ('/', '?'),
+];
+
+/// Every `Ctrl+Shift+$`-style name a key press can be written as: its key, and with Shift
+/// held the other half of its US shift pair. The first is the canonical name.
+pub fn shortcut_names(key: Key, m: egui::Modifiers) -> Vec<String> {
+    let Some(first) = shortcut_string(key, m) else {
+        return Vec::new();
+    };
+    let mut names = vec![first.clone()];
+    let ch = key_symbol(key).or_else(|| {
+        let n = key.name();
+        (n.len() == 1).then(|| n.chars().next()).flatten()
+    });
+    if let (true, Some(c)) = (m.shift, ch) {
+        let partner = US_SHIFT
+            .iter()
+            .find_map(|(a, b)| (*a == c).then_some(*b).or((*b == c).then_some(*a)));
+        if let Some(p) = partner {
+            let prefix = &first[..first.len() - c.len_utf8()];
+            names.push(format!("{prefix}{p}"));
+        }
+    }
+    names
 }
 
 /// `Ctrl+Shift+Down`-style name for a key press (Cmd counts as Ctrl on macOS).
@@ -958,14 +1045,17 @@ pub fn shortcut_string(key: Key, m: egui::Modifiers) -> Option<String> {
         Key::Delete => "Delete".to_string(),
         Key::Backspace => "Backspace".to_string(),
         Key::Space => "Space".to_string(),
-        k => {
-            let n = k.name();
-            if n.len() == 1 || n.starts_with('F') && n.len() <= 3 {
-                n.to_string()
-            } else {
-                return None;
+        k => match key_symbol(k) {
+            Some(c) => c.to_string(),
+            None => {
+                let n = k.name();
+                if n.len() == 1 || n.starts_with('F') && n.len() <= 3 {
+                    n.to_string()
+                } else {
+                    return None;
+                }
             }
-        }
+        },
     };
     let mut s = String::new();
     if m.command || m.ctrl {

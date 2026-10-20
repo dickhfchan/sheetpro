@@ -263,3 +263,26 @@ Still open: undo snapshots dominate 1M-row peak memory; italic chart text; rotat
 - Find: wildcard-free patterns skip the NFA (exact / substring / allocation-free ASCII
   case-insensitive compare); a test checks they agree with the matcher. find_all_1m 1.49 ->
   0.73 s (it had slowed from 0.87 s with the wave 6 find rewrite). Budget 1600 -> 1300 ms.
+
+## 2026-10-20 — Navigation test (every button, shortcut and menu entry)
+
+`crates/sp_ui/tests/navigation.rs` drives the real shell with egui_kittest, each action in a
+fresh app over a populated workbook, and judges it against its catalog command (dialog opens
+and Escape cancels cleanly / runs per the command log / handed to the desktop / picker choice
+runs / greyed out does nothing). 253 ribbon tabs and buttons, 113 keyboard shortcuts, the grid
+and sheet-tab right-click menus (with submenus); ~10 s, part of the gate.
+
+Fixed what it found:
+- 17 punctuation shortcuts never fired (Ctrl+; insert date, Ctrl+Shift+$ currency, Ctrl+-
+  delete cells, Alt+= AutoSum, Ctrl+` show formulas, ...): `shortcut_string` dropped keys
+  egui names with words. Keys now carry their symbol, and with Shift their US-layout
+  partner (`shortcut_names`), matching both ways the catalog writes them.
+- Shortcuts ran greyed-out commands (Ctrl+Alt+V opened Paste Special with nothing copied);
+  they now respect `enabled` like buttons.
+- Eight buttons were enabled with nothing to act on and only errored (Paste Link, Remove Page
+  Break, Clear Filter, Reapply, Ungroup, Show/Hide Detail, Delete Comment): now grey out.
+- Link, Margins, Scale to Fit, Data Table errored on click; they open the parameter dialog.
+
+Tracked, not fixed: 33 buttons (and Move or Copy Sheet on the tab menu) whose dialog is the
+generic "Parameters (JSON)" prompt; the test fails if the list grows or a listed one gets a
+real dialog without leaving the list.
