@@ -1,6 +1,8 @@
 //! PivotTable Fields pane: a side panel shown while the active cell is inside a pivot.
 //! It lists the source fields with check boxes and the Filters / Columns / Rows / Values
 //! areas; every edit runs the `pivot.field` command (so it is undoable and scriptable).
+//! Fields can be dragged from the list into an area, between areas, within an area (to
+//! reorder) and back onto the list (to remove); each entry also has a menu.
 
 use crate::App;
 use crate::theme::LIGHT as T;
@@ -28,6 +30,113 @@ const AREAS: [(&str, &str); 4] = [
     ("rows", "Rows"),
     ("values", "Values"),
 ];
+
+/// What is being dragged in the pane.
+#[derive(Debug, Clone, PartialEq)]
+enum PaneDrag {
+    /// A source field, from the field list (`from: None`) or an axis area at an index.
+    Field {
+        name: String,
+        from: Option<(&'static str, usize)>,
+    },
+    /// Entry `i` of the Values area.
+    Value(usize),
+}
+
+/// The `pivot.field` edit for dropping `drag` on `area` ("none" = the field list) at entry
+/// `position` of that area (counted in the area as shown, before the move); `None` when the
+/// drop changes nothing.
+fn drop_edit(drag: &PaneDrag, area: &str, position: usize) -> Option<Json> {
+    // Moving down inside the same list: the entry leaves its old slot first.
+    let adjust = |from: usize| {
+        if from < position {
+            position - 1
+        } else {
+            position
+        }
+    };
+    match drag {
+        PaneDrag::Field { name, from } => match (area, from) {
+            ("none", None) => None,
+            ("none", Some(_)) => Some(json!({ "field": name, "area": "none" })),
+            (a, Some((fa, fi))) if *fa == a => {
+                let at = adjust(*fi);
+                (at != *fi).then(|| json!({ "field": name, "area": a, "position": at }))
+            }
+            (a, _) => Some(json!({ "field": name, "area": a, "position": position })),
+        },
+        PaneDrag::Value(i) => match area {
+            "none" => Some(json!({ "value": i, "remove": true })),
+            "values" => {
+                let at = adjust(*i);
+                (at != *i).then(|| json!({ "value": i, "area": "values", "position": at }))
+            }
+            a => Some(json!({ "value": i, "area": a, "position": position })),
+        },
+    }
+}
+
+/// Index at which a drop at pointer `y` lands among entries laid out at `rows` (their
+/// screen rects, top to bottom).
+fn drop_index(rows: &[egui::Rect], y: f32) -> usize {
+    rows.iter().filter(|r| r.center().y < y).count()
+}
+
+/// Pointer travel (px) after which a press on an entry becomes a drag.
+const DRAG_THRESHOLD: f32 = 6.0;
+
+/// Let the entry `resp` (a checkbox or menu button) also be dragged, carrying `payload`.
+/// The widget keeps sensing only clicks (so a click still toggles / opens its menu); a
+/// press on it that travels past `DRAG_THRESHOLD` starts the drag.
+fn drag_source(ui: &Ui, resp: egui::Response, payload: PaneDrag, label: &str) -> egui::Response {
+    let ctx = ui.ctx();
+    // Pressed on this entry (and still held) and moved far enough.
+    let dragging = ctx.input(|i| {
+        i.pointer.primary_down()
+            && i.pointer
+                .press_origin()
+                .zip(i.pointer.interact_pos())
+                .is_some_and(|(a, b)| {
+                    resp.interact_rect.contains(a) && a.distance(b) > DRAG_THRESHOLD
+                })
+    });
+    if dragging && ui.is_enabled() {
+        egui::DragAndDrop::set_payload(ctx, payload);
+        if let Some(p) = ctx.pointer_interact_pos() {
+            let layer = egui::LayerId::new(egui::Order::Tooltip, resp.id.with("drag-ghost"));
+            let painter = ctx.layer_painter(layer);
+            let g = painter.layout_no_wrap(
+                label.to_string(),
+                egui::FontId::proportional(11.0),
+                T.dialog_title,
+            );
+            let r = egui::Rect::from_min_size(p + egui::vec2(10.0, 4.0), g.size())
+                .expand2(egui::vec2(5.0, 2.0));
+            painter.rect_filled(r, 2.0, T.list_bg);
+            painter.rect_stroke(
+                r,
+                2.0,
+                egui::Stroke::new(1.0, T.list_border),
+                egui::StrokeKind::Inside,
+            );
+            painter.galley(r.min + egui::vec2(5.0, 2.0), g, T.dialog_title);
+        }
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
+    resp
+}
+
+/// Outline an area (or the list) while something droppable hovers it.
+fn drop_highlight(ui: &Ui, resp: &egui::Response) {
+    if resp.dnd_hover_payload::<PaneDrag>().is_some() {
+        ui.painter().rect_stroke(
+            resp.rect,
+            2.0,
+            egui::Stroke::new(2.0, T.selection_border),
+            egui::StrokeKind::Inside,
+        );
+    }
+}
 
 struct FieldRow {
     name: String,
@@ -121,7 +230,7 @@ impl App {
                 .size(11.0)
                 .color(T.dialog_label),
         );
-        egui::Frame::NONE
+        let list = egui::Frame::NONE
             .fill(T.list_bg)
             .stroke(egui::Stroke::new(1.0, T.list_border))
             .inner_margin(egui::Margin::same(4))
@@ -138,7 +247,12 @@ impl App {
                             } else {
                                 f.name.clone()
                             };
+                            let payload = PaneDrag::Field {
+                                name: f.name.clone(),
+                                from: None,
+                            };
                             let r = ui.checkbox(&mut on, label);
+                            let r = drag_source(ui, r, payload, &f.name);
                             let r = if f.numeric {
                                 r.on_hover_text("Numbers: checking adds it to Values")
                             } else {
@@ -149,10 +263,17 @@ impl App {
                             }
                         }
                     });
-            });
+            })
+            .response;
+        drop_highlight(ui, &list);
+        if let Some(drag) = list.dnd_release_payload::<PaneDrag>()
+            && let Some(e) = drop_edit(&drag, "none", 0)
+        {
+            edits.push(e);
+        }
         ui.add_space(6.0);
         ui.label(
-            RichText::new("Click a field below to move or remove it:")
+            RichText::new("Drag fields between areas below:")
                 .size(11.0)
                 .color(T.dialog_label),
         );
@@ -178,13 +299,15 @@ impl App {
     }
 }
 
-/// One area list ("Rows", "Values"…) with a menu per entry.
-fn area_box(ui: &mut Ui, d: &PaneData, area: &str, title: &str, edits: &mut Vec<Json>) {
+/// One area list ("Rows", "Values"…): each entry has a menu and can be dragged; the box
+/// takes drops.
+fn area_box(ui: &mut Ui, d: &PaneData, area: &'static str, title: &str, edits: &mut Vec<Json>) {
     let w = (PANE_WIDTH - 30.0) / 2.0;
     ui.vertical(|ui| {
         ui.set_width(w);
         ui.label(RichText::new(title).size(11.0).color(T.dialog_label));
-        egui::Frame::NONE
+        let mut rows: Vec<egui::Rect> = Vec::new();
+        let frame = egui::Frame::NONE
             .fill(T.list_bg)
             .stroke(egui::Stroke::new(1.0, T.list_border))
             .inner_margin(egui::Margin::same(3))
@@ -193,9 +316,11 @@ fn area_box(ui: &mut Ui, d: &PaneData, area: &str, title: &str, edits: &mut Vec<
                 if area == "values" {
                     let n = d.values.len();
                     for (i, (caption, func)) in d.values.iter().enumerate() {
-                        ui.menu_button(RichText::new(caption).size(11.0), |ui| {
+                        let r = ui.menu_button(RichText::new(caption).size(11.0), |ui| {
                             value_menu(ui, i, n, func, edits);
                         });
+                        let r = drag_source(ui, r.response, PaneDrag::Value(i), caption);
+                        rows.push(r.rect);
                     }
                     return;
                 }
@@ -207,11 +332,28 @@ fn area_box(ui: &mut Ui, d: &PaneData, area: &str, title: &str, edits: &mut Vec<
                 .map_or(&[], Vec::as_slice);
                 let n = names.len();
                 for (i, name) in names.iter().enumerate() {
-                    ui.menu_button(RichText::new(name).size(11.0), |ui| {
+                    let payload = PaneDrag::Field {
+                        name: name.clone(),
+                        from: Some((area, i)),
+                    };
+                    let r = ui.menu_button(RichText::new(name).size(11.0), |ui| {
                         field_menu(ui, name, area, i, n, edits);
                     });
+                    let r = drag_source(ui, r.response, payload, name);
+                    rows.push(r.rect);
                 }
-            });
+            })
+            .response;
+        drop_highlight(ui, &frame);
+        if let Some(drag) = frame.dnd_release_payload::<PaneDrag>() {
+            let y = ui
+                .ctx()
+                .pointer_interact_pos()
+                .map_or(f32::INFINITY, |p| p.y);
+            if let Some(e) = drop_edit(&drag, area, drop_index(&rows, y)) {
+                edits.push(e);
+            }
+        }
     });
 }
 
@@ -288,5 +430,72 @@ fn value_menu(ui: &mut Ui, i: usize, n: usize, func: &str, edits: &mut Vec<Json>
     }
     if ui.button("Remove Field").clicked() {
         push(ui, json!({ "value": i, "remove": true }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn field(name: &str, from: Option<(&'static str, usize)>) -> PaneDrag {
+        PaneDrag::Field {
+            name: name.into(),
+            from,
+        }
+    }
+
+    #[test]
+    fn drops_become_pivot_field_edits() {
+        // List → area, at the drop position.
+        assert_eq!(
+            drop_edit(&field("Product", None), "cols", 0),
+            Some(json!({"field": "Product", "area": "cols", "position": 0}))
+        );
+        // List → list: nothing.
+        assert_eq!(drop_edit(&field("Product", None), "none", 0), None);
+        // Area → list removes it.
+        assert_eq!(
+            drop_edit(&field("Region", Some(("rows", 0))), "none", 0),
+            Some(json!({"field": "Region", "area": "none"}))
+        );
+        // Reorder in place: moving entry 0 below entry 1 lands at 1; dropping it where it
+        // is changes nothing.
+        assert_eq!(
+            drop_edit(&field("Region", Some(("rows", 0))), "rows", 2),
+            Some(json!({"field": "Region", "area": "rows", "position": 1}))
+        );
+        assert_eq!(
+            drop_edit(&field("Region", Some(("rows", 0))), "rows", 1),
+            None
+        );
+        assert_eq!(
+            drop_edit(&field("Year", Some(("rows", 2))), "rows", 0),
+            Some(json!({"field": "Year", "area": "rows", "position": 0}))
+        );
+        // Values: reorder, move out to an axis, remove.
+        assert_eq!(
+            drop_edit(&PaneDrag::Value(1), "values", 0),
+            Some(json!({"value": 1, "area": "values", "position": 0}))
+        );
+        assert_eq!(drop_edit(&PaneDrag::Value(0), "values", 0), None);
+        assert_eq!(
+            drop_edit(&PaneDrag::Value(0), "filters", 1),
+            Some(json!({"value": 0, "area": "filters", "position": 1}))
+        );
+        assert_eq!(
+            drop_edit(&PaneDrag::Value(0), "none", 0),
+            Some(json!({"value": 0, "remove": true}))
+        );
+    }
+
+    #[test]
+    fn drop_index_counts_entries_above() {
+        let r = |y: f32| egui::Rect::from_min_size(egui::pos2(0.0, y), egui::vec2(50.0, 20.0));
+        let rows = [r(0.0), r(24.0), r(48.0)];
+        assert_eq!(drop_index(&rows, -5.0), 0);
+        assert_eq!(drop_index(&rows, 15.0), 1);
+        assert_eq!(drop_index(&rows, 40.0), 2);
+        assert_eq!(drop_index(&rows, 500.0), 3);
+        assert_eq!(drop_index(&[], 10.0), 0);
     }
 }

@@ -201,8 +201,9 @@ fn field_list_pane_edits_the_pivot() {
     let mut h = harness(App::new(s));
     assert!(h.state().field_list_visible());
     h.get_by_label("PivotTable Fields");
-    h.get_by_label("Product").click();
-    h.run_steps(2);
+    // A real click: press and release on separate frames (the entry is also draggable).
+    let at = h.get_by_label("Product").rect().center();
+    click(&mut h, at);
     let rows = |h: &Harness<'static, App>| {
         h.state().session.wb.sheet(0).unwrap().analysis.pivots[0]
             .rows
@@ -350,4 +351,50 @@ fn slicers_select_move_resize_and_delete() {
             .len(),
         1
     );
+}
+
+#[test]
+fn field_list_pane_drag_and_drop() {
+    let mut s = pivot_session();
+    s.select(CellAddr::parse("G2").unwrap());
+    let mut h = harness(App::new(s));
+    let pv = |h: &Harness<'static, App>| {
+        let p = &h.state().session.wb.sheet(0).unwrap().analysis.pivots[0];
+        (p.rows.clone(), p.cols.clone(), p.values.len())
+    };
+    assert_eq!(pv(&h), (vec![0], vec![], 1));
+    // Drop targets: just below each area heading.
+    let below = |h: &Harness<'static, App>, label: &str| {
+        let r = h.get_by_label(label).rect();
+        r.center_bottom() + Vec2::new(0.0, 20.0)
+    };
+    // Product from the field list onto Columns.
+    let from = h.get_by_label("Product").rect().center();
+    let to = below(&h, "Columns");
+    drag(&mut h, from, to);
+    assert_eq!(pv(&h), (vec![0], vec![1], 1), "Product → Columns");
+    // Region (Rows) onto Columns, before Product (drop above Product's entry).
+    let region_entry = h
+        .get_all_by_label("Region")
+        .map(|n| n.rect())
+        .find(|r| r.center().y > to.y - 60.0 && r.center().x < to.x - 40.0)
+        .expect("Region in Rows");
+    let cols_top = h.get_by_label("Columns").rect().center_bottom() + Vec2::new(0.0, 4.0);
+    drag(&mut h, region_entry.center(), cols_top);
+    assert_eq!(pv(&h), (vec![], vec![0, 1], 1), "Region → Columns, first");
+    // A field dragged back onto the field list is removed.
+    let product_entry = h
+        .get_all_by_label("Product")
+        .map(|n| n.rect())
+        .max_by(|a, b| a.center().y.total_cmp(&b.center().y))
+        .unwrap();
+    let list = h.get_by_label("Sales").rect().center();
+    drag(&mut h, product_entry.center(), list);
+    assert_eq!(pv(&h), (vec![], vec![0], 1), "Product removed");
+    // Each drop was one pivot.field step.
+    h.state_mut().exec("edit.undo", json!({}));
+    assert_eq!(pv(&h), (vec![], vec![0, 1], 1));
+    h.state_mut().exec("edit.undo", json!({}));
+    h.state_mut().exec("edit.undo", json!({}));
+    assert_eq!(pv(&h), (vec![0], vec![], 1));
 }
