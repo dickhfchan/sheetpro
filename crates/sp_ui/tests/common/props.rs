@@ -53,6 +53,9 @@ pub struct Entry {
     pub persist: bool,
     /// Also export a PDF (page and visual properties).
     pub print: bool,
+    /// Extra assertions on the session after the action (selection, status, things that
+    /// are not saved properties).
+    pub then: Option<fn(&Session) -> Result<(), String>>,
 }
 
 impl Entry {
@@ -67,6 +70,7 @@ impl Entry {
             undo: true,
             persist: true,
             print: false,
+            then: None,
         }
     }
     pub fn setup(mut self, id: &'static str, p: Json) -> Self {
@@ -102,6 +106,10 @@ impl Entry {
     pub fn view_only(mut self) -> Self {
         self.undo = false;
         self.persist = false;
+        self
+    }
+    pub fn then(mut self, f: fn(&Session) -> Result<(), String>) -> Self {
+        self.then = Some(f);
         self
     }
     pub fn print(mut self) -> Self {
@@ -231,6 +239,10 @@ pub fn run(e: &Entry, proved: &mut Proved) -> Result<(), String> {
             .into_iter()
             .filter(|l| !l.ends_with("(failed)")),
     );
+
+    if let Some(f) = e.then {
+        f(&h.state().session)?;
+    }
 
     // 1. Exactly the expected changes. A path with `*` covers every changed path it matches
     // (at least one), all of which must end at the given value.
