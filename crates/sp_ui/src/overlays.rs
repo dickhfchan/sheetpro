@@ -70,10 +70,12 @@ pub(crate) enum Hot {
         rect: Rect,
         idx: usize,
     },
-    /// A picture, shape, text box or line (index into `Sheet::objects`).
+    /// A picture, shape, text box or line (index into `Sheet::objects`), drawn turned
+    /// `rotation` degrees clockwise about the centre of `rect`.
     Object {
         rect: Rect,
         idx: usize,
+        rotation: f32,
     },
     /// A cell checkbox square.
     Checkbox {
@@ -94,6 +96,16 @@ pub(crate) enum Hot {
 }
 
 impl Hot {
+    /// Whether `p` hits it: a rotated object by its turned outline, not its unrotated box.
+    pub(crate) fn contains(&self, p: Pos2) -> bool {
+        match self {
+            Hot::Object { rect, rotation, .. } if *rotation % 360.0 != 0.0 => {
+                rect.contains(unrotate(p, rect.center(), *rotation))
+            }
+            h => h.rect().contains(p),
+        }
+    }
+
     fn rect(&self) -> Rect {
         match self {
             Hot::Filter { rect, .. }
@@ -106,6 +118,13 @@ impl Hot {
             | Hot::SlicerClear { rect, .. } => *rect,
         }
     }
+}
+
+/// `p` turned `degrees` counter-clockwise about `c` (undoing a clockwise rotation; y is down).
+pub(crate) fn unrotate(p: Pos2, c: Pos2, degrees: f32) -> Pos2 {
+    let (s, k) = (-degrees).to_radians().sin_cos();
+    let d = p - c;
+    c + Vec2::new(d.x * k - d.y * s, d.x * s + d.y * k)
 }
 
 /// Which part of a selected chart (or object, when `object`) a drag grabbed: the body or
@@ -483,6 +502,7 @@ impl App {
             hots.push(Hot::Object {
                 rect: r.expand(5.0),
                 idx,
+                rotation: 0.0,
             });
         }
         if let Some(d) = &self.ui.grid.drag {
@@ -558,7 +578,7 @@ impl App {
     /// consumed (the cell under it must not be selected).
     pub(crate) fn overlay_input(&mut self, resp: &egui::Response, hots: &[Hot], geo: &Geo) -> bool {
         let pos = resp.interact_pointer_pos();
-        let top_hit = |p: Pos2| hots.iter().rev().find(|h| h.rect().contains(p)).cloned();
+        let top_hit = |p: Pos2| hots.iter().rev().find(|h| h.contains(p)).cloned();
         // Chart drag in progress.
         if let Some(mut d) = self.ui.grid.drag {
             if let Some(p) = pos {

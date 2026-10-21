@@ -477,7 +477,11 @@ pub(crate) fn paint_drawings(
                     continue;
                 }
                 paint_object(&p, tex, o, *r, zoom, &families);
-                hots.push(Hot::Object { rect: *r, idx: i });
+                hots.push(Hot::Object {
+                    rect: *r,
+                    idx: i,
+                    rotation: o.rotation as f32,
+                });
             }
         }
     }

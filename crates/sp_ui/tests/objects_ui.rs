@@ -398,3 +398,37 @@ fn field_list_pane_drag_and_drop() {
     h.state_mut().exec("edit.undo", json!({}));
     assert_eq!(pv(&h), (vec![0], vec![], 1));
 }
+
+/// A rotated object is clicked by its turned outline: a long thin bar turned 90° is hit
+/// above its centre (where it is drawn), not beside it (where its unrotated box was).
+#[test]
+fn rotated_objects_hit_by_their_outline() {
+    let fresh = || {
+        let mut s = Session::new();
+        exec(
+            &mut s,
+            "insert.shapes",
+            json!({"shape": "rect", "cell": "F12", "width": 240, "height": 24, "rotation": 90}),
+        );
+        harness(App::new(s))
+    };
+    let mut h = fresh();
+    let origin = sp_ui::overlays::cells_origin(&h.ctx).unwrap();
+    let r = sp_ui::objdraw::object_rects(&h.state().session, origin)[0].1;
+    let c = r.center();
+    // Beside the centre: inside the unrotated box, outside the drawn (vertical) bar.
+    click(&mut h, c + Vec2::new(90.0, 0.0));
+    assert_eq!(
+        h.state().ui.grid.object,
+        None,
+        "beside a vertical bar is not the bar"
+    );
+    // Above the centre: outside the unrotated box, on the drawn bar.
+    let mut h = fresh();
+    click(&mut h, c + Vec2::new(0.0, -90.0));
+    assert_eq!(
+        h.state().ui.grid.object,
+        Some(0),
+        "on the drawn bar selects it"
+    );
+}
