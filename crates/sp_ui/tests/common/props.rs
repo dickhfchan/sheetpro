@@ -35,6 +35,12 @@ pub enum Act {
         fill: fn(&mut App),
         ok: &'static str,
     },
+    /// Anything else a user does (a right-click menu, dragging, a dialog that stays open):
+    /// `prep` gets there (not part of the change, e.g. opening a tab), `act` does it.
+    Custom {
+        prep: fn(&mut Harness<'_, App>) -> Result<(), String>,
+        act: fn(&mut Harness<'_, App>) -> Result<(), String>,
+    },
 }
 
 pub struct Entry {
@@ -199,6 +205,14 @@ pub fn perform(h: &mut Harness<'_, App>, act: &Act) -> Result<PropMap, String> {
                     h.state().last_error()
                 ));
             }
+            Ok(before)
+        }
+        Act::Custom { prep, act } => {
+            prep(h)?;
+            h.run_steps(2);
+            let before = snap(h);
+            act(h)?;
+            h.run_steps(3);
             Ok(before)
         }
     }
