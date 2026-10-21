@@ -1,3 +1,5 @@
 [toolchain]
-channel = "nightly"
+# Pinned so local builds and CI use the same compiler and lints (a floating nightly
+# made CI meet new clippy lints first). Move it forward deliberately, with the fixes.
+channel = "nightly-2026-08-05"
 components = ["clippy", "rustfmt"]

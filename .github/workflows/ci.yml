@@ -7,9 +7,9 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: clippy, rustfmt
+      # The toolchain (and components) pinned in rust-toolchain.toml.
+      - name: Install toolchain
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - name: Fetch oracle corpus
         run: cargo xtask corpus
