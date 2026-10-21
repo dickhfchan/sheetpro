@@ -302,6 +302,22 @@ impl App {
                         i.key_pressed(Key::Escape),
                     )
                 });
+                // The key that ended the edit is spent: the grid, which reads this frame's
+                // keys after the editor, must not move a second time.
+                if enter || tab || esc {
+                    ui.input_mut(|i| {
+                        i.events.retain(|e| {
+                            !matches!(
+                                e,
+                                egui::Event::Key {
+                                    key: Key::Enter | Key::Tab | Key::Escape,
+                                    pressed: true,
+                                    ..
+                                }
+                            )
+                        });
+                    });
+                }
                 if esc {
                     self.cancel_edit();
                 } else if enter {
