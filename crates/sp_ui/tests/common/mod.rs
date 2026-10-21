@@ -16,6 +16,8 @@ use sp_core::{CellAddr, CellRange};
 use sp_engine::{Session, settings};
 use sp_ui::App;
 
+pub mod props;
+
 /// Wide enough that every ribbon group shows all its buttons (none collapsed into menus).
 pub const WIDTH: f32 = 3400.0;
 
