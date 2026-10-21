@@ -146,7 +146,6 @@ Model/view fields with no reader in `sp_render` or `sp_ui`, and app settings (`S
 
 - `ViewState.review`
 - `Sheet.outline`
-- `Sheet.hyperlinks`
 - `Sheet.allow_edit_ranges`
 - `Sheet.validations`
 - `Sheet.spills`

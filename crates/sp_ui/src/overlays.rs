@@ -854,6 +854,10 @@ pub struct GridUi {
     pub hide_field_list: bool,
     #[serde(skip)]
     pub drag: Option<ChartDrag>,
+    /// Format Painter armed: the source range (`Sheet1!A1:B2`) whose formats the next
+    /// selection receives.
+    #[serde(skip)]
+    pub painter: Option<String>,
 }
 
 /// A screen rectangle as `[x, y, w, h]` px at 100% zoom from A1 (the `object.format`

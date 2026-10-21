@@ -251,7 +251,7 @@ fn prompts_run_their_commands() {
 fn ribbon_commands_with_required_params_open_dialogs() {
     let mut app = App::new(session());
     app.activate_command("home.cells.move_copy_sheet");
-    assert_eq!(app.dialog_kind().as_deref(), Some("params"));
+    assert_eq!(app.dialog_kind().as_deref(), Some("move_copy"));
     app.ui.dialog = None;
     app.activate_command("view.zoom");
     assert_eq!(app.dialog_kind().as_deref(), Some("zoom"));
@@ -327,5 +327,28 @@ fn formula_bar_shows_dates_and_percents_as_typed() {
     ] {
         app.exec("select.range", json!({"range": cell}));
         assert_eq!(app.edit_buf, want, "formula bar for {cell}");
+    }
+}
+
+/// Dialogs whose actions apply as you go have one Close button, and it closes them.
+#[test]
+fn close_button_closes_apply_as_you_go_dialogs() {
+    for name in [
+        "scenario_manager",
+        "symbol",
+        "evaluate_formula",
+        "paste_name",
+    ] {
+        let mut h = harness(App::new(session()));
+        h.state_mut().open_dialog(name).unwrap();
+        h.run_steps(2);
+        assert_eq!(
+            h.state().dialog_kind().as_deref(),
+            Some(name),
+            "{name} opens"
+        );
+        h.get_by_label("Close").click();
+        h.run_steps(2);
+        assert!(h.state().dialog_kind().is_none(), "{name}: Close closes it");
     }
 }

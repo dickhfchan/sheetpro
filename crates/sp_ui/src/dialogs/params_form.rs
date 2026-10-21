@@ -385,7 +385,7 @@ impl Params {
 }
 
 /// Insert `text` at the end of the formula being typed, or start one (`=Sales`).
-fn insert_text(app: &mut App, text: &str) {
+pub(crate) fn insert_text(app: &mut App, text: &str) {
     let editing = app.editing_cell.is_some();
     let t = if editing && app.edit_buf.starts_with('=') {
         format!("{}{text}", app.edit_buf)

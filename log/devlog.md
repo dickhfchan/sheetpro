@@ -324,3 +324,15 @@ need million-element arrays for whole-column refs).
 - ENCODEURL and FILTERXML (504/514 functions). WEBSERVICE, IMAGE, STOCKHISTORY and the CUBE
   functions need a network or OLAP connection and stay unimplemented.
 - Font / Font Size pickers have accessible names.
+
+## 2026-10-21 — No generic forms left; Linux CI
+
+- The last 17 commands on the generated form now behave as spreadsheet users expect:
+  ribbon menus for Cell Styles, Margins (+ Custom Margins…), Size, Use in Formula; Format
+  Painter as a mode (arm, then the next selection receives the formats; Esc cancels); Flash
+  Fill runs directly (result docs `→ {…}` were being read as required params); dialogs for
+  Move or Copy, Insert Slicers, Link, Symbol, Scale to Fit, Evaluate Formula, Advanced Filter,
+  Consolidate, Scenario Manager, Data Table, Forecast Sheet, Paste Name (F3).
+- Navigation test: 253/253 buttons, 113/113 shortcuts, 0 generic forms.
+- CI: the nightly is pinned (rust-toolchain.toml), so CI and local use the same compiler; a
+  Linux (Ubuntu 24.04, lavapipe) job runs the same gate next to macOS. Both green.

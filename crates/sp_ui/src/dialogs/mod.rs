@@ -16,6 +16,7 @@ pub mod sort;
 pub mod spelling;
 pub mod table_dialog;
 pub mod tools;
+pub mod tools2;
 pub mod widgets;
 
 use crate::App;
@@ -62,16 +63,42 @@ pub enum Dialog {
     GoalSeek(tools::GoalSeek),
     NewComment(tools::NewComment),
     GoToSpecial(tools::GoToSpecial),
+    MoveCopy(tools2::MoveCopy),
+    InsertSlicer(tools2::InsertSlicer),
+    Hyperlink(Box<tools2::Hyperlink>),
+    Symbol(tools2::Symbol),
+    ScaleToFit(tools2::ScaleToFit),
+    CustomMargins(tools2::CustomMargins),
+    EvaluateFormula(tools2::EvaluateFormula),
+    AdvancedFilter(tools2::AdvancedFilter),
+    Consolidate(tools2::Consolidate),
+    ScenarioManager(tools2::ScenarioManager),
+    DataTable(tools2::DataTable),
+    ForecastSheet(tools2::ForecastSheet),
+    PasteName(tools2::PasteName),
 }
 
 /// Names accepted by [`App::open_dialog`] (and `sp screenshot --dialog`).
-pub const DIALOG_NAMES: [&str; 43] = [
+pub const DIALOG_NAMES: [&str; 56] = [
     "spelling",
     "data_validation",
     "goal_seek",
     "new_note",
     "new_comment",
     "goto_special",
+    "move_copy",
+    "insert_slicer",
+    "hyperlink",
+    "symbol",
+    "scale_to_fit",
+    "custom_margins",
+    "evaluate_formula",
+    "advanced_filter",
+    "consolidate",
+    "scenario_manager",
+    "data_table",
+    "forecast_sheet",
+    "paste_name",
     "cf_new",
     "cf_highlight",
     "cf_top_bottom",
@@ -163,11 +190,21 @@ pub fn dialog_for_command(id: &str) -> Option<&'static str> {
         "insert.note" => "new_note",
         "insert.comment" | "review.comment.new" => "new_comment",
         "home.editing.goto_special" => "goto_special",
+        "home.cells.move_copy_sheet" => "move_copy",
+        "insert.slicer" => "insert_slicer",
+        "insert.hyperlink" => "hyperlink",
+        "insert.symbol" => "symbol",
+        "layout.scale_to_fit" => "scale_to_fit",
+        "formulas.evaluate_formula" => "evaluate_formula",
+        "data.advanced_filter" => "advanced_filter",
+        "data.consolidate" => "consolidate",
+        "data.what_if.scenario" => "scenario_manager",
+        "data.what_if.data_table" => "data_table",
+        "data.forecast_sheet" => "forecast_sheet",
+        // F3; the ribbon button is a menu of the same names.
+        "formulas.use_in_formula" => "paste_name",
         // Every parameter is optional, but the command needs one of them to do anything.
-        "insert.hyperlink" => "params:insert.hyperlink",
         "layout.margins" => "params:layout.margins",
-        "layout.scale_to_fit" => "params:layout.scale_to_fit",
-        "data.what_if.data_table" => "params:data.what_if.data_table",
         _ => return None,
     })
 }
@@ -180,7 +217,14 @@ pub fn required_params(doc: &str) -> Vec<String> {
     while let Some(c) = chars.next() {
         match c {
             '{' | '[' => depth += 1,
-            '}' | ']' => depth -= 1,
+            '}' | ']' => {
+                depth -= 1;
+                // The params object ends here; what follows (`→ {"filled": n}`) documents
+                // the result, not parameters.
+                if depth == 0 {
+                    break;
+                }
+            }
             '"' => {
                 let mut s = String::new();
                 while let Some(ch) = chars.next() {
@@ -321,6 +365,19 @@ impl Dialog {
             "new_note" => Dialog::NewComment(tools::NewComment::new(&app.session, true)),
             "new_comment" => Dialog::NewComment(tools::NewComment::new(&app.session, false)),
             "goto_special" => Dialog::GoToSpecial(tools::GoToSpecial::default()),
+            "move_copy" => Dialog::MoveCopy(tools2::MoveCopy::new(&app.session, None)),
+            "insert_slicer" => Dialog::InsertSlicer(tools2::InsertSlicer::new(&app.session)),
+            "hyperlink" => Dialog::Hyperlink(Box::new(tools2::Hyperlink::new(&app.session))),
+            "symbol" => Dialog::Symbol(tools2::Symbol::new(app)),
+            "scale_to_fit" => Dialog::ScaleToFit(tools2::ScaleToFit::new(&app.session)),
+            "custom_margins" => Dialog::CustomMargins(tools2::CustomMargins::new(&app.session)),
+            "evaluate_formula" => Dialog::EvaluateFormula(tools2::EvaluateFormula::new(app)),
+            "advanced_filter" => Dialog::AdvancedFilter(tools2::AdvancedFilter::new(&app.session)),
+            "consolidate" => Dialog::Consolidate(tools2::Consolidate::new(&app.session)),
+            "scenario_manager" => Dialog::ScenarioManager(tools2::ScenarioManager::new(&app.session)),
+            "data_table" => Dialog::DataTable(tools2::DataTable::new(&app.session)),
+            "forecast_sheet" => Dialog::ForecastSheet(tools2::ForecastSheet::new(&app.session)),
+            "paste_name" => Dialog::PasteName(tools2::PasteName::new(&app.session)),
             other => match other.strip_prefix("params:") {
                 Some(id) => Dialog::Params(params_form::Params::new(id, &app.session)?),
                 None => return Err(format!("unknown dialog '{other}'")),
@@ -356,6 +413,19 @@ impl Dialog {
             Dialog::GoalSeek(d) => d.ui(ctx, app),
             Dialog::NewComment(d) => d.ui(ctx, app),
             Dialog::GoToSpecial(d) => d.ui(ctx, app),
+            Dialog::MoveCopy(d) => d.ui(ctx, app),
+            Dialog::InsertSlicer(d) => d.ui(ctx, app),
+            Dialog::Hyperlink(d) => d.ui(ctx, app),
+            Dialog::Symbol(d) => d.ui(ctx, app),
+            Dialog::ScaleToFit(d) => d.ui(ctx, app),
+            Dialog::CustomMargins(d) => d.ui(ctx, app),
+            Dialog::EvaluateFormula(d) => d.ui(ctx, app),
+            Dialog::AdvancedFilter(d) => d.ui(ctx, app),
+            Dialog::Consolidate(d) => d.ui(ctx, app),
+            Dialog::ScenarioManager(d) => d.ui(ctx, app),
+            Dialog::DataTable(d) => d.ui(ctx, app),
+            Dialog::ForecastSheet(d) => d.ui(ctx, app),
+            Dialog::PasteName(d) => d.ui(ctx, app),
         }
     }
 
@@ -419,6 +489,18 @@ impl App {
     /// command has one or needs params, otherwise run it straight away.
     pub fn activate_command(&mut self, id: &str) {
         if crate::shell_hook::intercept(id) {
+            return;
+        }
+        // Format Painter is a mode: the next selection receives the current one's formats.
+        if id == "home.clipboard.format_painter" {
+            let s = &self.session;
+            let sheet = s
+                .wb
+                .sheet(s.sheet_index())
+                .map(|sh| sp_core::addr::quote_sheet_name(&sh.name))
+                .unwrap_or_default();
+            self.ui.grid.painter = Some(format!("{sheet}!{}", s.sel.range().to_a1()));
+            self.session.status = "Format Painter: select the cells to format (Esc cancels)".into();
             return;
         }
         if let Some(name) = dialog_for_command(id) {
@@ -555,6 +637,10 @@ mod tests {
         );
         assert!(required_params(r#"{"range"?: "A1:B2"}"#).is_empty());
         assert!(required_params("{}").is_empty());
+        // Result docs after the params object are not parameters.
+        assert!(
+            required_params(r#"{"cell"?: "C2"} → {"filled": n, "program": "…"}"#).is_empty()
+        );
         assert_eq!(
             required_params(r#"{"sheet"?: "Sheet1", "color": "FF0000" | null}"#),
             vec!["color".to_string()]

@@ -104,6 +104,92 @@ impl App {
                 .response
                 .on_hover_text(tip);
             }
+            "home.styles.cell_styles" if on => {
+                ui.menu_button(RichText::new(&item.label).size(11.0).color(color), |ui| {
+                    ui.set_min_width(220.0);
+                    let groups = self
+                        .query("home.styles.cell_styles", json!({}))
+                        .ok()
+                        .and_then(|r| r.get("groups").and_then(|g| g.as_array()).cloned())
+                        .unwrap_or_default();
+                    for g in groups {
+                        let name = g.get("group").and_then(|x| x.as_str()).unwrap_or("");
+                        ui.label(RichText::new(name).size(10.5).color(T.group_label));
+                        ui.horizontal_wrapped(|ui| {
+                            for st in g.get("styles").and_then(|x| x.as_array()).into_iter().flatten() {
+                                let Some(st) = st.as_str() else { continue };
+                                if ui.button(st).clicked() {
+                                    self.exec("home.styles.cell_styles", json!({ "style": st }));
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                })
+                .response
+                .on_hover_text(tip);
+            }
+            "layout.margins" if on => {
+                ui.menu_button(RichText::new(&item.label).size(11.0).color(color), |ui| {
+                    for (preset, l) in [("normal", "Normal"), ("wide", "Wide"), ("narrow", "Narrow")] {
+                        if ui.button(l).clicked() {
+                            self.exec("layout.margins", json!({ "preset": preset }));
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button("Custom Margins…").clicked() {
+                        if let Err(e) = self.open_dialog("custom_margins") {
+                            self.last_error = Some(e);
+                        }
+                        ui.close();
+                    }
+                })
+                .response
+                .on_hover_text(tip);
+            }
+            "layout.size" if on => {
+                ui.menu_button(RichText::new(&item.label).size(11.0).color(color), |ui| {
+                    for (size, l) in [
+                        ("letter", "Letter"),
+                        ("legal", "Legal"),
+                        ("a4", "A4"),
+                        ("a3", "A3"),
+                        ("a5", "A5"),
+                    ] {
+                        if ui.button(l).clicked() {
+                            self.exec("layout.size", json!({ "size": size }));
+                            ui.close();
+                        }
+                    }
+                })
+                .response
+                .on_hover_text(tip);
+            }
+            "formulas.use_in_formula" if on => {
+                ui.menu_button(RichText::new(&item.label).size(11.0).color(color), |ui| {
+                    let mut names: Vec<String> =
+                        self.session.wb.names.iter().map(|n| n.name.clone()).collect();
+                    names.sort_by_key(|n| n.to_ascii_lowercase());
+                    names.dedup();
+                    if names.is_empty() {
+                        ui.label(RichText::new("No defined names").color(T.group_label));
+                    }
+                    for n in names {
+                        if ui.button(&n).clicked() {
+                            if let Ok(r) =
+                                self.try_exec("formulas.use_in_formula", json!({ "name": n }))
+                                && let Some(t) = r.get("insert").and_then(|x| x.as_str())
+                            {
+                                crate::dialogs::params_form::insert_text(self, t);
+                            }
+                            ui.close();
+                        }
+                    }
+                })
+                .response
+                .on_hover_text(tip);
+            }
             _ => {
                 let b = egui::Button::new(RichText::new(&item.label).size(11.0).color(color))
                     .small()
@@ -195,13 +281,10 @@ impl App {
             ui.close();
         }
         if ui.button("Move or Copy…").clicked() {
-            if let Ok(mut d) = crate::dialogs::params_form::Params::new(
-                "home.cells.move_copy_sheet",
+            self.ui.dialog = Some(Dialog::MoveCopy(crate::dialogs::tools2::MoveCopy::new(
                 &self.session,
-            ) {
-                d.set(&json!({ "sheet": name, "to": index + 1, "copy": false }));
-                self.ui.dialog = Some(Dialog::Params(d));
-            }
+                Some(index),
+            )));
             ui.close();
         }
         self.menu_exec(ui, "sheet.duplicate", "Duplicate", p.clone());

@@ -74,6 +74,11 @@ impl App {
         self.last_error.clone()
     }
 
+    /// Format Painter is waiting for the cells to format.
+    pub fn format_painter_armed(&self) -> bool {
+        self.ui.grid.painter.is_some()
+    }
+
     /// Run a command; failures go to the status bar instead of panicking or vanishing.
     pub fn exec(&mut self, id: &str, params: Json) {
         match self.session.execute(id, &params) {
@@ -837,6 +842,17 @@ impl App {
                 cursor: a,
             };
         }
+        // Format Painter: the finished selection receives the source's formats.
+        if !consumed
+            && (resp.clicked() || resp.drag_stopped())
+            && let Some(from) = self.ui.grid.painter.take()
+        {
+            let range = self.session.sel.range().to_a1();
+            self.exec(
+                "home.clipboard.format_painter",
+                json!({ "from": from, "range": range }),
+            );
+        }
         if resp.double_clicked() && !consumed {
             self.begin_edit(None);
         }
@@ -932,6 +948,10 @@ impl App {
         let Some(sc) = names.first().map(String::as_str) else {
             return;
         };
+        if sc == "Escape" && self.ui.grid.painter.take().is_some() {
+            self.session.status = "Ready".into();
+            return;
+        }
         if self.chart_key(sc) {
             return;
         }

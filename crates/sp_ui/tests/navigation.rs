@@ -62,6 +62,11 @@ fn session() -> Session {
         .unwrap();
     s.execute("sheet.activate", &json!({"sheet": "Sheet1"}))
         .unwrap();
+    s.execute(
+        "formulas.define_name",
+        &json!({"name": "Rate", "refers_to": "=Sheet1!$C$2"}),
+    )
+    .unwrap();
     s.select_range(CellRange::parse("A2:E6").unwrap(), CellAddr::new(2, 1));
     s
 }
@@ -82,7 +87,11 @@ fn register_desktop() {
 
 /// Enabled buttons whose command, in this workbook, answers with a message the target also
 /// shows (nothing to act on here), rather than greying out.
-const CONTEXT_MESSAGES: [(&str, &str); 5] = [
+const CONTEXT_MESSAGES: [(&str, &str); 6] = [
+    (
+        "home.editing.flash_fill",
+        "no examples to fill from in this column",
+    ),
     (
         "home.editing.find_next",
         "there is no previous search to repeat",
@@ -112,6 +121,8 @@ enum Expect {
     Runs,
     /// Handed to the desktop app (native file dialogs, closing, options).
     Desktop,
+    /// Format Painter: arms, then the next cell click applies it.
+    Painter,
     /// A picker: a menu opens; choosing `option` runs the command.
     Picker(&'static str),
 }
@@ -125,6 +136,11 @@ fn expected(id: &str) -> Expect {
         "home.font.size" => return Expect::Picker("14"),
         "home.font.fill_color" => return Expect::Picker("No Fill"),
         "home.font.font_color" => return Expect::Picker("Automatic"),
+        "home.styles.cell_styles" => return Expect::Picker("Good"),
+        "layout.margins" => return Expect::Picker("Wide"),
+        "layout.size" => return Expect::Picker("A4"),
+        "formulas.use_in_formula" => return Expect::Picker("Rate"),
+        "home.clipboard.format_painter" => return Expect::Painter,
         _ => {}
     }
     if let Some(d) = dialog_for_command(id) {
@@ -265,6 +281,25 @@ fn judge(
         };
     }
     match expect {
+        Expect::Painter => {
+            if !log.is_empty() || !h.state().format_painter_armed() {
+                return Err(format!("Format Painter did not arm (log {log:?})"));
+            }
+            // The next cell click receives the formats.
+            let p = cell_center(h, "D9");
+            h.hover_at(p);
+            h.run_steps(1);
+            h.drag_at(p);
+            h.run_steps(1);
+            h.drop_at(p);
+            h.run_steps(3);
+            let log = new_log(before);
+            if log.iter().any(|l| l == id) && !h.state().format_painter_armed() {
+                Ok("mode: armed, applied on the next click".into())
+            } else {
+                Err(format!("clicking a cell after arming logged {log:?}"))
+            }
+        }
         Expect::Desktop => {
             let pending = sp_ui::shell_hook::take_pending();
             if pending == vec![id.to_string()] && log.is_empty() {
@@ -776,7 +811,7 @@ fn sheet_tab_right_click_menu() {
         (
             &["Move or Copy…"],
             "home.cells.move_copy_sheet",
-            Expect::Dialog("params".into()),
+            Expect::Dialog("move_copy".into()),
         ),
         (&["Duplicate"], "sheet.duplicate", Expect::Runs),
         (
