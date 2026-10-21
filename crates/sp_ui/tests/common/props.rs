@@ -5,7 +5,8 @@
     clippy::unwrap_used,
     clippy::panic,
     clippy::indexing_slicing,
-    clippy::expect_used
+    clippy::expect_used,
+    clippy::type_complexity
 )]
 use super::*;
 use egui_kittest::Harness;

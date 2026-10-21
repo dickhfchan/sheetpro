@@ -17,8 +17,8 @@
 //! Never from what SheetPro returns. Volatile functions get property checks instead
 //! (`?name` expectations, see [`check_special`]).
 //!
-//! Some cases need cells to point at: [`DATA`] is typed into `J1:M8` first (through the UI
-//! too). Cases go down column A, one per row.
+//! Some cases need cells to point at: [`DATA`] is typed into `J1:M10` first (through the UI
+//! too), and a pivot of it at `O1` for GETPIVOTDATA. Cases go down column A, one per row.
 
 #![allow(
     clippy::unwrap_used,
@@ -39,7 +39,7 @@ use common::props::{click_cell, press};
 const CASES: &str = include_str!("data/function_cases.tsv");
 
 /// Cells the reference cases point at, typed before the cases (cell, input).
-const DATA: [(&str, &str); 24] = [
+const DATA: [(&str, &str); 30] = [
     ("J1", "Name"),
     ("K1", "Qty"),
     ("L1", "Price"),
@@ -64,14 +64,28 @@ const DATA: [(&str, &str); 24] = [
     ("J7", "Fig"),
     ("K7", "=K2*2"),
     ("L7", "1"),
+    // Criteria ranges for the D-functions.
+    ("J9", "Name"),
+    ("J10", "Apple"),
+    ("K9", "Qty"),
+    ("K10", ">5"),
+    ("L9", "Name"),
+    ("L10", "Pear"),
 ];
 
 /// Functions with no passing case, each with the reason (excluded from the run's
 /// expectations and reported).
 const KNOWN_GAPS: [(&str, &str); 0] = [];
 
+/// Functions a user cannot type (the target refuses them), covered elsewhere.
+const NOT_TYPED: [(&str, &str); 1] = [(
+    "TABLE",
+    "the what-if data-table formula {=TABLE(r,c)}: written by Data › What-If Analysis › \
+     Data Table (props_b.rs), refused when typed",
+)];
+
 /// Coverage may only grow.
-const FUNCTIONS_FLOOR: usize = 0;
+const FUNCTIONS_FLOOR: usize = 504;
 
 struct Case {
     formula: String,
@@ -242,6 +256,17 @@ fn run_cases(cases: &[Case]) -> Vec<Result<(), String>> {
         click_cell(&mut h, cell);
         type_in(&mut h, input).unwrap();
     }
+    // GETPIVOTDATA needs a pivot: Qty by Name, at O1 (built by its command; the pivot is
+    // context here, the function is what's typed).
+    h.state_mut()
+        .session
+        .execute(
+            "insert.pivot_table",
+            &json!({"source": "J1:L7", "dest": "Sheet1!O1", "rows": ["Name"],
+                    "values": [{"field": "Qty"}]}),
+        )
+        .unwrap();
+    h.run_steps(2);
     click_cell(&mut h, "A1");
     let placed: Vec<Result<CellAddr, String>> = cases
         .iter()
@@ -305,7 +330,11 @@ fn every_registered_function_has_a_case() {
         covered.extend(called(&c.formula));
     }
     let names = registered();
-    let gaps: BTreeSet<&str> = KNOWN_GAPS.iter().map(|(f, _)| *f).collect();
+    let gaps: BTreeSet<&str> = KNOWN_GAPS
+        .iter()
+        .chain(NOT_TYPED.iter())
+        .map(|(f, _)| *f)
+        .collect();
     let missing: Vec<&String> = names
         .iter()
         .filter(|n| !covered.contains(*n) && !gaps.contains(n.as_str()))
