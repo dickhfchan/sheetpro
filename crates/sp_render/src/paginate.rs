@@ -1842,9 +1842,11 @@ fn prim_items(out: &mut Vec<Item>, prims: &[Prim], ox: f32, oy: f32) {
                 paint,
                 vertical,
                 bold,
+                italic,
             } => {
                 let face = Face {
                     bold: *bold,
+                    italic: *italic,
                     ..Face::default()
                 };
                 let size = size.max(1.0);

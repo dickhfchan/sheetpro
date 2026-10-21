@@ -29,6 +29,7 @@ pub struct ChartFormat {
     pub kind: String,
     pub has_title: bool,
     pub title: String,
+    pub title_italic: bool,
     pub legend: String,
     pub data_labels: bool,
     pub error: Option<String>,
@@ -42,6 +43,7 @@ impl ChartFormat {
             kind: c.kind.name().into(),
             has_title: c.title.is_some(),
             title: c.title.clone().unwrap_or_default(),
+            title_italic: c.title_italic,
             legend: c.legend.name().into(),
             data_labels: c.data_labels,
             error: None,
@@ -61,6 +63,7 @@ impl ChartFormat {
         let mut p = json!({
             "chart": self.chart,
             "title": title,
+            "title_italic": self.title_italic,
             "legend": self.legend,
             "data_labels": self.data_labels,
         });
@@ -99,6 +102,9 @@ impl ChartFormat {
                             self.has_title,
                             egui::TextEdit::singleline(&mut self.title).desired_width(150.0),
                         );
+                        ui.add_enabled_ui(self.has_title, |ui| {
+                            ui.checkbox(&mut self.title_italic, "Italic");
+                        });
                     });
                     ui.end_row();
                     label(ui, "Legend:");
@@ -134,5 +140,34 @@ impl ChartFormat {
             };
         }
         Flow::Keep
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    #[test]
+    fn italic_title_reaches_the_chart() {
+        let mut s = Session::new();
+        for (c, v) in [("A1", "x"), ("A2", "1"), ("A3", "2")] {
+            s.execute("cell.set", &json!({"cell": c, "input": v}))
+                .unwrap();
+        }
+        s.execute(
+            "insert.chart.column",
+            &json!({"series": [{"values": "A2:A3"}], "title": "T"}),
+        )
+        .unwrap();
+        let mut d = ChartFormat::new(&s, 0).unwrap();
+        assert!(!d.title_italic);
+        d.title_italic = true;
+        let (id, p) = d.params();
+        s.execute(&id, &p).unwrap();
+        let c = &s.wb.sheet(s.sheet_index()).unwrap().drawings.charts[0];
+        assert!(c.title_italic && c.title.as_deref() == Some("T"));
+        // Reopening the dialog shows it ticked.
+        assert!(ChartFormat::new(&s, 0).unwrap().title_italic);
     }
 }

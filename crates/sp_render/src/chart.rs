@@ -28,6 +28,10 @@ pub struct ChartData {
     pub title: Option<String>,
     pub x_title: Option<String>,
     pub y_title: Option<String>,
+    /// Italic chart / horizontal-axis / vertical-axis title.
+    pub title_italic: bool,
+    pub x_title_italic: bool,
+    pub y_title_italic: bool,
     pub legend: LegendPos,
     pub data_labels: bool,
     pub markers: bool,
@@ -103,6 +107,7 @@ pub enum Prim {
         /// Rotated 90° counter-clockwise (vertical axis titles).
         vertical: bool,
         bold: bool,
+        italic: bool,
     },
 }
 
@@ -374,6 +379,7 @@ impl Ctx {
             paint,
             vertical: false,
             bold: false,
+            italic: false,
         });
     }
 }
@@ -410,6 +416,7 @@ pub fn chart_scene(d: &ChartData, w: f32, h: f32, scale: f32) -> Vec<Prim> {
             paint: Paint::Text,
             vertical: false,
             bold: true,
+            italic: d.title_italic,
         });
         area.1 += 24.0 * s;
     }
@@ -753,6 +760,7 @@ fn axes_chart(c: &mut Ctx, d: &ChartData, area: (f32, f32, f32, f32)) {
             paint: Paint::SubText,
             vertical: true,
             bold: true,
+            italic: d.y_title_italic,
         });
         x0 += 16.0 * s;
     }
@@ -766,8 +774,9 @@ fn axes_chart(c: &mut Ctx, d: &ChartData, area: (f32, f32, f32, f32)) {
             VAnchor::Bottom,
             Paint::SubText,
         );
-        if let Some(Prim::Text { bold, .. }) = c.out.last_mut() {
+        if let Some(Prim::Text { bold, italic, .. }) = c.out.last_mut() {
             *bold = true;
+            *italic = d.x_title_italic;
         }
         y1 -= 16.0 * s;
     }

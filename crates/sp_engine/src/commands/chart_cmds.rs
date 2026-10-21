@@ -173,6 +173,9 @@ pub fn chart_data(wb: &Workbook, sheet: usize, c: &Chart) -> ChartData {
         title: c.title.clone(),
         x_title: c.x_title.clone(),
         y_title: c.y_title.clone(),
+        title_italic: c.title_italic,
+        x_title_italic: c.x_title_italic,
+        y_title_italic: c.y_title_italic,
         legend: c.legend,
         data_labels: c.data_labels,
         markers: c.markers,
@@ -448,6 +451,15 @@ fn apply_params(s: &Session, c: &mut Chart, p: &Json) -> Result<(), CmdError> {
     }
     if let Some(t) = opt_text(p, "y_title")? {
         c.y_title = t;
+    }
+    if let Some(b) = bool_opt(p, "title_italic") {
+        c.title_italic = b;
+    }
+    if let Some(b) = bool_opt(p, "x_title_italic") {
+        c.x_title_italic = b;
+    }
+    if let Some(b) = bool_opt(p, "y_title_italic") {
+        c.y_title_italic = b;
     }
     if let Some(l) = p.get("legend") {
         c.legend = match l {
@@ -848,7 +860,7 @@ fn sparkline_cmd(s: &mut Session, p: &Json, kind: SparklineKind) -> CmdResult {
 }
 
 pub fn specs() -> Vec<CommandSpec> {
-    const CHART: &str = r#"{"range"?: "A1:D9", "series"?: [{"values": "B2:B9", "name"?: "B1", "categories"?: "A2:A9", "line"?: bool, "secondary"?: bool, "color"?: "RRGGBB"}], "title"?: "…"|null, "x_title"?, "y_title"?, "legend"?: "right|bottom|top|left|none", "grouping"?: "clustered|stacked|percent", "data_labels"?: bool, "markers"?: bool, "bins"?: 1-500, "doughnut"?: bool, "color"?: "RRGGBB", "anchor"?: "H2:O17", "chart"?: N (edit chart N instead: retype + params), "delete"?: bool (with chart)}"#;
+    const CHART: &str = r#"{"range"?: "A1:D9", "series"?: [{"values": "B2:B9", "name"?: "B1", "categories"?: "A2:A9", "line"?: bool, "secondary"?: bool, "color"?: "RRGGBB"}], "title"?: "…"|null, "x_title"?, "y_title"?, "title_italic"?: bool, "x_title_italic"?: bool, "y_title_italic"?: bool, "legend"?: "right|bottom|top|left|none", "grouping"?: "clustered|stacked|percent", "data_labels"?: bool, "markers"?: bool, "bins"?: 1-500, "doughnut"?: bool, "color"?: "RRGGBB", "anchor"?: "H2:O17", "chart"?: N (edit chart N instead: retype + params), "delete"?: bool (with chart)}"#;
     const SPARK: &str = r#"{"data"?: "A2:E4" (default selection), "location"?: "F2:F4" (default: column right of the data), "markers"?, "high"?, "low"?, "first"?, "last"?, "negative"?: bool, "color"?, "negative_color"?, "marker_color"?, "high_color"?, "low_color"?: "RRGGBB", "delete"?: bool (clears sparklines in location)}"#;
     vec![
         CommandSpec::new("insert.chart.recommended", CHART, |s, p| {

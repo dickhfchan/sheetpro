@@ -289,3 +289,21 @@ check boxes for booleans, cell/range/sheet filled from the selection, required f
 marked). It inserts returned text into the formula (Use in Formula) and shows returned
 results (Evaluate Formula, Flash Fill). Export as PDF, Insert Picture and Background use
 native file dialogs; the Function Library buttons open Insert Function on their category.
+
+## 2026-10-21 — Menu bar tests, hidden-window control, table filters, polish
+
+- Desktop menu bar (File / Window / Help): forms.rs tests click every entry; each queues its
+  registered command, Split / New Window / About / Open Recent / Clear Recent / Unhide work.
+- Control requests were only handled in the UI pass, which eframe skips while the window is
+  minimized or the screen is locked: the likely cause of the one stalled smoke run. Handled in
+  App::logic now, and the control server wakes the app per request.
+- Table filters: `Table::filter_columns` read/written in the table part; SUBTOTAL skips rows a
+  table filter hides (tables.xlsx 208/208, oracle cells 73226). A filter over a table is saved
+  in the table part (a sheet AutoFilter over a table makes the target app repair the file) and
+  loads back as the sheet's filter.
+- Rotated objects hit-tested by their drawn outline.
+- Italic chart / axis titles: model flags, xlsx `i="1"` read/write, screen and PDF
+  (Helvetica-Oblique), chart command params, Format Chart "Italic".
+
+Left by choice: XIRR/IRR iteration (13 cells, ~1e-8 relative), MAX(ROW(B:B)) (2 cells; would
+need million-element arrays for whole-column refs).

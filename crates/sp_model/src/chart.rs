@@ -172,6 +172,13 @@ pub struct Chart {
     pub x_title: Option<String>,
     #[serde(default)]
     pub y_title: Option<String>,
+    /// Italic chart / horizontal-axis / vertical-axis title.
+    #[serde(default)]
+    pub title_italic: bool,
+    #[serde(default)]
+    pub x_title_italic: bool,
+    #[serde(default)]
+    pub y_title_italic: bool,
     pub legend: LegendPos,
     #[serde(default)]
     pub data_labels: bool,

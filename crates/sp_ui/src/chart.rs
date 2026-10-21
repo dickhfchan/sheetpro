@@ -75,13 +75,16 @@ fn draw_prims(p: &Painter, o: Pos2, prims: &[Prim]) {
                 paint,
                 vertical,
                 bold,
+                italic,
             } => {
                 let c = paint_color(*paint);
-                let galley = p.layout_no_wrap(
+                let mut job = egui::text::LayoutJob::simple_singleline(
                     text.clone(),
                     FontId::new(size.max(1.0), FontFamily::Proportional),
                     c,
                 );
+                crate::grid::set_italics(&mut job, *italic);
+                let galley = p.layout_job(job);
                 let sz = galley.size();
                 // Box size on screen (swapped when rotated a quarter turn).
                 let (bw, bh) = if *vertical {

@@ -160,11 +160,29 @@ fn data_ref(wb: &Workbook, sheet: usize, tag: &str, f: &str, force_num: bool) ->
     }
 }
 
-fn rich(tag: &str, text: &str) -> String {
+fn rich(tag: &str, text: &str, italic: bool) -> String {
+    // Italic as the target writes it: the paragraph default and the run.
+    let (ppr, rpr) = if italic {
+        (
+            "<a:pPr><a:defRPr i=\"1\"/></a:pPr>",
+            "<a:rPr lang=\"en-US\" i=\"1\"/>",
+        )
+    } else {
+        ("", "")
+    };
     format!(
-        "<{tag}><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></{tag}>",
+        "<{tag}><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p>{ppr}<a:r>{rpr}<a:t>{}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></{tag}>",
         esc(text)
     )
+}
+
+/// A title's text is italic: its runs or paragraph defaults say `i="1"`.
+fn rich_italic(n: Option<&Node>) -> bool {
+    fn walk(n: &Node) -> bool {
+        (matches!(n.name.as_str(), "rPr" | "defRPr") && n.attr("i") == Some("1"))
+            || n.children.iter().any(walk)
+    }
+    n.is_some_and(walk)
 }
 
 fn hex(c: Color) -> String {
@@ -336,7 +354,7 @@ fn axis_xml(
     pos: &str,
     deleted: bool,
     gridlines: bool,
-    title: Option<&str>,
+    title: Option<(&str, bool)>,
     crosses: &str,
     between: &str,
 ) -> String {
@@ -347,8 +365,8 @@ fn axis_xml(
     if gridlines {
         x.push_str("<c:majorGridlines/>");
     }
-    if let Some(t) = title {
-        x.push_str(&rich("c:title", t));
+    if let Some((t, italic)) = title {
+        x.push_str(&rich("c:title", t, italic));
     }
     if tag == "valAx" {
         x.push_str("<c:numFmt formatCode=\"General\" sourceLinked=\"1\"/>");
@@ -372,7 +390,7 @@ pub fn chart_xml(wb: &Workbook, sheet: usize, c: &Chart) -> String {
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<c:chartSpace xmlns:c=\"{NS_C}\" xmlns:a=\"{NS_A}\" xmlns:r=\"{NS_R}\"><c:roundedCorners val=\"0\"/><c:chart>"
     );
     if let Some(t) = &c.title {
-        x.push_str(&rich("c:title", t));
+        x.push_str(&rich("c:title", t, c.title_italic));
     }
     let _ = write!(
         x,
@@ -385,8 +403,8 @@ pub fn chart_xml(wb: &Workbook, sheet: usize, c: &Chart) -> String {
     } else {
         ("b", "l")
     };
-    let xt = c.x_title.as_deref();
-    let yt = c.y_title.as_deref();
+    let xt = c.x_title.as_deref().map(|t| (t, c.x_title_italic));
+    let yt = c.y_title.as_deref().map(|t| (t, c.y_title_italic));
     match c.kind {
         ChartKind::Pie | ChartKind::Doughnut => {
             let style = if c.kind == ChartKind::Pie {
@@ -1305,27 +1323,35 @@ pub fn parse_chart(xml: &str) -> Result<Option<Chart>, IoError> {
     }
     for ax in &plot.children {
         let title = rich_text(ax.child("title"));
+        let italic = rich_italic(ax.child("title"));
         match ax.name.as_str() {
             "catAx" | "dateAx" if c.x_title.is_none() && val(ax, "delete") != Some("1") => {
                 c.x_title = title;
+                c.x_title_italic = italic;
             }
             "valAx" => {
                 let horizontal = matches!(val(ax, "axPos"), Some("b" | "t"));
                 if c.kind == ChartKind::Scatter && horizontal {
+                    if c.x_title.is_none() {
+                        c.x_title_italic = italic;
+                    }
                     c.x_title = c.x_title.take().or(title);
                 } else if c.kind == ChartKind::Bar && horizontal
                     || c.kind != ChartKind::Bar && !horizontal
                 {
                     if c.y_title.is_none() && val(ax, "axPos") != Some("r") {
                         c.y_title = title;
+                        c.y_title_italic = italic;
                     }
                 } else if c.x_title.is_none() {
                     c.x_title = title;
+                    c.x_title_italic = italic;
                 }
             }
             _ => {}
         }
     }
+    c.title_italic = rich_italic(ch.child("title"));
     c.title = match ch.child("title") {
         Some(t) => {
             let txt = rich_text(Some(t)).unwrap_or_default();
@@ -1701,6 +1727,9 @@ mod tests {
                     .then(|| "X axis".to_string())
                     .filter(|_| !k.is_round()),
                 y_title: (!k.is_round()).then(|| "Y axis".to_string()),
+                title_italic: i.is_multiple_of(4),
+                x_title_italic: i.is_multiple_of(2) && !k.is_round(),
+                y_title_italic: i % 4 == 1 && !k.is_round(),
                 legend: if i.is_multiple_of(3) {
                     LegendPos::None
                 } else {
