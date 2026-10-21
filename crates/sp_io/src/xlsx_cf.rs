@@ -350,6 +350,20 @@ pub fn read_sheet<R: Read + Seek>(
             )),
         }
     }
+    // A filtered table is the sheet's filter in the app (filter buttons, Clear, Reapply);
+    // saving puts the criteria back on the table.
+    if sheet.auto_filter.is_none()
+        && let Some(t) = sheet
+            .tables
+            .iter_mut()
+            .find(|t| !t.filter_columns.is_empty() && t.filter_range().is_some())
+        && let Some(range) = t.filter_range()
+    {
+        sheet.auto_filter = Some(sp_model::AutoFilter {
+            range,
+            columns: std::mem::take(&mut t.filter_columns),
+        });
+    }
 }
 
 fn read_table(t: &Node) -> Option<Table> {
@@ -395,6 +409,11 @@ fn read_table(t: &Node) -> Option<Table> {
         .and_then(|v| v.parse::<u32>().ok())
         .is_some_and(|n| n > 0);
     out.autofilter = t.child("autoFilter").is_some();
+    out.filter_columns = t
+        .child("autoFilter")
+        .and_then(crate::xlsx_extras::read_auto_filter)
+        .map(|af| af.columns)
+        .unwrap_or_default();
     match t.child("tableStyleInfo") {
         Some(si) => {
             out.style = si.attr("name").unwrap_or_default().to_string();
@@ -789,7 +808,7 @@ impl CfWriter {
             let n = self.tables.len() + 1;
             let rid = rels.add("table", &format!("../tables/table{n}.xml"), false);
             self.tables
-                .push((format!("xl/tables/table{n}.xml"), table_xml(t, n)));
+                .push((format!("xl/tables/table{n}.xml"), table_xml(t, n, sheet.auto_filter.as_ref())));
             ids.push(rid);
         }
         if !ids.is_empty() {
@@ -886,7 +905,9 @@ pub fn table_part_names(wb: &sp_model::Workbook) -> Vec<String> {
     (1..=n).map(|k| format!("xl/tables/table{k}.xml")).collect()
 }
 
-fn table_xml(t: &Table, n: usize) -> String {
+/// `sheet_filter`: the sheet's filter, written here (not on the sheet) when it is this
+/// table's filter: a sheet-level AutoFilter over a table is invalid in the file format.
+fn table_xml(t: &Table, n: usize, sheet_filter: Option<&sp_model::AutoFilter>) -> String {
     let mut x = format!(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="{}" name="{}" displayName="{}" ref="{}"{}{}>"#,
@@ -915,7 +936,17 @@ fn table_xml(t: &Table, n: usize) -> String {
             t.range.start,
             sp_core::CellAddr::new(end_row, t.range.end.col),
         );
-        let _ = write!(x, r#"<autoFilter ref="{}"/>"#, af.to_a1());
+        let columns = match sheet_filter {
+            Some(sf) if t.filter_columns.is_empty() && sf.range == af => &sf.columns,
+            _ => &t.filter_columns,
+        };
+        if columns.is_empty() {
+            let _ = write!(x, r#"<autoFilter ref="{}"/>"#, af.to_a1());
+        } else {
+            let _ = write!(x, r#"<autoFilter ref="{}">"#, af.to_a1());
+            crate::xlsx_extras::write_filter_columns(&mut x, columns);
+            x.push_str("</autoFilter>");
+        }
     }
     let _ = write!(x, r#"<tableColumns count="{}">"#, t.columns.len());
     for (i, c) in t.columns.iter().enumerate() {

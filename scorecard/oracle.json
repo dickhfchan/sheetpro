@@ -5,7 +5,7 @@
   "calc_files_total": 218,
   "calc_files_pass": 209,
   "cells_compared": 73244,
-  "cells_matched": 73219,
+  "cells_matched": 73226,
   "roundtrip_pass": 259,
   "files": [
     {
@@ -53,16 +53,10 @@
       "kind": "io",
       "load_error": null,
       "compared": 208,
-      "matched": 201,
+      "matched": 208,
       "skipped_volatile": 4,
       "roundtrip_ok": true,
-      "first_mismatches": [
-        "filters!B8 =SUBTOTAL(9,B3:B6) → expected 4, got 16",
-        "filters!B10 =SUBTOTAL(9,Table4[Cats]) → expected 4, got 17",
-        "Functions Filters!D46 =SUBTOTAL(1,Table16[Units]) → expected 47.82142857, got #N/A",
-        "Functions Filters!D47 =SUBTOTAL(4,Table16[Units]) → expected 96, got #N/A",
-        "Functions Filters!E48 =SUBTOTAL(8,Table16[Unit Cost]) → expected 55.16797249, got 46.79135458"
-      ]
+      "first_mismatches": []
     },
     {
       "path": "xlsx/tests/calc_tests/DATABASE/DAVERAGE.xlsx",

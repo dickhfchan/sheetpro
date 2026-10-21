@@ -189,61 +189,71 @@ pub fn before_merges_xml(sheet: &Sheet) -> String {
         }
         x.push_str("</protectedRanges>");
     }
-    if let Some(af) = &sheet.auto_filter {
+    // A filter over a table's range is that table's filter (written in its part).
+    if let Some(af) = sheet
+        .auto_filter
+        .as_ref()
+        .filter(|af| !sheet.tables.iter().any(|t| t.filter_range() == Some(af.range)))
+    {
         let _ = write!(x, r#"<autoFilter ref="{}""#, af.range.to_a1());
         if af.columns.is_empty() {
             x.push_str("/>");
         } else {
             x.push('>');
-            for fc in &af.columns {
-                let _ = write!(x, r#"<filterColumn colId="{}">"#, fc.col);
-                match &fc.criteria {
-                    FilterCriteria::Values { values, blanks } => {
-                        x.push_str(if *blanks {
-                            r#"<filters blank="1">"#
-                        } else {
-                            "<filters>"
-                        });
-                        for v in values {
-                            let _ = write!(x, r#"<filter val="{}"/>"#, esc(v));
-                        }
-                        x.push_str("</filters>");
-                    }
-                    FilterCriteria::Custom { and, conds } => {
-                        x.push_str(if *and {
-                            r#"<customFilters and="1">"#
-                        } else {
-                            "<customFilters>"
-                        });
-                        for c in conds {
-                            if c.op == "equal" {
-                                let _ = write!(x, r#"<customFilter val="{}"/>"#, esc(&c.val));
-                            } else {
-                                let _ = write!(
-                                    x,
-                                    r#"<customFilter operator="{}" val="{}"/>"#,
-                                    esc(&c.op),
-                                    esc(&c.val)
-                                );
-                            }
-                        }
-                        x.push_str("</customFilters>");
-                    }
-                    FilterCriteria::Top10 { top, percent, val } => {
-                        let _ = write!(
-                            x,
-                            r#"<top10 top="{}" percent="{}" val="{val}"/>"#,
-                            b01(*top),
-                            b01(*percent)
-                        );
-                    }
-                }
-                x.push_str("</filterColumn>");
-            }
+            write_filter_columns(&mut x, &af.columns);
             x.push_str("</autoFilter>");
         }
     }
     x
+}
+
+/// `<filterColumn>` elements for AutoFilter criteria (a sheet's or a table's).
+pub(crate) fn write_filter_columns(x: &mut String, columns: &[FilterColumn]) {
+    for fc in columns {
+        let _ = write!(x, r#"<filterColumn colId="{}">"#, fc.col);
+        match &fc.criteria {
+            FilterCriteria::Values { values, blanks } => {
+                x.push_str(if *blanks {
+                    r#"<filters blank="1">"#
+                } else {
+                    "<filters>"
+                });
+                for v in values {
+                    let _ = write!(x, r#"<filter val="{}"/>"#, esc(v));
+                }
+                x.push_str("</filters>");
+            }
+            FilterCriteria::Custom { and, conds } => {
+                x.push_str(if *and {
+                    r#"<customFilters and="1">"#
+                } else {
+                    "<customFilters>"
+                });
+                for c in conds {
+                    if c.op == "equal" {
+                        let _ = write!(x, r#"<customFilter val="{}"/>"#, esc(&c.val));
+                    } else {
+                        let _ = write!(
+                            x,
+                            r#"<customFilter operator="{}" val="{}"/>"#,
+                            esc(&c.op),
+                            esc(&c.val)
+                        );
+                    }
+                }
+                x.push_str("</customFilters>");
+            }
+            FilterCriteria::Top10 { top, percent, val } => {
+                let _ = write!(
+                    x,
+                    r#"<top10 top="{}" percent="{}" val="{val}"/>"#,
+                    b01(*top),
+                    b01(*percent)
+                );
+            }
+        }
+        x.push_str("</filterColumn>");
+    }
 }
 
 /// Relationships a worksheet needs (hyperlink targets, comments, VML, pass-through).
@@ -751,7 +761,7 @@ fn read_protection(n: &Node, sheet: &mut Sheet) {
     });
 }
 
-fn read_auto_filter(n: &Node) -> Option<AutoFilter> {
+pub(crate) fn read_auto_filter(n: &Node) -> Option<AutoFilter> {
     let range = CellRange::parse(&n.attr("ref")?.replace('$', "")).ok()?;
     let mut columns = Vec::new();
     for fc in n.children_named("filterColumn") {

@@ -42,11 +42,32 @@ pub struct Table {
     pub last_col: bool,
     /// Header filter buttons shown.
     pub autofilter: bool,
+    /// Active filter criteria of the table's own AutoFilter (`colId` relative to the
+    /// table). Rows hidden inside a filtered table are filtered rows for SUBTOTAL.
+    #[serde(default)]
+    pub filter_columns: Vec<crate::features::FilterColumn>,
 }
 
 pub const DEFAULT_TABLE_STYLE: &str = "TableStyleMedium2";
 
 impl Table {
+    /// The range its own AutoFilter covers: header row through the last data row (`None`
+    /// without a header row or filter buttons).
+    pub fn filter_range(&self) -> Option<CellRange> {
+        if !self.header_row || !self.autofilter {
+            return None;
+        }
+        let end = if self.totals_row {
+            self.range.end.row.saturating_sub(1).max(self.range.start.row)
+        } else {
+            self.range.end.row
+        };
+        Some(CellRange::new(
+            self.range.start,
+            CellAddr::new(end, self.range.end.col),
+        ))
+    }
+
     pub fn new(id: u32, name: impl Into<String>, range: CellRange, columns: Vec<String>) -> Self {
         Table {
             id,
@@ -67,6 +88,7 @@ impl Table {
             first_col: false,
             last_col: false,
             autofilter: true,
+            filter_columns: Vec::new(),
         }
     }
 

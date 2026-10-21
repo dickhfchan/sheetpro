@@ -13,7 +13,7 @@ Measured 2026-10-21 against IronCalc test files @ `c88f07f0c7`.
 | Metric | Result | Floor |
 |---|---|---|
 | Formula test files fully matching | 209/218 | 209 |
-| Formula cells matching cached results | 73219/73244 (100.0%) | 73219 |
+| Formula cells matching cached results | 73226/73244 (100.0%) | 73226 |
 | Files round-tripping through our writer | 259/259 | 259 |
 
 Largest gaps (cells failing):

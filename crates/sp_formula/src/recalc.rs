@@ -519,9 +519,15 @@ impl Host for WbHost<'_> {
     fn row_filtered(&self, sheet: usize, row: u32) -> bool {
         self.wb.sheet(sheet).is_some_and(|s| {
             s.hidden_rows.contains(&row)
-                && s.auto_filter
+                && (s
+                    .auto_filter
                     .as_ref()
                     .is_some_and(|f| row > f.range.start.row && row <= f.range.end.row)
+                    || s.tables.iter().any(|t| {
+                        !t.filter_columns.is_empty()
+                            && row > t.range.start.row
+                            && row <= t.range.end.row
+                    }))
         })
     }
 
