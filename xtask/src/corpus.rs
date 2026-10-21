@@ -1,7 +1,9 @@
 //! Oracle corpus: real .xlsx files saved by the target app, whose cached formula results
 //! are the expected answers.
 //!
-//! `fetch`: download pinned files (sha256-verified) into corpus/files/ (gitignored).
+//! `fetch`: download pinned files (sha256-verified) into corpus/files/ (gitignored); files of
+//! an extra source (`[sources.<name>]`, e.g. Apache POI's test spreadsheets) go into
+//! corpus/files/<name>/.
 //! `test`: load each file, recalculate, compare every formula cell to its cached value,
 //! round-trip through our writer, and assert the floors in scorecard/floors.toml.
 
@@ -16,6 +18,9 @@ use std::process::Command;
 #[derive(Deserialize)]
 struct Manifest {
     source: Source,
+    /// Further sources, named by an entry's `source`.
+    #[serde(default)]
+    sources: std::collections::BTreeMap<String, Source>,
     file: Vec<Entry>,
 }
 
@@ -26,11 +31,18 @@ struct Source {
     url_template: String,
 }
 
+/// `kind`: `calc` (formula oracle), `io` (round trip; cached values compared), or `compat`
+/// (real-world files: must load and round-trip, values not compared; with
+/// `expect = "error"` the file is deliberately broken and must fail cleanly instead).
 #[derive(Deserialize, Clone)]
 struct Entry {
     path: String,
     sha256: String,
     kind: String,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    expect: Option<String>,
 }
 
 fn manifest() -> Result<Manifest> {
@@ -42,8 +54,38 @@ fn files_dir() -> PathBuf {
     crate::root().join("corpus/files")
 }
 
+/// Corpus files that are deliberately broken (`expect = "error"`): opening them must fail
+/// cleanly.
+pub fn expected_failures() -> std::collections::HashSet<PathBuf> {
+    manifest()
+        .map(|m| {
+            m.file
+                .iter()
+                .filter(|e| e.expect.as_deref() == Some("error"))
+                .map(local)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn local(e: &Entry) -> PathBuf {
-    files_dir().join(&e.path)
+    match &e.source {
+        Some(s) => files_dir().join(s).join(&e.path),
+        None => files_dir().join(&e.path),
+    }
+}
+
+/// Percent-encode a repository path for a URL (keeps `/` and unreserved characters).
+fn url_path(p: &str) -> String {
+    p.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'/' | b'-' | b'_' | b'.' | b'~') {
+                char::from(b).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -73,12 +115,18 @@ pub fn fetch() -> Result<()> {
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let url = m
-            .source
+        let src = match &e.source {
+            Some(name) => m
+                .sources
+                .get(name)
+                .with_context(|| format!("unknown corpus source '{name}'"))?,
+            None => &m.source,
+        };
+        let url = src
             .url_template
-            .replace("{repo}", &m.source.repo)
-            .replace("{commit}", &m.source.commit)
-            .replace("{path}", &e.path);
+            .replace("{repo}", &src.repo)
+            .replace("{commit}", &src.commit)
+            .replace("{path}", &url_path(&e.path));
         let tmp = dest.with_extension("download");
         let status = Command::new("curl")
             .args([
@@ -162,6 +210,12 @@ pub struct OracleReport {
     pub cells_compared: usize,
     pub cells_matched: usize,
     pub roundtrip_pass: usize,
+    /// Real-world compatibility files: loaded and round-tripped (or, when deliberately
+    /// broken, refused with an error).
+    #[serde(default)]
+    pub compat_total: usize,
+    #[serde(default)]
+    pub compat_pass: usize,
     pub files: Vec<FileResult>,
 }
 
@@ -170,6 +224,8 @@ pub struct Floors {
     pub calc_files_pass: usize,
     pub cells_matched: usize,
     pub roundtrip_pass: usize,
+    #[serde(default)]
+    pub compat_pass: usize,
 }
 
 pub fn floors() -> Floors {
@@ -323,6 +379,21 @@ fn check_file(path: &std::path::Path, e: &Entry, dump: bool) -> FileResult {
     r
 }
 
+/// Problems with the package our writer produces for the workbook at `path`.
+fn compat_package_problems(path: &std::path::Path) -> Vec<String> {
+    let Ok(file) = std::fs::File::open(path) else {
+        return vec!["cannot reopen".into()];
+    };
+    let Ok((wb, _)) = sp_io::xlsx_read::read_xlsx(std::io::BufReader::new(file)) else {
+        return vec!["cannot reload".into()];
+    };
+    let mut buf = std::io::Cursor::new(Vec::new());
+    if sp_io::xlsx_write::write_xlsx(&wb, &mut buf).is_err() {
+        return vec!["cannot save".into()];
+    }
+    sp_io::xlsx_passthrough::validate_package(&buf.into_inner())
+}
+
 /// Outermost function name of a formula (or `(expr)` when it doesn't start with a call).
 fn head_function(src: &str) -> String {
     let t = src.trim_start_matches(['@', '+', '-', ' ']);
@@ -410,6 +481,48 @@ pub fn test(opts: &TestOpts) -> Result<()> {
         {
             continue;
         }
+        if e.kind == "compat" {
+            // A panic is a failure to report, not a reason to stop the run.
+            let r =
+                std::panic::catch_unwind(|| check_file(&local(e), e, false)).unwrap_or_else(|_| {
+                    FileResult {
+                        path: e.path.clone(),
+                        kind: e.kind.clone(),
+                        load_error: Some("PANIC".into()),
+                        ..FileResult::default()
+                    }
+                });
+            let panicked = r.load_error.as_deref() == Some("PANIC");
+            // What we save from it must be a valid package.
+            let invalid = if r.load_error.is_none() && e.expect.is_none() {
+                compat_package_problems(&local(e))
+            } else {
+                Vec::new()
+            };
+            let ok = !panicked
+                && invalid.is_empty()
+                && match e.expect.as_deref() {
+                    Some("error") => r.load_error.is_some(),
+                    _ => r.load_error.is_none() && r.roundtrip_ok,
+                };
+            rep.compat_total += 1;
+            rep.compat_pass += usize::from(ok);
+            if verbose && !ok {
+                let why = match (&r.load_error, invalid.first()) {
+                    (Some(err), _) => err.clone(),
+                    (None, Some(p)) => format!("saved package invalid: {p}"),
+                    (None, None) => "round trip changed the workbook".into(),
+                };
+                println!("compat {}: {why}", e.path);
+            }
+            rep.files.push(FileResult {
+                compared: 0,
+                matched: 0,
+                first_mismatches: Vec::new(),
+                ..r
+            });
+            continue;
+        }
         let r = check_file(&local(e), e, dump);
         if e.kind == "calc" {
             rep.calc_files_total += 1;
@@ -447,15 +560,18 @@ pub fn test(opts: &TestOpts) -> Result<()> {
             serde_json::to_string_pretty(&rep)?,
         )?;
     }
+    let oracle_files = rep.files_total - rep.compat_total;
     println!(
-        "test-corpus: calc files {}/{} pass, cells {}/{} ({:.1}%), round-trip {}/{}",
+        "test-corpus: calc files {}/{} pass, cells {}/{} ({:.1}%), round-trip {}/{}, compat {}/{}",
         rep.calc_files_pass,
         rep.calc_files_total,
         rep.cells_matched,
         rep.cells_compared,
         rep.cells_matched as f64 * 100.0 / rep.cells_compared.max(1) as f64,
         rep.roundtrip_pass,
-        rep.files_total
+        oracle_files,
+        rep.compat_pass,
+        rep.compat_total
     );
     if opts.only.is_some() {
         return Ok(());
@@ -464,15 +580,18 @@ pub fn test(opts: &TestOpts) -> Result<()> {
     if rep.calc_files_pass < f.calc_files_pass
         || rep.cells_matched < f.cells_matched
         || rep.roundtrip_pass < f.roundtrip_pass
+        || rep.compat_pass < f.compat_pass
     {
         bail!(
-            "oracle floor regressed (files {} < {} or cells {} < {} or round-trip {} < {})",
+            "oracle floor regressed (files {} < {} or cells {} < {} or round-trip {} < {} or compat {} < {})",
             rep.calc_files_pass,
             f.calc_files_pass,
             rep.cells_matched,
             f.cells_matched,
             rep.roundtrip_pass,
-            f.roundtrip_pass
+            f.roundtrip_pass,
+            rep.compat_pass,
+            f.compat_pass
         );
     }
     Ok(())

@@ -9,8 +9,8 @@ pub mod xlsx_extras;
 pub mod xlsx_passthrough;
 pub mod xlsx_pivots;
 pub mod xlsx_print;
-pub mod xlsx_theme;
 pub mod xlsx_read;
+pub mod xlsx_theme;
 pub mod xlsx_write;
 pub mod xml;
 
@@ -55,12 +55,71 @@ impl FileKind {
     }
 }
 
+/// The zip entry for part `name`: exact, else the same name with `\` as `/` and any case
+/// (some tools write `xl\workbook.xml` or `[content_types].xml`; the target app opens them).
+pub(crate) fn entry_name<R: std::io::Read + std::io::Seek>(
+    zip: &zip::ZipArchive<R>,
+    name: &str,
+) -> Option<String> {
+    if zip.index_for_name(name).is_some() {
+        return Some(name.to_string());
+    }
+    zip.file_names()
+        .find(|n| n.replace('\\', "/").eq_ignore_ascii_case(name))
+        .map(str::to_string)
+}
+
+/// Why an .xlsx path is not a readable workbook, in words for the user (checked before
+/// unzipping): empty, an encrypted workbook, or an Excel 97-2003 file.
+fn not_a_workbook(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let len = std::fs::metadata(path).ok()?.len();
+    if len == 0 {
+        return Some("The file is empty.".into());
+    }
+    let mut head = [0u8; 8];
+    std::fs::File::open(path).ok()?.read_exact(&mut head).ok()?;
+    if head != [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1] {
+        return None;
+    }
+    // An OLE2 container: an encrypted workbook keeps an "EncryptedPackage" stream.
+    let bytes = std::fs::read(path).ok().filter(|_| len <= 256 << 20)?;
+    let name: Vec<u8> = "EncryptedPackage"
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    Some(if bytes.windows(name.len()).any(|w| w == name) {
+        "This workbook is protected with a password (encrypted). SheetPro can't open \
+         password-protected workbooks yet."
+            .into()
+    } else {
+        "This is an Excel 97-2003 workbook (.xls) with an .xlsx name. SheetPro opens .xlsx \
+         workbooks only."
+            .into()
+    })
+}
+
 pub fn load(path: &Path) -> Result<(Workbook, LoadReport), IoError> {
     let kind = FileKind::from_path(path)
         .ok_or_else(|| IoError::Format(format!("unknown file type: {}", path.display())))?;
+    if kind == FileKind::Xlsx
+        && let Some(why) = not_a_workbook(path)
+    {
+        return Err(IoError::Format(why));
+    }
     let file = std::fs::File::open(path)?;
     match kind {
-        FileKind::Xlsx => xlsx_read::read_xlsx(std::io::BufReader::new(file)),
+        FileKind::Xlsx => {
+            xlsx_read::read_xlsx(std::io::BufReader::new(file)).map_err(|e| match e {
+                // A zip without its directory: cut short while saving or downloading.
+                IoError::Zip(m) if m.contains("EOCD") || m.contains("Central Directory") => {
+                    IoError::Format(
+                        "The file is damaged or incomplete (its zip directory is missing).".into(),
+                    )
+                }
+                other => other,
+            })
+        }
         FileKind::Csv => csv_io::read_delimited(file, b',', &sheet_name_for(path)),
         FileKind::Tsv => csv_io::read_delimited(file, b'\t', &sheet_name_for(path)),
     }

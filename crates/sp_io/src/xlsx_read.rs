@@ -24,7 +24,10 @@ fn read_part<R: Read + Seek>(
     zip: &mut zip::ZipArchive<R>,
     name: &str,
 ) -> Result<Option<String>, IoError> {
-    let file = match zip.by_name(name) {
+    let Some(real) = crate::entry_name(zip, name) else {
+        return Ok(None);
+    };
+    let file = match zip.by_name(&real) {
         Ok(f) => f,
         Err(zip::result::ZipError::FileNotFound) => return Ok(None),
         Err(e) => return Err(IoError::Zip(e.to_string())),
@@ -37,7 +40,7 @@ fn read_part<R: Read + Seek>(
     if buf.len() as u64 > MAX_PART_BYTES {
         return Err(IoError::Format(format!("{name} exceeds size limit")));
     }
-    Ok(Some(buf))
+    Ok(Some(crate::xml::strip_bom(buf)))
 }
 
 /// Built-in number formats by id (ECMA-376 Part 1 §18.8.30, en-US rendering).

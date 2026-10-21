@@ -291,7 +291,10 @@ fn read_bytes<R: Read + Seek>(
     name: &str,
     cap: u64,
 ) -> Result<Option<Vec<u8>>, IoError> {
-    let file = match zip.by_name(name) {
+    let Some(real) = crate::entry_name(zip, name) else {
+        return Ok(None);
+    };
+    let file = match zip.by_name(&real) {
         Ok(f) => f,
         Err(zip::result::ZipError::FileNotFound) => return Ok(None),
         Err(e) => return Err(IoError::Zip(e.to_string())),
@@ -339,6 +342,8 @@ impl Child<'_> {
 /// attributes are returned and its children listed (an unclosed root is fine). Without,
 /// the fragment's own top-level elements are listed.
 pub fn scan_children(xml: &str, skip_root: bool) -> Result<Scanned<'_>, IoError> {
+    // Positions below index `xml`; the reader would skip a BOM and count without it.
+    let xml = xml.strip_prefix('\u{feff}').unwrap_or(xml);
     let mut reader = Reader::from_str(xml);
     reader.config_mut().check_end_names = false;
     let mut root_attrs = Vec::new();

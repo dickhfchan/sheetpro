@@ -326,6 +326,14 @@ impl Expr {
     /// arguments) gets the `@` implicit-intersection operator, as the target app shows it.
     pub fn into_legacy(self) -> Expr {
         match self {
+            // `(A1:B2 C3:D4)`: `@` goes outside the parentheses, the shape `@(…)` parses to,
+            // so `from_legacy` gives back exactly the saved text (otherwise every save and
+            // load wrapped the formula in one more pair of parentheses).
+            Expr::Paren(a)
+                if matches!(*a, Expr::Binary(BinOp::Range | BinOp::Union | BinOp::Isect, ..)) =>
+            {
+                Expr::Implicit(Box::new(Expr::Paren(a)))
+            }
             Expr::Paren(a) => Expr::Paren(Box::new(a.into_legacy())),
             Expr::Unary(op, a) => Expr::Unary(op, Box::new(a.into_legacy())),
             Expr::Binary(op, a, b) if !matches!(op, BinOp::Range | BinOp::Union | BinOp::Isect) => {

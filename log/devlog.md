@@ -307,3 +307,20 @@ native file dialogs; the Function Library buttons open Insert Function on their 
 
 Left by choice: XIRR/IRR iteration (13 cells, ~1e-8 relative), MAX(ROW(B:B)) (2 cells; would
 need million-element arrays for whole-column refs).
+
+## 2026-10-21 — Real-world file compatibility (Apache POI corpus), dialogs, functions
+
+- Corpus gains a second source: Apache POI's 366 test spreadsheets (`kind = "compat"`,
+  `corpus/files/poi/`): each must load, round-trip and save a valid package; 18 deliberately
+  broken ones (fuzzer cases, encrypted, truncated) carry `expect = "error"` and must be refused
+  cleanly. Floor compat_pass = 366; smoke --full opens them in the app.
+- Fixed by it: parts starting with a UTF-8 BOM were sliced 3 bytes off on save, corrupting
+  workbook.xml (strip the BOM when reading parts); `@(…)` formulas gained a pair of parentheses
+  on every save/load cycle (into_legacy puts `@` outside parenthesised range expressions); a
+  carriage return in text was lost (written as `&#13;`); parts named with backslashes or another
+  case (`xl\workbook.xml`) are found; encrypted / .xls / empty / truncated files get clear
+  messages.
+- Purpose-built dialogs: Data Validation, Goal Seek, New Note / Comment, Go To Special.
+- ENCODEURL and FILTERXML (504/514 functions). WEBSERVICE, IMAGE, STOCKHISTORY and the CUBE
+  functions need a network or OLAP connection and stay unimplemented.
+- Font / Font Size pickers have accessible names.

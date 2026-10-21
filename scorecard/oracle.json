@@ -1,12 +1,14 @@
 {
   "date": "2026-10-21",
   "source_commit": "c88f07f0c776ad42bc4cfd68dfc65f68195908f0",
-  "files_total": 259,
+  "files_total": 625,
   "calc_files_total": 218,
   "calc_files_pass": 209,
   "cells_compared": 73244,
   "cells_matched": 73226,
   "roundtrip_pass": 259,
+  "compat_total": 366,
+  "compat_pass": 366,
   "files": [
     {
       "path": "xlsx/tests/DynamicArrays.xlsx",
@@ -2615,6 +2617,3666 @@
       "compared": 36,
       "matched": 36,
       "skipped_volatile": 2,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/0-www-crossref-org.lib.rivier.edu_education-files_suffix-generator.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/123233_charts.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/1_NoIden.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/45430.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/45431.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/45540_classic_Footer.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/45540_classic_Header.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/45540_form_Footer.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/45540_form_Header.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/45544.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/46535.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/46536.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47026.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47089.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47090.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47504.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47668.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47737.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47804.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 9,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47813.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47862.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/47889.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/48495.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/48539.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/48703.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/48779.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/48923.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/48962.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/49156.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/49273.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/49325.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/49609.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/49783.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/49872.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/49928.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/49966.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/50096.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/50299.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/50755_workday_formula_example.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/50784-font_theme_colours.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/50786-indexed_colours.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/50795.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/50846-border_colours.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/50867_with_table.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51222.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51470.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51519.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51585.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51626.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51626_contact.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51710.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51850.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51963.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/51998.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/52348.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/52425.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/52575_main.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/52716.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/53101.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/53105.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/53282.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/53282b.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/53568.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/53734.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/53798.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/53798_shiftNegative_TMPL.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54034.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54071.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54084 - Greek - beyond BMP.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54206.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54288-ref.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54288.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54399.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54436.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54524.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54607.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54764-2.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/54764.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55406_Conditional_formatting_sample.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55640.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55745.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55814.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55850.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55864.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55906-MultiSheetRefs.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55923.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55924.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55926.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/55927.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56011.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56017.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56169.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56170.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56274.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56278.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56295.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56315.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56420.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56502.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56511.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56514.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56557.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56574.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 20,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56644.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56688_1.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56688_2.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56688_3.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56688_4.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 1,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56702.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56730.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56737.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56822-Countifs.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/56957.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57171_57163_57165.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57176.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57181.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57196.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57236.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57362.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57423.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57482-OnlyNumeric.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57523.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57535.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57798.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57826.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57828.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57838.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57890.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57893-many-merges.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/57914.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58106.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58315.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58325_db.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58325_lt.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58616.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58648.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58731.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58747.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58760.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/58896.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59021.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59026.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59106.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59132.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59264.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59388.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59687.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59736.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59746_NoRowNums.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/59775.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/60255_extra_drawingparts.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/60289.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/60384.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/60509.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/60512.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/60709.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/60825.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/61034.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/61060-conditional-number-formatting.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/61063.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/61281.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/61495-test.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/61605.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/61652.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/61869.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/62272.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/62629_target.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/62629_toMerge.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/62834.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/63934.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/64420.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/64450.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/64508.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/64667.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/64750.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/64759.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/65016.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/66365.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/70005-countifs.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/AmpersandHeader.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/AverageTaxRates.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/Booleans.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/BrNotClosed.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/CVLKRA-KYC_Download_File_Structure_V3.1.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ConditionalFormattingSamples.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/CustomXMLMapping-singleattributenamespace.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/CustomXMLMappings-complex-type.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/CustomXMLMappings.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/CustomXmlMappings-inverse-order.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/DataTableCities.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/DataValidationEvaluations.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/DataValidationListTooLong.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/DataValidations-49244.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/DateFormatNumberTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/DateFormatTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ElapsedFormatTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ExcelPivotTableSample.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ExcelTables.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ExcelWithAttachments.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/Excel_file_with_trash_item.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/FillWithoutColor.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ForShifting.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/FormatChoiceTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/FormatConditionTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/FormatKM.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/Formatting.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/FormulaEvalTestData_Copy.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 14,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/FormulaSheetRange.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/GeneralFormatTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/GroupTest.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/HeaderFooterComplexFormats.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/HsGetVal.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/InlineString.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/InlineStrings.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/Intersection-52111-xssf.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/LIBRE_OFFICE-116306-0.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/LIBRE_OFFICE-128382-0.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 2,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/MalformedSSTCount.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/MatrixFormulaEvalTestData.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/NewStyleConditionalFormattings.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/NewlineInFormulas.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/NumberFormatApproxTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/NumberFormatTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/RepeatingRowsCols.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SampleSS.strict.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SampleSS.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SheetTabColors.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ShrinkToFit.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SimpleMacro.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SimpleMultiCell.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SimpleNormal.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SimpleScatterChart.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SimpleStrict.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SimpleWithComments.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/SingleCellTable.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/StructuredReferences.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/StructuredRefs-lots-with-lookups.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 3798,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/Tables.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/TablesWithDifferentHeaders.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/TestShiftRowSharedFormula.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/TextFormatTests.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/Themes.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/Themes2.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/TwoSheetsNoneHidden.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/TwoSheetsOneHidden.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/VLookupFullColumn.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ValueFunctionOfBlank.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WidthsAndHeights.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithChart.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithChartSheet.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithConditionalFormatting.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithDrawing.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithEmbeded.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithMoreVariousData.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithTable.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithTextBox.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithTextBox2.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithThreeCharts.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithTwoCharts.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/WithVariousData.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/XSSFSheet.copyRows.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/absolute-anchor-over-empty-sheet.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/atp.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug54803.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug60848_sumproduct_unary_minus.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug60858.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug62181.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug63189.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug64512_embed.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug65306.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug65464.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug66215.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug66675.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug66827.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug67784.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug69769.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/bug69812.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/chartTitle_noTitle.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/chartTitle_withTitle.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/chartTitle_withTitleFormula.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/chart_sheet.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clone_sheet.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIFuzzer-5040805309710336.xlsx",
+      "kind": "compat",
+      "load_error": "unsupported or corrupt file: missing xl/workbook.xml",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-4828727001088000.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Variable-length field extends beyond file boundary",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-5089447305609216.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-5185049589579776.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Variable-length field extends beyond file boundary",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-5265527465181184.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-5937385319563264.xlsx",
+      "kind": "compat",
+      "load_error": "unsupported or corrupt file: xl/worksheets/sheet8.xml: Invalid checksum",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-6123461607817216.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-6419366255919104.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-6448258963341312.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Invalid CDFH offset in EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-XLSX2CSVFuzzer-5025401116950528.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Invalid CDFH offset in EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-XLSX2CSVFuzzer-5542865479270400.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-XLSX2CSVFuzzer-5636439151607808.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-XLSX2CSVFuzzer-6504225896792064.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Invalid Central Directory header",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/clusterfuzz-testcase-minimized-XLSX2CSVFuzzer-6594557414080512.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/commentTest.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/comments.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/conditional_formatting_cell_is.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/conditional_formatting_multiple_ranges.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/conditional_formatting_with_formula_on_second_sheet.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/craftonhills.edu_programreview_report.aspx_goalpriorityreport_0011d159-1eeb-4b63-8833-867b0926e5f3.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/crash-274d6342e4842d61be0fb48eaadad6208ae767ae.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Invalid CDFH offset in EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/crash-9bf3cd4bd6f50a8a9339d363c2c7af14b536865c.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/customIndexedColors.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/dataValidationTableRange.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/decimal-format.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/deep-data.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/duplicate-filename-case-insensitive.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/duplicate-filename.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/evaluate_formula_with_structured_table_references.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/formula-eval.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/github-321.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/headerFooterTest.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/invalid_cell_reference.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/link-external-workbook-a.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/link-external-workbook-b.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/mv-calculator-final-2-20-2013.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/noSharedStringTable.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/no_drawing_patriarch.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/npe.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/picture-and-shape-same-size.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/picture.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/poc-shared-strings.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/poc-xmlbomb-empty.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/poc-xmlbomb.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/protected_passtika.xlsx",
+      "kind": "compat",
+      "load_error": "zip error: invalid Zip archive: Could not find EOCD",
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": false,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ref-56737.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/ref2-56737.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/reordered_sheets.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/resize_compare.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/right-to-left.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/sample-beta.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/sample.strict.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/sample.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/shared_formulas.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/sharedhyperlink.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/sheetProtection_allLocked.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/sheetProtection_not_protected.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/simple-monthly-budget.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/simple-table-named-range.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/style-alternate-content.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/styles.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/table-sample.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/tableStyle.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/template.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/testNames.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/testSharedFormulasRangeSetBlankBug.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/testSharedFormulasSetBlank.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/test_conditional_formatting.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/tile-range-test.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/unicodeSheetName.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/workbookProtection-sheet_password-2013.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/workbookProtection-workbook_password-2013.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/workbookProtection-workbook_password_user_range-2010.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/workbookProtection_not_protected.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/workbookProtection_workbook_revision_protected.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/workbookProtection_workbook_structure_protected.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/workbookProtection_workbook_windows_protected.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/workbookProtection_worksheet_protected.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/xlmmacro.xlsm",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/xlookup.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/xlsx-corrupted.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/xlsx-jdbc.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/xssf-enum.xltx.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
+      "roundtrip_ok": true,
+      "first_mismatches": []
+    },
+    {
+      "path": "test-data/spreadsheet/xxe_in_schema.xlsx",
+      "kind": "compat",
+      "load_error": null,
+      "compared": 0,
+      "matched": 0,
+      "skipped_volatile": 0,
       "roundtrip_ok": true,
       "first_mismatches": []
     }

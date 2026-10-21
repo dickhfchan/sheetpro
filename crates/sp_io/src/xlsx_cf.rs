@@ -23,12 +23,13 @@ const DATABAR_EXT: &str = "{B025F937-C7B1-47D3-B67F-A62EFF666E3E}";
 const CF_EXT: &str = "{78C0D931-6437-407d-A8EE-F0AAD7539E65}";
 
 fn read_part<R: Read + Seek>(zip: &mut zip::ZipArchive<R>, name: &str) -> Option<String> {
-    let file = zip.by_name(name).ok()?;
+    let real = crate::entry_name(zip, name)?;
+    let file = zip.by_name(&real).ok()?;
     let mut buf = String::new();
     file.take(MAX_PART_BYTES + 1)
         .read_to_string(&mut buf)
         .ok()?;
-    (buf.len() as u64 <= MAX_PART_BYTES).then_some(buf)
+    (buf.len() as u64 <= MAX_PART_BYTES).then(|| crate::xml::strip_bom(buf))
 }
 
 // ── reading ────────────────────────────────────────────────────────────────────────────────
@@ -807,8 +808,10 @@ impl CfWriter {
             }
             let n = self.tables.len() + 1;
             let rid = rels.add("table", &format!("../tables/table{n}.xml"), false);
-            self.tables
-                .push((format!("xl/tables/table{n}.xml"), table_xml(t, n, sheet.auto_filter.as_ref())));
+            self.tables.push((
+                format!("xl/tables/table{n}.xml"),
+                table_xml(t, n, sheet.auto_filter.as_ref()),
+            ));
             ids.push(rid);
         }
         if !ids.is_empty() {

@@ -39,6 +39,15 @@ impl Node {
     }
 }
 
+/// Drop a leading UTF-8 byte-order mark. The XML reader skips it and reports positions
+/// without it, so text that keeps it would be sliced 3 bytes off.
+pub fn strip_bom(mut s: String) -> String {
+    if s.starts_with('\u{feff}') {
+        s.drain(..'\u{feff}'.len_utf8());
+    }
+    s
+}
+
 pub fn local(name: &str) -> &str {
     name.rsplit(':').next().unwrap_or(name)
 }
@@ -148,8 +157,10 @@ pub fn esc(s: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            // A raw CR would be read back as part of a line break ("\r\n" → "\n").
+            '\r' => out.push_str("&#13;"),
             // Control characters other than tab/newline are not allowed in XML 1.0.
-            c if (c as u32) < 0x20 && c != '\t' && c != '\n' && c != '\r' => {
+            c if (c as u32) < 0x20 && c != '\t' && c != '\n' => {
                 out.push_str(&format!("_x{:04X}_", c as u32));
             }
             c => out.push(c),
@@ -203,5 +214,6 @@ mod tests {
         assert_eq!(unescape_ooxml("a_x000D_b"), "a\rb");
         assert_eq!(unescape_ooxml("_x_y"), "_x_y");
         assert_eq!(esc("a\u{1}<"), "a_x0001_&lt;");
+        assert_eq!(esc("a\r\nb"), "a&#13;\nb");
     }
 }

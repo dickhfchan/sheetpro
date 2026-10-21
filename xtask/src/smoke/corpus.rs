@@ -38,6 +38,8 @@ pub fn run(c: &mut Ctx) -> Result<()> {
     if files.is_empty() {
         return Ok(());
     }
+    let broken = crate::corpus::expected_failures();
+    let mut refused_badly: Vec<String> = Vec::new();
     let mut a = c.launch()?;
     let mut failed_open: Vec<String> = Vec::new();
     let mut mismatched: Vec<String> = Vec::new();
@@ -52,6 +54,17 @@ pub fn run(c: &mut Ctx) -> Result<()> {
             .to_string();
         let t = Instant::now();
         let opened = a.try_ex("file.open", json!({"path": f}));
+        if broken.contains(f) {
+            // Deliberately broken: an error, and the app carries on.
+            if opened.is_ok() || !a.alive() {
+                refused_badly.push(name.clone());
+                if !a.alive() {
+                    drop(a);
+                    a = c.launch()?;
+                }
+            }
+            continue;
+        }
         let secs = t.elapsed().as_secs_f64();
         if secs > 10.0 {
             slow.push((name.clone(), secs));
@@ -99,7 +112,12 @@ pub fn run(c: &mut Ctx) -> Result<()> {
             a = c.launch()?;
         }
     }
-    let n = files.len();
+    c.check(
+        &format!("{} broken files are refused cleanly", broken.len()),
+        refused_badly.is_empty(),
+        &refused_badly,
+    );
+    let n = files.len() - broken.len();
     c.check(
         &format!("{n} corpus files open without a crash"),
         crashed.is_empty(),

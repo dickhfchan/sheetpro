@@ -19,6 +19,11 @@ fn corpus_files() -> Vec<PathBuf> {
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
+                // corpus/files/poi: real-world compatibility files, some deliberately
+                // broken; `cargo xtask test-corpus` checks those (package validity included).
+                if p.file_name().is_some_and(|n| n == "poi") {
+                    continue;
+                }
                 stack.push(p);
             } else if p.extension().is_some_and(|x| x == "xlsx" || x == "xlsm") {
                 out.push(p);
