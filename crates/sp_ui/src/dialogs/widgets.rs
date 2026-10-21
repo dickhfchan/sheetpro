@@ -67,7 +67,12 @@ pub fn swatch_grid(ui: &mut Ui, current: Option<Color32>) -> Option<Color32> {
                     ),
                     StrokeKind::Inside,
                 );
-                if resp.on_hover_text(format!("#{}", hex(*c))).clicked() {
+                // Named by its hex code, so assistive tools (and tests) can pick a colour.
+                let name = format!("#{}", hex(*c));
+                resp.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
+                });
+                if resp.on_hover_text(&name).clicked() {
                     picked = Some(*c);
                 }
                 if i % 10 == 9 {

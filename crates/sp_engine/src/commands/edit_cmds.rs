@@ -415,8 +415,12 @@ fn select_kind(s: &mut Session, formulas: bool) -> CmdResult {
     let Some(sh) = s.wb.sheet(sheet) else {
         return Err(CmdError::Failed("no sheet".into()));
     };
+    // A multi-cell selection limits the search to it; one cell searches the sheet.
+    let within = s.sel.range();
+    let whole = within.is_single();
     let hits: Vec<CellAddr> = sh
         .iter()
+        .filter(|(a, _)| whole || within.contains(*a))
         .filter(|(_, c)| match &c.content {
             Content::Formula(_) => formulas,
             Content::Value(v) => !formulas && !v.is_empty(),
@@ -545,4 +549,33 @@ pub fn specs() -> Vec<CommandSpec> {
             select_kind(s, false)
         }),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Select Formulas / Constants look only inside a multi-cell selection (as Go To
+    /// Special does); before, they searched the whole sheet regardless.
+    #[test]
+    fn select_kind_stays_inside_a_multi_cell_selection() {
+        let mut s = Session::new();
+        for (c, v) in [("A1", "x"), ("B1", "=1+1"), ("C1", "3"), ("C3", "=C1")] {
+            s.execute("cell.set", &json!({"cell": c, "input": v}))
+                .unwrap();
+        }
+        s.select_range(CellRange::parse("B1:C2").unwrap(), CellAddr::new(0, 1));
+        s.execute("home.editing.select_constants", &json!({}))
+            .unwrap();
+        assert_eq!(s.sel.range().to_a1(), "C1");
+        s.select_range(CellRange::parse("B1:C2").unwrap(), CellAddr::new(0, 1));
+        s.execute("home.editing.select_formulas", &json!({}))
+            .unwrap();
+        assert_eq!(s.sel.range().to_a1(), "B1");
+        // One cell selected: the whole sheet.
+        s.select_range(CellRange::parse("A5").unwrap(), CellAddr::new(4, 0));
+        s.execute("home.editing.select_formulas", &json!({}))
+            .unwrap();
+        assert_eq!(s.sel.range().to_a1(), "B1:C3");
+    }
 }

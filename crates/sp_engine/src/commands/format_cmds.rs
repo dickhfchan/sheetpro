@@ -91,11 +91,42 @@ const FONT_SIZES: [f64; 16] = [
     8.0, 9.0, 10.0, 11.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0, 26.0, 28.0, 36.0, 48.0, 72.0,
 ];
 
+/// The target's built-in currency (Ctrl+Shift+$), comma and accounting formats (en-US,
+/// ECMA-376 built-in ids 7, 43 and 44), exactly as it stores them.
+const CURRENCY: &str = "\"$\"#,##0.00_);(\"$\"#,##0.00)";
+const COMMA: &str = "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)";
+const ACCOUNTING: &str = "_(\"$\"* #,##0.00_);_(\"$\"* \\(#,##0.00\\);_(\"$\"* \"-\"??_);_(@_)";
+
 fn decimals_of(fmt: &str) -> usize {
     let first = fmt.split(';').next().unwrap_or("");
     first
         .split_once('.')
         .map_or(0, |(_, d)| d.chars().take_while(|c| *c == '0').count())
+}
+
+/// Decimals the active cell shows: its format's, or under General those of the value as
+/// General displays it (2.25 shows two), so Increase/Decrease Decimal start from what the
+/// user sees.
+fn shown_decimals(s: &Session) -> usize {
+    let st = active_style(s);
+    if !st.num_fmt.eq_ignore_ascii_case("general") {
+        return decimals_of(&st.num_fmt);
+    }
+    let v =
+        s.wb.sheet(s.sheet_index())
+            .and_then(|sh| sh.get(s.sel.active))
+            .map(|c| c.value.clone());
+    match v {
+        Some(v @ sp_core::Value::Number(_)) => {
+            let text = sp_core::numfmt::format_value(&v, "General").text;
+            // Scientific display (1E+20) counts the mantissa's decimals.
+            let mantissa = text.split(['E', 'e']).next().unwrap_or("");
+            mantissa.split_once('.').map_or(0, |(_, d)| {
+                d.chars().take_while(char::is_ascii_digit).count()
+            })
+        }
+        _ => 0,
+    }
 }
 
 fn with_decimals(fmt: &str, n: usize) -> String {
@@ -106,6 +137,10 @@ fn with_decimals(fmt: &str, n: usize) -> String {
     };
     base.split(';')
         .map(|sec| {
+            // Sections with no digit placeholder (`_(@_)`, `_(* "-"??_)`) stay as they are.
+            if !sec.contains(['0', '#']) {
+                return sec.to_string();
+            }
             let (int, rest) = match sec.split_once('.') {
                 Some((i, r)) => (i.to_string(), r.trim_start_matches('0').to_string()),
                 None => {
@@ -393,7 +428,11 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         CommandSpec::new("home.align.indent_increase", r, |s, p| {
             restyle(s, p, "Increase Indent", &|st| {
-                st.indent = st.indent.saturating_add(1).min(250)
+                st.indent = st.indent.saturating_add(1).min(250);
+                // Indents apply to left- or right-aligned text: anything else turns left.
+                if !matches!(st.h_align, HAlign::Left | HAlign::Right) {
+                    st.h_align = HAlign::Left;
+                }
             })
         }),
         CommandSpec::new("home.align.indent_decrease", r, |s, p| {
@@ -450,23 +489,16 @@ pub fn specs() -> Vec<CommandSpec> {
             restyle(s, p, "Number Format", &|st| st.num_fmt = "#,##0.00".into())
         }),
         CommandSpec::new("home.number.currency", r, |s, p| {
-            restyle(s, p, "Number Format", &|st| {
-                st.num_fmt = "\"$\"#,##0.00;(\"$\"#,##0.00)".into()
-            })
+            restyle(s, p, "Number Format", &|st| st.num_fmt = CURRENCY.into())
         }),
         CommandSpec::new("home.number.accounting", r, |s, p| {
-            restyle(s, p, "Number Format", &|st| {
-                st.num_fmt =
-                    "_(\"$\"* #,##0.00_);_(\"$\"* (#,##0.00);_(\"$\"* \"-\"??_);_(@_)".into()
-            })
+            restyle(s, p, "Number Format", &|st| st.num_fmt = ACCOUNTING.into())
         }),
         CommandSpec::new("home.number.percent", r, |s, p| {
             restyle(s, p, "Number Format", &|st| st.num_fmt = "0%".into())
         }),
         CommandSpec::new("home.number.comma", r, |s, p| {
-            restyle(s, p, "Number Format", &|st| {
-                st.num_fmt = "_(* #,##0.00_);_(* (#,##0.00);_(* \"-\"??_);_(@_)".into()
-            })
+            restyle(s, p, "Number Format", &|st| st.num_fmt = COMMA.into())
         }),
         CommandSpec::new("home.number.date_short", r, |s, p| {
             restyle(s, p, "Number Format", &|st| st.num_fmt = "d-mmm-yy".into())
@@ -483,13 +515,13 @@ pub fn specs() -> Vec<CommandSpec> {
             restyle(s, p, "Number Format", &|st| st.num_fmt = "@".into())
         }),
         CommandSpec::new("home.number.decimal_increase", r, |s, p| {
-            let n = decimals_of(&active_style(s).num_fmt);
+            let n = shown_decimals(s);
             restyle(s, p, "Increase Decimal", &move |st| {
                 st.num_fmt = with_decimals(&st.num_fmt, (n + 1).min(30))
             })
         }),
         CommandSpec::new("home.number.decimal_decrease", r, |s, p| {
-            let n = decimals_of(&active_style(s).num_fmt);
+            let n = shown_decimals(s);
             restyle(s, p, "Decrease Decimal", &move |st| {
                 st.num_fmt = with_decimals(&st.num_fmt, n.saturating_sub(1))
             })
@@ -524,5 +556,123 @@ mod tests {
         assert_eq!(with_decimals("General", 1), "0.0");
         assert_eq!(with_decimals("#,##0.00;(#,##0.00)", 0), "#,##0;(#,##0)");
         assert_eq!(decimals_of("0.000%"), 3);
+        // Text and dash sections keep their shape.
+        assert_eq!(
+            with_decimals(COMMA, 3),
+            "_(* #,##0.000_);_(* \\(#,##0.000\\);_(* \"-\"??_);_(@_)"
+        );
+    }
+
+    fn run(s: &mut Session, id: &str, p: Json) {
+        s.execute(id, &p).unwrap();
+    }
+
+    fn fmt_of(s: &Session, a1: &str) -> String {
+        let c = s.wb.sheets[0].get(sp_core::CellAddr::parse(a1).unwrap());
+        s.wb.styles
+            .get(c.map_or(StyleId::DEFAULT, |c| c.style))
+            .num_fmt
+            .clone()
+    }
+
+    /// Under General, Increase/Decrease Decimal start from the decimals the value shows
+    /// (2.25 → 2.250 / 2.3), as the target does; before, both started from zero.
+    #[test]
+    fn decimal_buttons_start_from_the_shown_decimals() {
+        let mut s = Session::new();
+        run(
+            &mut s,
+            "cell.set",
+            serde_json::json!({"cell": "A1", "input": "2.25"}),
+        );
+        run(
+            &mut s,
+            "cell.set",
+            serde_json::json!({"cell": "A2", "input": "2.25"}),
+        );
+        run(
+            &mut s,
+            "cell.set",
+            serde_json::json!({"cell": "A3", "input": "10"}),
+        );
+        s.select_range(
+            sp_core::CellRange::parse("A1").unwrap(),
+            sp_core::CellAddr::new(0, 0),
+        );
+        run(
+            &mut s,
+            "home.number.decimal_increase",
+            serde_json::json!({}),
+        );
+        assert_eq!(fmt_of(&s, "A1"), "0.000");
+        s.select_range(
+            sp_core::CellRange::parse("A2").unwrap(),
+            sp_core::CellAddr::new(1, 0),
+        );
+        run(
+            &mut s,
+            "home.number.decimal_decrease",
+            serde_json::json!({}),
+        );
+        assert_eq!(fmt_of(&s, "A2"), "0.0");
+        s.select_range(
+            sp_core::CellRange::parse("A3").unwrap(),
+            sp_core::CellAddr::new(2, 0),
+        );
+        run(
+            &mut s,
+            "home.number.decimal_increase",
+            serde_json::json!({}),
+        );
+        assert_eq!(fmt_of(&s, "A3"), "0.0");
+    }
+
+    /// Increase Indent left-aligns a General cell (an indent needs a left or right
+    /// alignment, and the saved file drops it otherwise); a right-aligned cell stays right.
+    #[test]
+    fn increase_indent_left_aligns_general_cells() {
+        let mut s = Session::new();
+        run(
+            &mut s,
+            "home.align.indent_increase",
+            serde_json::json!({"range": "A1"}),
+        );
+        let st = s.wb.styles.get(
+            s.wb.sheets[0]
+                .get(sp_core::CellAddr::new(0, 0))
+                .unwrap()
+                .style,
+        );
+        assert_eq!((st.indent, st.h_align), (1, HAlign::Left));
+        run(
+            &mut s,
+            "home.align.right",
+            serde_json::json!({"range": "B1"}),
+        );
+        run(
+            &mut s,
+            "home.align.indent_increase",
+            serde_json::json!({"range": "B1"}),
+        );
+        let st = s.wb.styles.get(
+            s.wb.sheets[0]
+                .get(sp_core::CellAddr::new(0, 1))
+                .unwrap()
+                .style,
+        );
+        assert_eq!((st.indent, st.h_align), (1, HAlign::Right));
+    }
+
+    /// Currency, Comma and Accounting are the target's built-in codes and display as it
+    /// does (negatives in parentheses).
+    #[test]
+    fn builtin_currency_comma_accounting_codes() {
+        let v = sp_core::Value::Number(-1234.5);
+        let t = |code| sp_core::numfmt::format_value(&v, code).text;
+        assert_eq!(t(CURRENCY), "($1,234.50)");
+        assert_eq!(t(COMMA).trim(), "(1,234.50)");
+        assert!(t(ACCOUNTING).contains("(1,234.50)"), "{}", t(ACCOUNTING));
+        let pos = sp_core::numfmt::format_value(&sp_core::Value::Number(5.0), CURRENCY).text;
+        assert_eq!(pos.trim_end(), "$5.00");
     }
 }

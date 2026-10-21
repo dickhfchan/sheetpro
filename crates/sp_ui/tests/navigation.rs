@@ -79,6 +79,7 @@ fn expected(id: &str) -> Expect {
         "home.font.font_color" => return Expect::Picker("Automatic"),
         "home.styles.cell_styles" => return Expect::Picker("Good"),
         "layout.margins" => return Expect::Picker("Wide"),
+        "layout.themes" => return Expect::Picker("Harbor"),
         "layout.size" => return Expect::Picker("A4"),
         "formulas.use_in_formula" => return Expect::Picker("Rate"),
         "home.clipboard.format_painter" => return Expect::Painter,

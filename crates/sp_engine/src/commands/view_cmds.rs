@@ -34,7 +34,8 @@ fn gridlines(s: &mut Session) -> CmdResult {
         }
         Ok(())
     })?;
-    s.view.show_gridlines = on;
+    // The setting is the sheet's (saved, undone with it); the view keeps no copy, which
+    // undo or a sheet switch would leave stale.
     Ok(json!(on))
 }
 
@@ -225,4 +226,29 @@ pub fn specs() -> Vec<CommandSpec> {
             },
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Session;
+    use serde_json::json;
+
+    /// Gridlines are the sheet's setting: undo brings them back on screen, and other
+    /// sheets keep theirs. Before, a view-wide copy stayed off after undo and hid every
+    /// sheet's gridlines.
+    #[test]
+    fn gridlines_follow_the_sheet_through_undo_and_sheet_switches() {
+        let mut s = Session::new();
+        s.execute("home.cells.insert_sheet", &json!({"name": "Two"}))
+            .unwrap();
+        s.execute("layout.gridlines_view", &json!({})).unwrap();
+        assert!(!s.wb.sheets[0].show_gridlines);
+        assert!(s.wb.sheets[1].show_gridlines);
+        assert!(
+            s.view.show_gridlines,
+            "the view does not hide other sheets'"
+        );
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert!(s.wb.sheets[0].show_gridlines && s.view.show_gridlines);
+    }
 }

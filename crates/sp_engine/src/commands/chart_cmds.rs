@@ -207,6 +207,11 @@ fn abs_ref(sheet_name: &str, r: CellRange) -> String {
     format!("{}!{body}", quote_sheet_name(sheet_name))
 }
 
+/// `Sheet1!C2:D2`: a sparkline's data reference, relative as the file stores it.
+fn rel_ref(sheet_name: &str, r: CellRange) -> String {
+    format!("{}!{}", quote_sheet_name(sheet_name), r.to_a1())
+}
+
 /// Expand a single cell to its current region (the block of non-empty neighbours).
 fn current_region(sh: &Sheet, r: CellRange) -> CellRange {
     if !r.is_single() {
@@ -787,13 +792,13 @@ fn sparkline_cmd(s: &mut Session, p: &Json, kind: SparklineKind) -> CmdResult {
         }
         items.push(Sparkline {
             location: loc.start,
-            data: abs_ref(&dname, data),
+            data: rel_ref(&dname, data),
         });
     } else if loc.cols() == 1 && loc.rows() == data.rows() {
         for (i, row) in (data.start.row..=data.end.row).enumerate() {
             items.push(Sparkline {
                 location: CellAddr::new(loc.start.row + i as u32, loc.start.col),
-                data: abs_ref(
+                data: rel_ref(
                     &dname,
                     CellRange::new(
                         CellAddr::new(row, data.start.col),
@@ -806,7 +811,7 @@ fn sparkline_cmd(s: &mut Session, p: &Json, kind: SparklineKind) -> CmdResult {
         for (i, col) in (data.start.col..=data.end.col).enumerate() {
             items.push(Sparkline {
                 location: CellAddr::new(loc.start.row, loc.start.col + i as u32),
-                data: abs_ref(
+                data: rel_ref(
                     &dname,
                     CellRange::new(
                         CellAddr::new(data.start.row, col),
@@ -1145,7 +1150,8 @@ mod tests {
         assert_eq!(out["sparklines"], 4);
         assert_eq!(out["location"], "E2:E5");
         let g = &s.wb.sheets[0].drawings.sparklines[0];
-        assert_eq!(g.items[0].data, "Sheet1!$B$2:$D$2");
+        // Relative, as the file stores it (an absolute one did not survive saving).
+        assert_eq!(g.items[0].data, "Sheet1!B2:D2");
         assert_eq!(
             sparkline_values(&s.wb, 0, &g.items[1]),
             vec![Some(7.0), Some(11.0), Some(15.0)]

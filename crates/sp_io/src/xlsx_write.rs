@@ -756,10 +756,18 @@ fn sheet_head(wb: &Workbook, i: usize, sheet: &sp_model::Sheet) -> Vec<(String, 
     out.push(("sheetViews".into(), x));
     out.push((
         "sheetFormatPr".into(),
-        format!(
-            r#"<sheetFormatPr defaultRowHeight="{}"/>"#,
-            sheet.default_row_height
-        ),
+        // The standard column width is kept only when it was changed (Default Width…).
+        if (sheet.default_col_width - sp_model::DEFAULT_COL_WIDTH).abs() > 1e-9 {
+            format!(
+                r#"<sheetFormatPr defaultColWidth="{}" defaultRowHeight="{}"/>"#,
+                sheet.default_col_width, sheet.default_row_height
+            )
+        } else {
+            format!(
+                r#"<sheetFormatPr defaultRowHeight="{}"/>"#,
+                sheet.default_row_height
+            )
+        },
     ));
     let mut cols: Vec<u32> = sheet
         .col_widths
@@ -1305,6 +1313,28 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A changed standard column width (Default Width…) is saved and read back; before, it
+    /// was dropped on save.
+    #[test]
+    fn standard_column_width_round_trips() {
+        let mut wb = Workbook::new();
+        wb.sheets[0].default_col_width = 12.0;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        write_xlsx(&wb, &mut buf).unwrap();
+        let (back, _) =
+            crate::xlsx_read::read_xlsx(std::io::Cursor::new(buf.into_inner())).unwrap();
+        assert_eq!(back.sheets[0].default_col_width, 12.0);
+        // The default stays implicit.
+        let mut buf = std::io::Cursor::new(Vec::new());
+        write_xlsx(&Workbook::new(), &mut buf).unwrap();
+        let (back, _) =
+            crate::xlsx_read::read_xlsx(std::io::Cursor::new(buf.into_inner())).unwrap();
+        assert_eq!(
+            back.sheets[0].default_col_width,
+            sp_model::DEFAULT_COL_WIDTH
+        );
+    }
 
     /// Conversion through the memo gives what converting each formula on its own gives,
     /// including dynamic arrays and array areas.

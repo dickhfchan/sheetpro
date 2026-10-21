@@ -184,6 +184,8 @@ fn rename(s: &mut Session, p: &Json) -> CmdResult {
 fn move_copy(s: &mut Session, p: &Json, copy: bool) -> CmdResult {
     let idx = sheet_param(s, p)?;
     let n = s.wb.sheets.len();
+    // A copy can go after the last sheet: decide before clamping the position.
+    let copy = copy || crate::params::bool_opt(p, "copy").unwrap_or(false);
     let to = match u32_opt(p, "to")? {
         Some(t) => (t as usize).min(if copy { n } else { n - 1 }),
         None => {
@@ -194,7 +196,6 @@ fn move_copy(s: &mut Session, p: &Json, copy: bool) -> CmdResult {
             }
         }
     };
-    let copy = copy || crate::params::bool_opt(p, "copy").unwrap_or(false);
     let new_name = if copy {
         let base =
             s.wb.sheets
@@ -380,7 +381,10 @@ fn set_visibility(s: &mut Session, p: &Json, vis: Visibility) -> CmdResult {
             if let Some(sh) = tx.wb.sheet_mut(idx) {
                 sh.visibility = vis;
             }
-            if vis != Visibility::Visible && tx.wb.active == idx {
+            // An unhidden sheet is shown; a hidden active sheet hands over to a visible one.
+            if vis == Visibility::Visible {
+                tx.wb.active = idx;
+            } else if tx.wb.active == idx {
                 tx.wb.active = tx
                     .wb
                     .sheets
@@ -593,4 +597,45 @@ pub fn specs() -> Vec<CommandSpec> {
             },
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Session;
+    use serde_json::json;
+
+    fn order(s: &Session) -> Vec<String> {
+        s.wb.sheets.iter().map(|x| x.name.clone()).collect()
+    }
+
+    /// Move or Copy with "Create a copy" and "(move to end)" puts the copy last; before,
+    /// the position was clamped as for a move and the copy landed one sheet early.
+    #[test]
+    fn copy_to_the_end_goes_last() {
+        let mut s = Session::new();
+        s.execute("home.cells.insert_sheet", &json!({"name": "Two"}))
+            .unwrap();
+        assert_eq!(order(&s), ["Two", "Sheet1"]);
+        s.execute(
+            "home.cells.move_copy_sheet",
+            &json!({"sheet": "Sheet1", "to": 2, "copy": true}),
+        )
+        .unwrap();
+        assert_eq!(order(&s), ["Two", "Sheet1", "Sheet1 (2)"]);
+        assert_eq!(s.wb.active, 2);
+    }
+
+    /// Unhiding a sheet shows it, as the target does.
+    #[test]
+    fn unhidden_sheet_becomes_active() {
+        let mut s = Session::new();
+        s.execute("home.cells.insert_sheet", &json!({"name": "Two"}))
+            .unwrap();
+        s.execute("home.cells.hide_sheet", &json!({"sheet": "Two"}))
+            .unwrap();
+        assert_eq!(s.wb.active, 1);
+        s.execute("home.cells.unhide_sheet", &json!({"sheet": "Two"}))
+            .unwrap();
+        assert_eq!(s.wb.active, 0);
+    }
 }

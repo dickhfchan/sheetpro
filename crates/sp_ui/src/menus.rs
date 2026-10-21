@@ -116,7 +116,12 @@ impl App {
                         let name = g.get("group").and_then(|x| x.as_str()).unwrap_or("");
                         ui.label(RichText::new(name).size(10.5).color(T.group_label));
                         ui.horizontal_wrapped(|ui| {
-                            for st in g.get("styles").and_then(|x| x.as_array()).into_iter().flatten() {
+                            for st in g
+                                .get("styles")
+                                .and_then(|x| x.as_array())
+                                .into_iter()
+                                .flatten()
+                            {
                                 let Some(st) = st.as_str() else { continue };
                                 if ui.button(st).clicked() {
                                     self.exec("home.styles.cell_styles", json!({ "style": st }));
@@ -131,7 +136,9 @@ impl App {
             }
             "layout.margins" if on => {
                 ui.menu_button(RichText::new(&item.label).size(11.0).color(color), |ui| {
-                    for (preset, l) in [("normal", "Normal"), ("wide", "Wide"), ("narrow", "Narrow")] {
+                    for (preset, l) in
+                        [("normal", "Normal"), ("wide", "Wide"), ("narrow", "Narrow")]
+                    {
                         if ui.button(l).clicked() {
                             self.exec("layout.margins", json!({ "preset": preset }));
                             ui.close();
@@ -166,10 +173,38 @@ impl App {
                 .response
                 .on_hover_text(tip);
             }
+            // Themes: a gallery of the built-in themes (the command with no params lists
+            // them); choosing one applies it.
+            "layout.themes" if on => {
+                ui.menu_button(RichText::new(&item.label).size(11.0).color(color), |ui| {
+                    let themes = self
+                        .query("layout.themes", json!({}))
+                        .ok()
+                        .and_then(|r| r.get("themes").and_then(|t| t.as_array()).cloned())
+                        .unwrap_or_default();
+                    let current = self.session.wb.theme.name.clone();
+                    for t in themes {
+                        let Some(name) = t.get("name").and_then(|n| n.as_str()) else {
+                            continue;
+                        };
+                        if ui.selectable_label(name == current, name).clicked() {
+                            self.exec("layout.themes", json!({ "theme": name }));
+                            ui.close();
+                        }
+                    }
+                })
+                .response
+                .on_hover_text(tip);
+            }
             "formulas.use_in_formula" if on => {
                 ui.menu_button(RichText::new(&item.label).size(11.0).color(color), |ui| {
-                    let mut names: Vec<String> =
-                        self.session.wb.names.iter().map(|n| n.name.clone()).collect();
+                    let mut names: Vec<String> = self
+                        .session
+                        .wb
+                        .names
+                        .iter()
+                        .map(|n| n.name.clone())
+                        .collect();
                     names.sort_by_key(|n| n.to_ascii_lowercase());
                     names.dedup();
                     if names.is_empty() {

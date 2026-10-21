@@ -17,6 +17,11 @@ use sp_engine::{Session, settings};
 use sp_ui::App;
 use std::collections::BTreeSet;
 
+/// A step of a custom action (see `Act::Custom`).
+pub type Step = fn(&mut Harness<'_, App>) -> Result<(), String>;
+/// An extra check on the session after the action (see `Entry::then`).
+pub type Check = fn(&Session) -> Result<(), String>;
+
 /// How the user does it.
 pub enum Act {
     /// A ribbon button: tab, group, label.
@@ -34,6 +39,10 @@ pub enum Act {
         fill: fn(&mut App),
         ok: &'static str,
     },
+    /// Anything else a user does (right-click menus, dialogs opened by a key, mouse drags):
+    /// `prep` navigates (not part of the change, e.g. a tab click), the snapshot is taken,
+    /// then `act` does the action.
+    Custom { prep: Step, act: Step },
 }
 
 pub struct Entry {
@@ -55,7 +64,7 @@ pub struct Entry {
     pub print: bool,
     /// Extra assertions on the session after the action (selection, status, things that
     /// are not saved properties).
-    pub then: Option<fn(&Session) -> Result<(), String>>,
+    pub then: Option<Check>,
 }
 
 impl Entry {
@@ -108,7 +117,7 @@ impl Entry {
         self.persist = false;
         self
     }
-    pub fn then(mut self, f: fn(&Session) -> Result<(), String>) -> Self {
+    pub fn then(mut self, f: Check) -> Self {
         self.then = Some(f);
         self
     }
@@ -198,6 +207,13 @@ pub fn perform(h: &mut Harness<'_, App>, act: &Act) -> Result<PropMap, String> {
                     h.state().last_error()
                 ));
             }
+            Ok(before)
+        }
+        Act::Custom { prep, act } => {
+            prep(h)?;
+            let before = snap(h);
+            act(h)?;
+            h.run_steps(3);
             Ok(before)
         }
     }

@@ -69,8 +69,18 @@ pub fn anchor_from_rect(
             to: CellAddr::new(tr, tc),
             to_off: (tx, ty),
         },
-        ext: (w, h),
-        pos: (x, y),
+        // Only the anchor kinds that store a size / position carry one: a two-cell anchor
+        // is its cells, and a stale copy would not survive saving.
+        ext: if kind == AnchorKind::TwoCell {
+            (0.0, 0.0)
+        } else {
+            (w, h)
+        },
+        pos: if kind == AnchorKind::Absolute {
+            (x, y)
+        } else {
+            (0.0, 0.0)
+        },
     }
 }
 
@@ -1515,6 +1525,14 @@ mod tests {
                 "{kind:?}"
             );
         }
+        // A two-cell anchor is its cells only (what a saved file holds).
+        let a = anchor_from_rect(
+            &sh,
+            AnchorKind::TwoCell,
+            Placement::Move,
+            (90.0, 35.0, 200.0, 80.0),
+        );
+        assert_eq!((a.ext, a.pos), ((0.0, 0.0), (0.0, 0.0)));
         let a = anchor_from_rect(
             &sh,
             AnchorKind::TwoCell,
