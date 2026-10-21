@@ -3,7 +3,6 @@
 use crate::ast::{CellPart, Expr, RefExpr, RefKind, UnOp};
 use sp_core::addr::quote_sheet_name;
 use sp_core::col_to_letters;
-use sp_core::value::format_general;
 
 pub fn to_formula(e: &Expr) -> String {
     let mut s = String::new();
@@ -16,7 +15,17 @@ fn num(n: f64) -> String {
         format!("{}", n as i64)
     } else {
         let g = format!("{n}");
-        if g.len() <= 17 { g } else { format_general(n) }
+        if g.len() <= 17 {
+            return g;
+        }
+        // A typed number keeps 15 significant digits (as the target does), not the
+        // 10 of the General display format.
+        let r: f64 = format!("{n:.14e}").parse().unwrap_or(n);
+        if (1e-5..1e15).contains(&r.abs()) {
+            format!("{r}")
+        } else {
+            format!("{r:e}").replace('e', "E")
+        }
     }
 }
 
@@ -163,5 +172,17 @@ mod tests {
     fn exponent_numbers_print_plain() {
         let e = crate::parser::parse("1E+3").unwrap();
         assert_eq!(super::to_formula(&e), "1000");
+    }
+
+    /// Long literals keep 15 significant digits (they were cut to the 10 of the General
+    /// display format, so `=NORM.S.INV(0.50000039894228032)` lost its last digits).
+    #[test]
+    fn long_numbers_keep_fifteen_digits() {
+        let p = |f: &str| super::to_formula(&crate::parser::parse(f).unwrap());
+        assert_eq!(p("0.50000039894228032-0.5"), "0.50000039894228-0.5");
+        assert_eq!(p("7.0710678118654757E-7"), "7.07106781186548E-7");
+        assert_eq!(p("1.2345678901234567E+20"), "1.23456789012346E20");
+        assert_eq!(p("0.1+0.25"), "0.1+0.25");
+        assert_eq!(p("1E-300"), "1E-300");
     }
 }
