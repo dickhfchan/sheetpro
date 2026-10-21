@@ -6,6 +6,7 @@ pub mod catalog;
 pub mod commands;
 pub mod control;
 pub mod params;
+pub mod props;
 pub mod recalc_scope;
 pub mod settings;
 

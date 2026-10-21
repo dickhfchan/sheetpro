@@ -20,5 +20,8 @@ image = { workspace = true, optional = true }
 default = ["screenshot"]
 screenshot = ["dep:egui_kittest", "dep:image"]
 
+[dev-dependencies]
+sp_io.workspace = true
+
 [lints]
 workspace = true

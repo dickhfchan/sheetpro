@@ -2762,6 +2762,7 @@ dependencies = [
  "serde_json",
  "sp_core",
  "sp_engine",
+ "sp_io",
  "sp_model",
  "sp_render",
 ]
