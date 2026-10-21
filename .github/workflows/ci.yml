@@ -4,9 +4,23 @@ on:
   pull_request:
 jobs:
   gates:
-    runs-on: macos-14
+    name: gates (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # Linux: windowing libraries for the shell, and Mesa's software Vulkan (lavapipe) so
+      # the UI tests that render through wgpu have an adapter without a GPU.
+      - name: Install system packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libxkbcommon-dev libwayland-dev libx11-dev \
+            libvulkan1 mesa-vulkan-drivers libegl1 libgl1-mesa-dri
       # The toolchain (and components) pinned in rust-toolchain.toml.
       - name: Install toolchain
         run: rustup toolchain install
