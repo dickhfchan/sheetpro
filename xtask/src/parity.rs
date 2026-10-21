@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 
 /// Raise these when parity rises; never lower them.
 pub const COMMAND_FLOOR: usize = 304;
-pub const FUNCTION_FLOOR: usize = 502;
+pub const FUNCTION_FLOOR: usize = 504;
 
 pub struct Parity {
     pub commands_live: usize,

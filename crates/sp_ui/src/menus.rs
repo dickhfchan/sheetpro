@@ -25,6 +25,11 @@ fn enabled(s: &Session, id: &str) -> bool {
     registry().get(id).is_some_and(|c| (c.spec.enabled)(s))
 }
 
+/// Accessibility name for a ribbon picker (its visible text is the current value).
+fn labeled_combo(name: &str) -> egui::WidgetInfo {
+    egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, name)
+}
+
 impl App {
     /// One ribbon control for a catalog item.
     pub(crate) fn ribbon_item(&mut self, ui: &mut Ui, item: &catalog::CatalogItem) {
@@ -56,7 +61,8 @@ impl App {
                         }
                     })
                     .response
-                    .on_hover_text(tip);
+                    .on_hover_text(tip)
+                    .widget_info(|| labeled_combo("Font"));
             }
             "home.font.size" if on => {
                 let cur = active_style(&self.session).font_size() as f32;
@@ -74,7 +80,8 @@ impl App {
                         }
                     })
                     .response
-                    .on_hover_text(tip);
+                    .on_hover_text(tip)
+                    .widget_info(|| labeled_combo("Font Size"));
             }
             id @ ("home.font.fill_color" | "home.font.font_color") if on => {
                 let fill = id == "home.font.fill_color";

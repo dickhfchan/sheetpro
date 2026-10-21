@@ -20,6 +20,7 @@ pub mod lookup;
 pub mod math;
 pub mod math_ext;
 pub mod regex;
+pub mod web;
 pub mod special;
 pub mod stats;
 pub mod stats_ext;
@@ -122,6 +123,7 @@ pub fn registry() -> &'static Registry {
         bonds::register(&mut r);
         text_ext::register(&mut r);
         regex::register(&mut r);
+        web::register(&mut r);
         math_ext::register(&mut r);
         arrays::register(&mut r);
         lambda::register(&mut r);

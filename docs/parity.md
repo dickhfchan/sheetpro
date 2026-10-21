@@ -7,8 +7,8 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 | Surface | Live | Total | % |
 |---|---|---|---|
 | Commands (ribbon + keyboard) | 304 | 304 | 100.0% |
-| Worksheet functions | 502 | 514 | 97.7% |
-| **All** | **806** | **818** | **98.5%** |
+| Worksheet functions | 504 | 514 | 98.1% |
+| **All** | **808** | **818** | **98.8%** |
 
 ## Commands by tab
 
@@ -43,7 +43,7 @@ Parity measures *wiring* (a command or function with the catalog id exists), not
 | Financial | 55 | 56 | STOCKHISTORY |
 | Engineering | 54 | 54 | — |
 | Database | 12 | 12 | — |
-| Web & Cube | 0 | 10 | CUBEKPIMEMBER CUBEMEMBER CUBEMEMBERPROPERTY CUBERANKEDMEMBER CUBESET CUBESETCOUNT CUBEVALUE ENCODEURL FILTERXML WEBSERVICE |
+| Web & Cube | 2 | 10 | CUBEKPIMEMBER CUBEMEMBER CUBEMEMBERPROPERTY CUBERANKEDMEMBER CUBESET CUBESETCOUNT CUBEVALUE WEBSERVICE |
 | Compatibility | 40 | 40 | — |
 
 ## Registered but not in catalog

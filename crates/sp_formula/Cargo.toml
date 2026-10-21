@@ -9,6 +9,7 @@ license.workspace = true
 sp_core.workspace = true
 sp_model.workspace = true
 thiserror.workspace = true
+quick-xml.workspace = true
 
 [lints]
 workspace = true

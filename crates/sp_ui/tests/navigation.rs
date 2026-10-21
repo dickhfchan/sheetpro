@@ -166,15 +166,6 @@ fn dialog_type(spec: &str) -> Option<String> {
     a.dialog_kind()
 }
 
-/// Which combo box a picker label stands for (`"Font"` = the first in its group).
-fn combo_index(label: &str) -> Option<usize> {
-    match label {
-        "\u{0}font" => Some(0),
-        "\u{0}size" => Some(1),
-        _ => None,
-    }
-}
-
 /// Click the ribbon control for `item`, looking only inside its group; when the group is
 /// collapsed or the control sits in the group's overflow (⏷) menu, open that first.
 fn click_in_ribbon(h: &mut Harness<'_, App>, group: &str, label: &str) -> Result<(), String> {
@@ -183,21 +174,6 @@ fn click_in_ribbon(h: &mut Harness<'_, App>, group: &str, label: &str) -> Result
         .find(|g| g.name == group)
         .ok_or("group not shown")?;
     let inside = |n: &egui_kittest::Node<'_>| g.rect.expand(1.0).contains_rect(n.rect());
-    // Pickers (font, size) are unlabelled combo boxes: family on top, size below it.
-    if let Some(k) = combo_index(label) {
-        let mut combos: Vec<egui::Rect> = h
-            .query_all_by_role(egui::accesskit::Role::ComboBox)
-            .filter(|n| inside(n))
-            .map(|n| n.rect())
-            .collect();
-        combos.sort_by(|a, b| a.top().total_cmp(&b.top()));
-        let r = *combos.get(k).ok_or("picker not found in its group")?;
-        h.query_all_by_role(egui::accesskit::Role::ComboBox)
-            .find(|n| n.rect() == r)
-            .ok_or("picker vanished")?
-            .click();
-        return Ok(());
-    }
     let found: Vec<_> = h.query_all_by_label(label).filter(|n| inside(n)).collect();
     match found.as_slice() {
         [n] => {
@@ -264,13 +240,7 @@ fn check_button(tab: &str, group: &str, id: &str, label: &str) -> Result<String,
         .get(id)
         .is_some_and(|c| (c.spec.enabled)(&h.state().session));
     let before = settings::command_log();
-    // Pickers are labelled with their current value (font "Calibri", size "11").
-    let shown_label = match id {
-        "home.font.family" => "\u{0}font",
-        "home.font.size" => "\u{0}size",
-        _ => label,
-    };
-    click_in_ribbon(&mut h, group, shown_label)?;
+    click_in_ribbon(&mut h, group, label)?;
     judge(&mut h, id, expect, on, &before)
 }
 
