@@ -15,6 +15,7 @@ pub mod params_form;
 pub mod sort;
 pub mod spelling;
 pub mod table_dialog;
+pub mod tools;
 pub mod widgets;
 
 use crate::App;
@@ -57,11 +58,20 @@ pub enum Dialog {
     CreateTable(table_dialog::CreateTable),
     TableDesign(Box<table_dialog::TableDesign>),
     Spelling(spelling::Spelling),
+    DataValidation(Box<tools::DataValidation>),
+    GoalSeek(tools::GoalSeek),
+    NewComment(tools::NewComment),
+    GoToSpecial(tools::GoToSpecial),
 }
 
 /// Names accepted by [`App::open_dialog`] (and `sp screenshot --dialog`).
-pub const DIALOG_NAMES: [&str; 38] = [
+pub const DIALOG_NAMES: [&str; 43] = [
     "spelling",
+    "data_validation",
+    "goal_seek",
+    "new_note",
+    "new_comment",
+    "goto_special",
     "cf_new",
     "cf_highlight",
     "cf_top_bottom",
@@ -148,6 +158,11 @@ pub fn dialog_for_command(id: &str) -> Option<&'static str> {
         "home.styles.format_as_table" => "format_as_table",
         "table.design" => "table_design",
         "review.spelling" => "spelling",
+        "data.validation" => "data_validation",
+        "data.what_if.goal_seek" => "goal_seek",
+        "insert.note" => "new_note",
+        "insert.comment" | "review.comment.new" => "new_comment",
+        "home.editing.goto_special" => "goto_special",
         // Every parameter is optional, but the command needs one of them to do anything.
         "insert.hyperlink" => "params:insert.hyperlink",
         "layout.margins" => "params:layout.margins",
@@ -299,6 +314,13 @@ impl Dialog {
                 table_dialog::TableDesign::new(&app.session).ok_or("no table on this sheet")?,
             )),
             "spelling" => Dialog::Spelling(spelling::Spelling::new(app)),
+            "data_validation" => {
+                Dialog::DataValidation(Box::new(tools::DataValidation::new(&app.session)))
+            }
+            "goal_seek" => Dialog::GoalSeek(tools::GoalSeek::new(&app.session)),
+            "new_note" => Dialog::NewComment(tools::NewComment::new(&app.session, true)),
+            "new_comment" => Dialog::NewComment(tools::NewComment::new(&app.session, false)),
+            "goto_special" => Dialog::GoToSpecial(tools::GoToSpecial::default()),
             other => match other.strip_prefix("params:") {
                 Some(id) => Dialog::Params(params_form::Params::new(id, &app.session)?),
                 None => return Err(format!("unknown dialog '{other}'")),
@@ -330,6 +352,10 @@ impl Dialog {
             Dialog::CreateTable(d) => d.ui(ctx, app),
             Dialog::TableDesign(d) => d.ui(ctx, app),
             Dialog::Spelling(d) => d.ui(ctx, app),
+            Dialog::DataValidation(d) => d.ui(ctx, app),
+            Dialog::GoalSeek(d) => d.ui(ctx, app),
+            Dialog::NewComment(d) => d.ui(ctx, app),
+            Dialog::GoToSpecial(d) => d.ui(ctx, app),
         }
     }
 

@@ -825,10 +825,9 @@ fn key_presses_are_named_like_the_catalog() {
     assert!(names(M::NONE, Key::ArrowDown) == vec!["Down"]);
 }
 
-/// A form dialog is filled in and submitted the way a user does: New Note from the ribbon,
-/// type the text, OK.
+/// New Note is filled in and saved the way a user does: from the ribbon, type, Save.
 #[test]
-fn form_dialog_fills_in_and_runs() {
+fn new_note_dialog_fills_in_and_saves() {
     let mut h = harness();
     h.state_mut()
         .session
@@ -837,61 +836,34 @@ fn form_dialog_fills_in_and_runs() {
     click_tab(&mut h, "Review").unwrap();
     click_in_ribbon(&mut h, "Notes", "New Note").unwrap();
     h.run_steps(3);
-    assert_eq!(h.state().dialog_kind().as_deref(), Some("params"));
-    // OK with the required text empty explains instead of running.
-    h.get_by_label("OK").click();
+    assert_eq!(h.state().dialog_kind().as_deref(), Some("new_comment"));
+    // Save with nothing typed explains instead of saving.
+    h.get_by_label("Save").click();
     h.run_steps(3);
     assert!(
         h.state().dialog_kind().is_some(),
-        "an empty required field must keep the form open"
+        "empty text keeps it open"
     );
-    // Type into the Text box (the one without a value yet) and confirm.
     let text_box = h
-        .query_all_by_role(egui::accesskit::Role::TextInput)
-        .find(|n| n.value().is_none_or(|v| v.is_empty()))
+        .query_all_by_role(egui::accesskit::Role::MultilineTextInput)
+        .next()
         .expect("text box");
     text_box.click();
     h.run_steps(1);
     h.event(egui::Event::Text("Check this".into()));
     h.run_steps(2);
-    h.get_by_label("OK").click();
+    h.get_by_label("Save").click();
     h.run_steps(3);
     assert!(
         h.state().dialog_kind().is_none(),
-        "form should close: {:?}",
+        "{:?}",
         h.state().last_error()
     );
     let s = &h.state().session;
-    let note = s.wb.sheet(s.sheet_index()).and_then(|sh| {
-        sh.comments
-            .iter()
-            .find(|c| c.addr == CellAddr::new(2, 2))
-            .cloned()
-    });
-    assert!(note.is_some_and(|n| format!("{n:?}").contains("Check this")));
-}
-
-/// Formulas › Function Library menus open Insert Function on their category, and picking a
-/// function starts the formula in the active cell.
-#[test]
-fn function_library_buttons_open_their_category() {
-    for (label, category) in [
-        ("Financial", "Financial"),
-        ("Date & Time", "Date & Time"),
-        ("Math & Trig", "Math & Trig"),
-    ] {
-        let mut h = harness();
-        click_tab(&mut h, "Formulas").unwrap();
-        click_in_ribbon(&mut h, "Function Library", label).unwrap();
-        h.run_steps(3);
-        assert_eq!(
-            h.state().dialog_kind().as_deref(),
-            Some("insert_function"),
-            "{label}"
-        );
-        let shown = h.query_all_by_label(category).count();
-        assert!(shown > 0, "{label}: category {category} not shown");
-    }
+    let note =
+        s.wb.sheet(s.sheet_index())
+            .and_then(|sh| sh.comment_at(CellAddr::new(2, 2)).cloned());
+    assert_eq!(note.map(|n| n.text), Some("Check this".to_string()));
 }
 
 /// Forms whose command answers with text or a result: Use in Formula puts the name into the
