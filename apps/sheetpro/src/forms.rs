@@ -545,3 +545,213 @@ fn about(d: &mut Desktop, ctx: &egui::Context) {
         });
     d.forms.about_open = open;
 }
+
+#[cfg(test)]
+mod tests {
+    //! The desktop menu bar (File / Window / Help), clicked like a user: every entry queues
+    //! the command it names (one the desktop dispatches), or does its local job. Entries that
+    //! open native file dialogs or the file manager are checked by what they queue, not run.
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::{NodeT, Queryable};
+    use sp_engine::Session;
+
+    struct State {
+        d: Desktop,
+        actions: Vec<String>,
+    }
+
+    fn harness(dir: &Path) -> Harness<'static, State> {
+        settings::init_app_dir(dir.to_path_buf());
+        let prefs = settings::current();
+        let d = Desktop::new(Session::new(), None, Some(dir.to_path_buf()), prefs);
+        let mut h = Harness::builder()
+            .with_size(egui::Vec2::new(900.0, 600.0))
+            .build_ui_state(
+                |ui, st: &mut State| {
+                    egui::Panel::top("menubar").show(ui, |ui| {
+                        egui::MenuBar::new().ui(ui, |ui| menu_bar(&mut st.d, ui, &mut st.actions));
+                    });
+                },
+                State {
+                    d,
+                    actions: Vec::new(),
+                },
+            );
+        h.run_steps(2);
+        h
+    }
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("sp-menubar-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// Open `menu`, then click the entry `label` (press and release on separate frames).
+    fn choose(h: &mut Harness<'static, State>, path: &[&str]) {
+        for label in path {
+            // Entries may carry a submenu arrow ("Open Recent ⏵") or their shortcut
+            // ("New ⌘N" / "New Ctrl+N"); "Open" must not match "Open Recent".
+            let fits = |l: &str| {
+                l == *label
+                    || l.strip_prefix(label).is_some_and(|rest| {
+                        rest == " ⏵" || rest.starts_with(" ⌘") || rest.starts_with(" Ctrl+")
+                    })
+            };
+            let r = h
+                .query_all_by_label_contains(label)
+                .filter(|n| n.accesskit_node().label().is_some_and(|l| fits(&l)))
+                .map(|n| n.rect())
+                .next_back()
+                .unwrap_or_else(|| panic!("menu entry '{label}' not found"));
+            let p = r.center();
+            h.hover_at(p);
+            h.run_steps(1);
+            h.drag_at(p);
+            h.run_steps(1);
+            h.drop_at(p);
+            h.run_steps(2);
+        }
+    }
+
+    /// Ids the desktop dispatches itself (`Desktop::action`); anything else goes to the shell.
+    fn desktop_handles(id: &str) -> bool {
+        crate::desktop::INTERCEPTED.contains(&id)
+    }
+
+    #[test]
+    fn every_menu_entry_queues_its_command() {
+        let cases: [(&[&str], &str); 17] = [
+            (&["File", "New"], "file.new"),
+            (&["File", "Open…"], "file.open"),
+            (&["File", "Save"], "file.save"),
+            (&["File", "Save As…"], "file.save_as"),
+            (&["File", "Save a Copy…"], "file.save_copy"),
+            (&["File", "Import Text/CSV…"], "data.get_from_text"),
+            (&["File", "Export as CSV…"], "file.export.csv"),
+            (&["File", "Inspect Document…"], "file.inspect"),
+            (&["File", "Options…"], "file.options"),
+            (&["File", "Close"], "file.close"),
+            (&["File", "Quit"], "file.exit"),
+            (&["Window", "New Window"], "view.new_window"),
+            (&["Window", "Split"], "view.split"),
+            (&["Window", "Switch Windows"], "view.switch_windows"),
+            (&["Window", "Hide Window"], "view.hide_window"),
+            (&["Help", "Report a Problem…"], "app.report_problem"),
+            (&["Window", "Split"], "view.split"),
+        ];
+        let dir = temp_dir("queue");
+        let mut bad = Vec::new();
+        for (path, id) in cases {
+            let mut h = harness(&dir);
+            choose(&mut h, path);
+            let got = h.state().actions.clone();
+            if got != vec![id.to_string()] {
+                bad.push(format!(
+                    "{}: queued {got:?}, expected {id}",
+                    path.join(" › ")
+                ));
+            }
+            if sp_engine::registry().get(id).is_none() {
+                bad.push(format!("{id} is not a registered command"));
+            }
+        }
+        assert!(bad.is_empty(), "{bad:#?}");
+    }
+
+    #[test]
+    fn window_actions_run_through_the_desktop() {
+        let dir = temp_dir("window");
+        let mut h = harness(&dir);
+        let ctx = h.ctx.clone();
+        for id in ["view.split", "view.new_window"] {
+            assert!(!desktop_handles(id), "{id} should go to the shell");
+            h.state_mut().d.action(&ctx, id);
+        }
+        h.run_steps(2);
+        let w = &h.state().d.app.session.view.window;
+        assert!(w.split.is_some(), "Split splits the window");
+        assert_eq!(w.windows.len(), 2, "New Window opens a second window");
+        // The menu now offers Remove Split.
+        choose(&mut h, &["Window", "Remove Split"]);
+        assert_eq!(h.state().actions, vec!["view.split".to_string()]);
+    }
+
+    #[test]
+    fn local_entries_do_their_job() {
+        let dir = temp_dir("local");
+        // A recent file to open.
+        let book = dir.join("recent book.xlsx");
+        let mut s = Session::new();
+        s.execute("cell.set", &json!({"cell": "A1", "input": "from recent"}))
+            .unwrap();
+        s.execute("file.save_as", &json!({"path": book.display().to_string()}))
+            .unwrap();
+        settings::init_app_dir(dir.clone());
+        sp_engine::commands::app_cmds::note_recent(&book);
+
+        let mut h = harness(&dir);
+        choose(&mut h, &["Help", "About SheetPro"]);
+        assert!(h.state().d.forms.about_open, "About opens its window");
+
+        let mut h = harness(&dir);
+        choose(&mut h, &["File", "Open Recent", "recent book.xlsx"]);
+        let s = &h.state().d.app.session;
+        assert_eq!(
+            s.path.as_deref(),
+            Some(book.as_path()),
+            "Open Recent opens the file"
+        );
+        let v =
+            s.wb.sheet(0)
+                .and_then(|sh| sh.get(sp_core::CellAddr::new(0, 0)))
+                .map(|c| c.value.clone());
+        assert_eq!(v, Some(sp_core::Value::text("from recent")));
+
+        let mut h = harness(&dir);
+        choose(&mut h, &["File", "Open Recent", "Clear Recent"]);
+        assert!(
+            h.state().d.prefs.recent_files.is_empty(),
+            "Clear Recent empties the list"
+        );
+        let mut h = harness(&dir);
+        choose(&mut h, &["File", "Open Recent"]);
+        assert!(h.query_by_label("No recent files").is_some());
+
+        // Unhide Windows brings a hidden window back.
+        let mut h = harness(&dir);
+        h.state_mut()
+            .d
+            .app
+            .session
+            .execute("view.new_window", &json!({}))
+            .unwrap();
+        h.state_mut()
+            .d
+            .app
+            .session
+            .execute("view.hide_window", &json!({}))
+            .unwrap();
+        choose(&mut h, &["Window", "Unhide Windows"]);
+        let hidden = h
+            .state()
+            .d
+            .app
+            .session
+            .view
+            .window
+            .windows
+            .iter()
+            .filter(|w| w.hidden)
+            .count();
+        assert_eq!(hidden, 0, "Unhide Windows shows every window");
+
+        // Show Reports Folder is present (running it opens the file manager).
+        let mut h = harness(&dir);
+        choose(&mut h, &["Help"]);
+        assert!(h.query_by_label("Show Reports Folder").is_some());
+    }
+}

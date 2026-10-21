@@ -2518,9 +2518,11 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "egui_kittest",
  "image",
  "rfd",
  "serde_json",
+ "sp_core",
  "sp_engine",
  "sp_ui",
  "winit",

@@ -557,10 +557,15 @@ fn save_screenshots(ctx: &egui::Context) {
 }
 
 impl eframe::App for Desktop {
+    /// Runs before every UI pass and also while the window is hidden or minimized (when the
+    /// control server requests a repaint), so control requests never wait for a visible window.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.control(ctx);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         save_screenshots(&ctx);
-        self.control(&ctx);
         // Drawing preferences (gridline colour, R1C1 headings) follow the settings.
         sp_ui::shell_hook::apply_settings(&self.prefs);
 

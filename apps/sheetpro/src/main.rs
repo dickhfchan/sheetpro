@@ -16,6 +16,11 @@ use std::sync::mpsc;
 
 pub type ControlRx = mpsc::Receiver<(String, mpsc::Sender<String>)>;
 
+/// The app's context, set at startup: the control server wakes the app with it, so requests
+/// are answered while the window is minimized or the screen is locked (eframe then runs no
+/// UI pass, only `App::logic`, and only when a repaint is requested).
+static CONTROL_WAKER: std::sync::OnceLock<egui::Context> = std::sync::OnceLock::new();
+
 fn start_control_server(port: u16) -> std::io::Result<ControlRx> {
     // Loopback only: the control channel never listens on a network interface.
     let listener = TcpListener::bind(("127.0.0.1", port))?;
@@ -32,6 +37,9 @@ fn start_control_server(port: u16) -> std::io::Result<ControlRx> {
                     let (rtx, rrx) = mpsc::channel();
                     if tx.send((line, rtx)).is_err() {
                         return;
+                    }
+                    if let Some(ctx) = CONTROL_WAKER.get() {
+                        ctx.request_repaint();
                     }
                     let out = rrx.recv().unwrap_or_else(|_| {
                         json!({"ok": false, "error": "app closed"}).to_string()
@@ -163,7 +171,8 @@ fn main() -> eframe::Result {
     let result = eframe::run_native(
         "SheetPro",
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            let _ = CONTROL_WAKER.set(cc.egui_ctx.clone());
             Ok(Box::new(desktop::Desktop::new(
                 session, control, app_dir, prefs,
             )))
