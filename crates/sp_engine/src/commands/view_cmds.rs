@@ -34,7 +34,8 @@ fn gridlines(s: &mut Session) -> CmdResult {
         }
         Ok(())
     })?;
-    s.view.show_gridlines = on;
+    // The setting is the sheet's (saved with it, undone with it); `view.show_gridlines`
+    // stays a separate display override, so it isn't touched here.
     Ok(json!(on))
 }
 
@@ -225,4 +226,34 @@ pub fn specs() -> Vec<CommandSpec> {
             },
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Session;
+    use serde_json::json;
+
+    /// Gridlines are per sheet: undo brings them back, other sheets keep theirs. (The
+    /// command also cleared the view-wide flag, which undo left off, so the grid stayed
+    /// without gridlines after undo, and on every other sheet.)
+    #[test]
+    fn gridlines_toggle_is_per_sheet_and_undoes() {
+        let mut s = Session::new();
+        s.execute("home.cells.insert_sheet", &json!({"name": "Two"}))
+            .unwrap();
+        s.execute("sheet.activate", &json!({"sheet": "Sheet1"}))
+            .unwrap();
+        let shown = |s: &Session, name: &str| {
+            s.view.show_gridlines
+                && s.wb
+                    .sheets
+                    .iter()
+                    .any(|x| x.name == name && x.show_gridlines)
+        };
+        s.execute("view.gridlines", &json!({})).unwrap();
+        assert!(!shown(&s, "Sheet1"));
+        assert!(shown(&s, "Two"), "the other sheet keeps its gridlines");
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert!(shown(&s, "Sheet1"), "undo shows them again");
+    }
 }
