@@ -18,7 +18,8 @@ fn sort_target(s: &Session, p: &Json) -> Result<(usize, CellRange), CmdError> {
     }
 }
 
-/// Heuristic header detection: first row is all text while the second row has non-text.
+/// Heuristic header detection, as Excel guesses it: the first row is all text, and the
+/// second row has non-text or the first row is formatted differently (a bold header).
 fn looks_like_header(s: &Session, sheet: usize, r: CellRange) -> bool {
     let Some(sh) = s.wb.sheet(sheet) else {
         return false;
@@ -26,19 +27,29 @@ fn looks_like_header(s: &Session, sheet: usize, r: CellRange) -> bool {
     if r.rows() < 2 {
         return false;
     }
-    let row_types = |row: u32| {
-        (r.start.col..=r.end.col)
-            .map(|c| sh.value(CellAddr::new(row, c)).clone())
-            .collect::<Vec<_>>()
-    };
-    let first = row_types(r.start.row);
-    let second = row_types(r.start.row + 1);
-    first
-        .iter()
-        .all(|v| matches!(v, Value::Text(_) | Value::Empty))
-        && second
-            .iter()
-            .any(|v| !matches!(v, Value::Text(_) | Value::Empty))
+    let cols = r.start.col..=r.end.col;
+    let (top, next) = (r.start.row, r.start.row + 1);
+    let all_text = cols.clone().all(|c| {
+        matches!(
+            sh.value(CellAddr::new(top, c)),
+            Value::Text(_) | Value::Empty
+        )
+    });
+    if !all_text {
+        return false;
+    }
+    let typed_data = cols.clone().any(|c| {
+        !matches!(
+            sh.value(CellAddr::new(next, c)),
+            Value::Text(_) | Value::Empty
+        )
+    });
+    let style = |a: CellAddr| sh.get(a).map(|c| s.wb.styles.get(c.style));
+    let formatted = cols.into_iter().any(|c| {
+        let a = CellAddr::new(top, c);
+        !sh.value(a).is_empty() && style(a) != style(CellAddr::new(next, c))
+    });
+    typed_data || formatted
 }
 
 fn quick_sort(s: &mut Session, p: &Json, ascending: bool) -> CmdResult {
@@ -258,4 +269,50 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         CommandSpec::new("review.workbook_statistics", "{}", statistics),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Session;
+    use serde_json::json;
+
+    fn list(s: &mut Session) {
+        for (a, v) in [("A1", "Name"), ("A2", "Cy"), ("A3", "ann"), ("A4", "Bob")] {
+            s.execute("cell.set", &json!({"cell": a, "input": v}))
+                .unwrap();
+        }
+    }
+
+    fn column(s: &Session) -> Vec<String> {
+        (0..4)
+            .map(
+                |r| match s.wb.sheets[0].value(sp_core::CellAddr::new(r, 0)) {
+                    sp_core::Value::Text(t) => t.to_string(),
+                    other => format!("{other:?}"),
+                },
+            )
+            .collect()
+    }
+
+    /// An all-text list sorts every row; a bold first row is a header and stays on top.
+    #[test]
+    fn a_formatted_first_row_is_a_header() {
+        let mut s = Session::new();
+        list(&mut s);
+        let r = s
+            .execute("data.sort_az", &json!({"range": "A1:A4"}))
+            .unwrap();
+        assert_eq!(r["header"], json!(false));
+        assert_eq!(column(&s), ["ann", "Bob", "Cy", "Name"]);
+
+        let mut s = Session::new();
+        list(&mut s);
+        s.execute("home.font.bold", &json!({"range": "A1"}))
+            .unwrap();
+        let r = s
+            .execute("data.sort_az", &json!({"range": "A1:A4"}))
+            .unwrap();
+        assert_eq!(r["header"], json!(true));
+        assert_eq!(column(&s), ["Name", "ann", "Bob", "Cy"]);
+    }
 }
