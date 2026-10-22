@@ -41,7 +41,13 @@ fn apply(wb: &mut Workbook, p: &Patch) {
                 *s = (**sheet).clone();
             }
         }
-        Patch::Book(b) => *wb = (**b).clone(),
+        Patch::Book(b) => {
+            // Style ids are only ever appended: ids added after this snapshot stay valid
+            // for the cell and sheet patches of later steps.
+            let later = std::mem::take(&mut wb.styles);
+            *wb = (**b).clone();
+            wb.styles.keep_later_ids(&later);
+        }
     }
 }
 
@@ -300,6 +306,7 @@ impl History {
 mod tests {
     use super::*;
     use sp_core::Value;
+    use sp_model::style::StyleId;
 
     #[test]
     fn undo_redo_cells_and_book() {
@@ -327,6 +334,41 @@ mod tests {
         assert_eq!(wb.sheets[0].value(a), &Value::Number(2.0));
         h.redo(&mut wb);
         assert_eq!(wb.sheets.len(), 2);
+    }
+
+    /// A step that adds a sheet (a workbook snapshot), then a step whose cells use a style
+    /// added after that snapshot: undoing both and redoing both keeps the cells' style.
+    /// (Before, redoing the snapshot dropped the later style, so a new pivot's bold header
+    /// came back plain.)
+    #[test]
+    fn redo_past_a_book_snapshot_keeps_later_styles() {
+        let mut wb = Workbook::new();
+        let mut h = History::new(100);
+        let mut tx = Tx::new(&mut wb);
+        tx.touch_book();
+        tx.wb.sheets.push(Sheet::new("S2"));
+        h.push(tx.commit("add sheet").unwrap());
+
+        let a = CellAddr::new(0, 0);
+        let mut tx = Tx::new(&mut wb);
+        let bold = tx.wb.styles.derive(StyleId::DEFAULT, |s| s.bold = true);
+        tx.set_cell(
+            1,
+            a,
+            Some(Cell {
+                style: bold,
+                ..Cell::constant(Value::Number(1.0))
+            }),
+        );
+        h.push(tx.commit("bold cell").unwrap());
+
+        h.undo(&mut wb);
+        h.undo(&mut wb);
+        assert_eq!(wb.sheets.len(), 1);
+        h.redo(&mut wb);
+        h.redo(&mut wb);
+        let c = wb.sheets[1].get(a).unwrap();
+        assert!(wb.styles.get(c.style).bold);
     }
 
     #[test]

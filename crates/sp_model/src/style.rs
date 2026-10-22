@@ -187,6 +187,14 @@ impl StyleTable {
         self.styles.len()
     }
 
+    /// Keep the ids `newer` added beyond this table, so cells that use them (in later undo
+    /// steps) still find their style when this older table is restored.
+    pub fn keep_later_ids(&mut self, newer: &StyleTable) {
+        if let Some(extra) = newer.styles.get(self.styles.len()..) {
+            self.styles.extend_from_slice(extra);
+        }
+    }
+
     /// Change every style in place (ids keep pointing at the changed styles).
     pub fn update_all(&mut self, mut f: impl FnMut(&mut Style)) {
         for s in &mut self.styles {
