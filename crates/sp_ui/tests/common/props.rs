@@ -370,15 +370,19 @@ pub fn run(e: &Entry, proved: &mut Proved) -> Result<(), String> {
 
     // 5. Page and visual properties print.
     if e.print {
+        // Unique per run: tests in one binary run the same entries on parallel threads.
+        static RUN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let pdf = std::env::temp_dir().join(format!(
-            "sp-props-{}-{}.pdf",
+            "sp-props-{}-{}-{}.pdf",
             std::process::id(),
+            RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             e.name.replace(' ', "_")
         ));
         h.state_mut()
             .try_exec("file.export.pdf", json!({ "path": pdf }))
             .map_err(|x| format!("pdf: {x}"))?;
         let data = std::fs::read(&pdf).unwrap_or_default();
+        let _ = std::fs::remove_file(&pdf);
         if !data.starts_with(b"%PDF-") {
             return Err("pdf not written".into());
         }
