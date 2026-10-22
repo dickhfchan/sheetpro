@@ -336,3 +336,25 @@ need million-element arrays for whole-column refs).
 - Navigation test: 253/253 buttons, 113/113 shortcuts, 0 generic forms.
 - CI: the nightly is pinned (rust-toolchain.toml), so CI and local use the same compiler; a
   Linux (Ubuntu 24.04, lavapipe) job runs the same gate next to macOS. Both green.
+
+## 2026-10-22 — Integrated property tests, phases 1–2 (two agents)
+
+Landed:
+- `crates/sp_ui/tests/props_a.rs` (home/insert/layout/cell/edit/nav/select/sheet + right-click
+  menus): 267 entries, 203/210 commands proved, 313 property kinds (309 round-trip).
+- `props_b.rs` (all other commands): 92 entries, 81/106 proved, 25 listed as not-property
+  (desktop-handled file ops, Insert Function launchers, read-only queries, one alias);
+  200 property kinds (162 round-trip). `props_functions.rs`: every function plus 807 corpus
+  cases typed through the shell.
+- Each entry: strict property diff, Ctrl+Z/Ctrl+Y, xlsx save/reopen, render, PDF. Floors per file.
+- App fixes found by the tests: Print Titles form; Alt+Enter turns on Wrap Text; Tab/Ctrl+Enter/
+  Name Box/drag start on the grid; Enter ending an edit moved twice; gridlines per sheet and
+  undoable; formula literals keep 15 digits; threaded comments and scenarios saved to .xlsx;
+  Advanced Filter defines Criteria/Extract; Goal Seek returns the shortest exact decimal;
+  shape right-click menu (z-order, delete); two-cell anchors drop their stale pixel copy.
+- Runner: unique temp PDF per run (parallel tests in one binary raced on the name).
+
+Still open (KNOWN_GAPS): fill handle, autocomplete, pick list, Borders split button, sheet
+grouping, slicers not saved, insert/delete cells shift dialog, multi-area selection, headings
+per sheet, Watch Window pane. Subtotal output (one-row group formula, bold labels) unconfirmed
+against Excel. Next: phase 4 cross-feature scenarios, phase 5 scorecard coverage rows.
