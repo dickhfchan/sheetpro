@@ -2395,9 +2395,416 @@ fn layout_tab() -> Vec<Entry> {
         .set("workbook.theme.name", "\"Harbor\"")
         .set("Sheet1!A1.style.font_name", "\"Verdana\"")
         .set("Sheet1!E6.style.font_name", "\"Verdana\"")
-        // The theme's colour slots and fonts; every other cell's body font.
-        .allow("workbook.theme.*")
-        .allow("Sheet1!*.style.font_name"),
+        // Every other cell in the body font gets the new body font too.
+        .set("Sheet1!*.style.font_name", "\"Verdana\"")
+        // The theme's colour slots and fonts.
+        .allow("workbook.theme.*"),
+    ]
+}
+
+// ---------------------------------------------------------------------------------------
+// Keyboard: navigation, selection, sheets, editing and undo
+
+/// A check that the selection is `$r` with the active cell `$a`.
+macro_rules! sel {
+    ($r:literal, $a:literal) => {
+        |s: &Session| sel_is(s, $r, $a)
+    };
+}
+
+/// The target does not undo this (sheet switches, undo itself): skip the undo check.
+fn no_undo(mut e: Entry) -> Entry {
+    e.undo = false;
+    e
+}
+
+/// A key that only moves the selection: nothing in the workbook changes.
+fn nav(name: &'static str, select: &'static str, sc: &'static str) -> Entry {
+    Entry::new(name, select, Act::Key(sc)).view_only()
+}
+
+fn keyboard_nav() -> Vec<Entry> {
+    vec![
+        nav("move up", "C3", "Up").then(sel!("C2", "C2")),
+        nav("move down", "C3", "Down").then(sel!("C4", "C4")),
+        nav("move left", "C3", "Left").then(sel!("B3", "B3")),
+        nav("move right", "C3", "Right").then(sel!("D3", "D3")),
+        // Ctrl+arrows stop at the edge of the data.
+        nav("edge up", "C5", "Ctrl+Up").then(sel!("C1", "C1")),
+        nav("edge down", "C2", "Ctrl+Down").then(sel!("C6", "C6")),
+        nav("edge left", "D3", "Ctrl+Left").then(sel!("A3", "A3")),
+        nav("edge right", "A3", "Ctrl+Right").then(sel!("E3", "E3")),
+        nav("home of row", "D4", "Home").then(sel!("A4", "A4")),
+        nav("home of sheet", "D4", "Ctrl+Home").then(sel!("A1", "A1")),
+        // The last used cell: the last used row (6) and column (G, the total).
+        nav("end of sheet", "A1", "Ctrl+End").then(sel!("G6", "G6")),
+        // A page down / right moves by a screenful (the window's size) and scrolls.
+        nav("page down", "A1", "PageDown")
+            .allow("view.scroll.*")
+            .then(|s| {
+                let a = s.sel.active;
+                if a.col == 0 && a.row >= 10 && s.view.scroll.row > 0 {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "page down went to {} (scroll {:?})",
+                        a.to_a1(),
+                        s.view.scroll
+                    ))
+                }
+            }),
+        Entry::new(
+            "page up",
+            "A1",
+            Act::Custom {
+                prep: |h| key(h, "PageDown"),
+                act: |h| key(h, "PageUp"),
+            },
+        )
+        .set("view.scroll.row", "0")
+        .view_only()
+        .then(sel!("A1", "A1")),
+        nav("page right", "A1", "Alt+PageDown")
+            .allow("view.scroll.*")
+            .then(|s| {
+                let a = s.sel.active;
+                if a.row == 0 && a.col >= 5 && s.view.scroll.col > 0 {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "page right went to {} (scroll {:?})",
+                        a.to_a1(),
+                        s.view.scroll
+                    ))
+                }
+            }),
+        Entry::new(
+            "page left",
+            "A1",
+            Act::Custom {
+                prep: |h| key(h, "Alt+PageDown"),
+                act: |h| key(h, "Alt+PageUp"),
+            },
+        )
+        .set("view.scroll.col", "0")
+        .view_only()
+        .then(sel!("A1", "A1")),
+        nav("enter moves down", "A1", "Enter").then(sel!("A2", "A2")),
+        // Inside a selection, Enter and Tab move the active cell and keep the selection.
+        nav("enter within a selection", "A1:B2", "Enter").then(sel!("A1:B2", "A2")),
+        nav("tab moves right", "A1", "Tab").then(sel!("B1", "B1")),
+        nav("extend up", "C3", "Shift+Up").then(sel!("C2:C3", "C3")),
+        nav("extend down", "C3", "Shift+Down").then(sel!("C3:C4", "C3")),
+        nav("extend left", "C3", "Shift+Left").then(sel!("B3:C3", "C3")),
+        nav("extend right", "C3", "Shift+Right").then(sel!("C3:D3", "C3")),
+        nav("extend to edge up", "C5", "Ctrl+Shift+Up").then(sel!("C1:C5", "C5")),
+        nav("extend to edge down", "C2", "Ctrl+Shift+Down").then(sel!("C2:C6", "C2")),
+        nav("extend to edge left", "D3", "Ctrl+Shift+Left").then(sel!("A3:D3", "D3")),
+        nav("extend to edge right", "A3", "Ctrl+Shift+Right").then(sel!("A3:E3", "A3")),
+        // Ctrl+A inside data selects the data's region first.
+        nav("select all", "B3", "Ctrl+A").then(sel!("A1:E6", "B3")),
+        // Whole rows / columns print as `3:3` / `B:B`.
+        nav("select row", "B3", "Shift+Space").then(sel!("3:3", "B3")),
+        nav("select column", "B3", "Ctrl+Space").then(sel!("B:B", "B3")),
+        nav("select current region", "B3", "Ctrl+Shift+*").then(sel!("A1:E6", "B3")),
+        // Nothing hidden: the visible cells are the selection.
+        nav("select visible cells", "A2:B3", "Alt+;").then(sel!("A2:B3", "A2")),
+        // A mouse drag selects a range.
+        Entry::new(
+            "drag to select",
+            "A1",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    let (a, b) = (cell_center(h, "B2"), cell_center(h, "C4"));
+                    h.hover_at(a);
+                    h.run_steps(1);
+                    h.drag_at(a);
+                    h.run_steps(1);
+                    h.hover_at(b);
+                    h.run_steps(1);
+                    h.drop_at(b);
+                    h.run_steps(2);
+                    Ok(())
+                },
+            },
+        )
+        .view_only()
+        .then(sel!("B2:C4", "B2")),
+        // The Name Box: type a reference, Enter.
+        Entry::new(
+            "name box",
+            "A1",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    use egui_kittest::kittest::Queryable;
+                    let n = h
+                        .query_all_by_role(egui::accesskit::Role::TextInput)
+                        .find(|n| n.value().as_deref() == Some("A1"))
+                        .ok_or("no name box showing A1")?;
+                    n.click();
+                    h.run_steps(1);
+                    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+                    h.run_steps(1);
+                    h.event(egui::Event::Text("D5".into()));
+                    h.run_steps(1);
+                    h.key_press(egui::Key::Enter);
+                    h.run_steps(3);
+                    Ok(())
+                },
+            },
+        )
+        .view_only()
+        .then(sel!("D5", "D5")),
+        // Sheets: switching is not undone (as in the target) but is saved (active tab).
+        no_undo(
+            Entry::new("next sheet", "A1", Act::Key("Ctrl+PageDown"))
+                .setup("home.cells.insert_sheet", json!({"name": "Two"}))
+                .set("workbook.active", "1"),
+        ),
+        no_undo(
+            Entry::new("previous sheet", "A1", Act::Key("Ctrl+PageUp"))
+                .setup("home.cells.insert_sheet", json!({"name": "Two"}))
+                .setup("sheet.activate", json!({"sheet": "Sheet1"}))
+                .set("workbook.active", "0"),
+        ),
+        no_undo(
+            Entry::new(
+                "click a sheet tab",
+                "A1",
+                Act::Custom {
+                    prep: no_prep,
+                    act: |h| {
+                        use egui_kittest::kittest::Queryable;
+                        h.query_all_by_label("Two")
+                            .max_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+                            .ok_or("no tab Two")?
+                            .click();
+                        h.run_steps(2);
+                        Ok(())
+                    },
+                },
+            )
+            .setup("home.cells.insert_sheet", json!({"name": "Two"}))
+            .setup("sheet.activate", json!({"sheet": "Sheet1"}))
+            .set("workbook.active", "0"),
+        ),
+    ]
+}
+
+/// Type `text` into the cell editor (which the first character opens).
+fn type_text(h: &mut Harness<'_, App>, text: &str) {
+    h.event(egui::Event::Text(text.into()));
+    h.run_steps(1);
+}
+
+/// Days since 1899-12-30 for today (UTC; the check allows a day either side).
+fn today_serial() -> f64 {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    (secs / 86_400) as f64 + 25_569.0
+}
+
+fn value_at(s: &Session, a1: &str) -> Option<f64> {
+    match s.wb.sheets[0].value(CellAddr::parse(a1).ok()?) {
+        sp_core::Value::Number(n) => Some(*n),
+        _ => None,
+    }
+}
+
+fn keyboard_edit() -> Vec<Entry> {
+    vec![
+        Entry::new("type a formula", "H2", Act::Type("H2", "=C2+1")).formula(
+            "Sheet1!H2",
+            "=C2+1",
+            "11.0",
+        ),
+        // Enter commits and moves one cell down.
+        Entry::new("type a number", "H3", Act::Type("H3", "42"))
+            .put("Sheet1!H3", "42")
+            .then(sel!("H4", "H4")),
+        // F2 edits the cell's contents with the caret at the end.
+        Entry::new(
+            "edit with F2",
+            "A2",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    key(h, "F2")?;
+                    type_text(h, "ern");
+                    key(h, "Enter")
+                },
+            },
+        )
+        .put("Sheet1!A2", "Eastern"),
+        // Escape throws the typing away.
+        Entry::new(
+            "cancel an edit",
+            "A2",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    type_text(h, "zzz");
+                    key(h, "Escape")
+                },
+            },
+        )
+        .then(|s| {
+            if s.view.editing {
+                Err("still editing".into())
+            } else {
+                Ok(())
+            }
+        }),
+        // Ctrl+Enter enters the typing in every selected cell.
+        Entry::new(
+            "enter in all selected cells",
+            "H1:H3",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    type_text(h, "x");
+                    key(h, "Ctrl+Enter")
+                },
+            },
+        )
+        .put("Sheet1!H1", "x")
+        .put("Sheet1!H2", "x")
+        .put("Sheet1!H3", "x"),
+        // Alt+Enter breaks the line; the cell wraps to show it.
+        Entry::new(
+            "line break in a cell",
+            "H2",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    type_text(h, "a");
+                    key(h, "Alt+Enter")?;
+                    type_text(h, "b");
+                    key(h, "Enter")
+                },
+            },
+        )
+        .put("Sheet1!H2", "a\nb")
+        .set("Sheet1!H2.style.wrap", "true"),
+        // F4 while typing a reference makes it absolute.
+        Entry::new(
+            "absolute reference with F4",
+            "H2",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    type_text(h, "=C2");
+                    key(h, "F4")?;
+                    key(h, "Enter")
+                },
+            },
+        )
+        .formula("Sheet1!H2", "=$C$2", "10.0"),
+        // Ctrl+Shift+Enter: a legacy array formula over the selection.
+        Entry::new(
+            "array formula",
+            "H2:H3",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    type_text(h, "=C2:C3*2");
+                    key(h, "Ctrl+Shift+Enter")
+                },
+            },
+        )
+        // One formula over a fixed area (the file's t="array" ref="H2:H3"); H3 holds a
+        // part of its result.
+        .formula("Sheet1!H2", "=C2:C3*2", "20.0")
+        .set("Sheet1!H2.array", "\"H2:H3\"")
+        .set("Sheet1!H3.value", "8.0"),
+        // Ctrl+; enters today's date as a constant, shown as a date.
+        Entry::new("insert date", "H2", Act::Key("Ctrl+;"))
+            .set("Sheet1!H2.style.num_fmt", "\"m/d/yyyy\"")
+            .allow("Sheet1!H2.input")
+            .allow("Sheet1!H2.value")
+            .then(|s| match value_at(s, "H2") {
+                Some(v) if (v - today_serial()).abs() <= 1.0 && v.fract() == 0.0 => Ok(()),
+                other => Err(format!("H2 holds {other:?}, not today")),
+            }),
+        Entry::new("insert time", "H2", Act::Key("Ctrl+Shift+;"))
+            .set("Sheet1!H2.style.num_fmt", "\"h:mm AM/PM\"")
+            .allow("Sheet1!H2.input")
+            .allow("Sheet1!H2.value")
+            .then(|s| match value_at(s, "H2") {
+                Some(v) if (0.0..1.0).contains(&v) => Ok(()),
+                other => Err(format!("H2 holds {other:?}, not a time of day")),
+            }),
+        // Ctrl+' copies the formula above exactly (not adjusted); Ctrl+Shift+" its value.
+        Entry::new("copy formula from above", "E7", Act::Key("Ctrl+'")).formula(
+            "Sheet1!E7",
+            "=C6*D6",
+            "4.5",
+        ),
+        Entry::new("copy value from above", "E7", Act::Key("Ctrl+Shift+\""))
+            .put("Sheet1!E7", "4.5"),
+        // Space on a checkbox cell ticks it.
+        Entry::new("tick a checkbox", "H2", Act::Key("Space"))
+            .setup("insert.checkbox", json!({"range": "H2"}))
+            .set("Sheet1!H2.value", "true")
+            .set("Sheet1!H2.input", "\"TRUE\""),
+        // Undo / redo / repeat by key.
+        no_undo(
+            Entry::new(
+                "undo",
+                "A1",
+                Act::Custom {
+                    prep: |h| key(h, "Ctrl+B"),
+                    act: |h| key(h, "Ctrl+Z"),
+                },
+            )
+            .gone("Sheet1!A1.style.bold"),
+        ),
+        Entry::new(
+            "redo",
+            "A1",
+            Act::Custom {
+                prep: |h| {
+                    key(h, "Ctrl+B")?;
+                    key(h, "Ctrl+Z")
+                },
+                act: |h| key(h, "Ctrl+Y"),
+            },
+        )
+        .set("Sheet1!A1.style.bold", "true"),
+        // F4 repeats the last action on the new selection.
+        Entry::new(
+            "repeat",
+            "A1",
+            Act::Custom {
+                prep: |h| {
+                    key(h, "Ctrl+I")?;
+                    click_cell(h, "B2");
+                    Ok(())
+                },
+                act: |h| key(h, "F4"),
+            },
+        )
+        .set("Sheet1!B2.style.italic", "true"),
+        Entry::new(
+            "print titles",
+            "A1",
+            Act::Dialog {
+                ribbon: ("Page Layout", "Page Setup", "Print Titles"),
+                fill: |app| {
+                    let d = dialog!(app, Params);
+                    let f = d.fields.iter_mut().find(|f| f.key == "rows").unwrap();
+                    f.value = "1:1".into();
+                },
+                ok: "OK",
+            },
+        )
+        .set("workbook.names.0.name", "\"_xlnm.Print_Titles\"")
+        .set("workbook.names.0.formula", "\"Sheet1!$1:$1\"")
+        .allow("workbook.names.0.*")
+        .print(),
     ]
 }
 
@@ -2417,6 +2824,8 @@ fn entries() -> Vec<Entry> {
     v.extend(tab_menus());
     v.extend(insert_tab());
     v.extend(layout_tab());
+    v.extend(keyboard_nav());
+    v.extend(keyboard_edit());
     v
 }
 
@@ -2436,6 +2845,47 @@ const UNLOGGED: &[(&str, &str)] = &[
     ("manage rules delete", "home.styles.cf.manage"),
     ("go to by key", "home.editing.goto"),
     ("go to special blanks", "home.editing.goto_special"),
+    ("print titles", "layout.print_titles"),
+    ("move up", "nav.move_up"),
+    ("move down", "nav.move_down"),
+    ("move left", "nav.move_left"),
+    ("move right", "nav.move_right"),
+    ("edge up", "nav.edge_up"),
+    ("edge down", "nav.edge_down"),
+    ("edge left", "nav.edge_left"),
+    ("edge right", "nav.edge_right"),
+    ("home of row", "nav.home_row"),
+    ("home of sheet", "nav.home_sheet"),
+    ("end of sheet", "nav.end_sheet"),
+    ("page down", "nav.page_down"),
+    ("page up", "nav.page_up"),
+    ("page right", "nav.page_right"),
+    ("page left", "nav.page_left"),
+    ("enter moves down", "nav.enter_next"),
+    ("enter within a selection", "nav.enter_next"),
+    ("tab moves right", "nav.tab_next"),
+    ("extend up", "select.extend_up"),
+    ("extend down", "select.extend_down"),
+    ("extend left", "select.extend_left"),
+    ("extend right", "select.extend_right"),
+    ("extend to edge up", "select.extend_edge_up"),
+    ("extend to edge down", "select.extend_edge_down"),
+    ("extend to edge left", "select.extend_edge_left"),
+    ("extend to edge right", "select.extend_edge_right"),
+    ("select all", "select.all"),
+    ("select row", "select.row"),
+    ("select column", "select.column"),
+    ("select current region", "select.current_region"),
+    ("select visible cells", "select.visible_cells"),
+    // The grid selects directly on a drag; select.range is that action's command form.
+    ("drag to select", "select.range"),
+    ("name box", "nav.goto_cell"),
+    // F2 and Escape are the editor's own (the editor opens and closes, no command runs).
+    ("edit with F2", "cell.edit"),
+    ("cancel an edit", "cell.cancel_edit"),
+    // Editor helpers run as queries on the text being typed.
+    ("line break in a cell", "cell.newline"),
+    ("absolute reference with F4", "cell.toggle_absolute"),
 ];
 
 /// Commands the app gets wrong in a way too large to fix here: (id, why).
@@ -2471,6 +2921,24 @@ const KNOWN_GAPS: &[(&str, &str)] = &[
          on save and reopen",
     ),
     (
+        "cell.autofill",
+        "the grid has no fill handle: AutoFill (drag or double-click the handle) has no \
+         user path; Fill Down/Right/Series are proved",
+    ),
+    (
+        "cell.autocomplete",
+        "typing does not complete from the column's entries (the editor never asks)",
+    ),
+    (
+        "cell.pick_from_list",
+        "Alt+Down runs the query but the shell shows no pick list, so nothing can be picked",
+    ),
+    (
+        "layout.headings_view",
+        "headings are one session-wide view flag, not the sheet's showRowColHeaders: they \
+         apply to every sheet and are not saved (the toggle itself is proved)",
+    ),
+    (
         "sheet.select_all_sheets",
         "no sheet grouping: the command only lists the sheets and no menu offers it",
     ),
@@ -2494,8 +2962,6 @@ fn outcome() -> &'static Outcome {
     static O: OnceLock<Outcome> = OnceLock::new();
     O.get_or_init(|| {
         let all = entries();
-        let excluded: Vec<&str> = KNOWN_GAPS.iter().map(|(id, _)| *id).collect();
-        let _ = excluded;
         let (proved, failed) = check_all(&all);
         Outcome {
             proved,
@@ -2517,8 +2983,8 @@ fn every_entry_changes_exactly_its_properties() {
 }
 
 /// Coverage may only grow: raise these as entries are added.
-const COMMANDS_FLOOR_A: usize = 154;
-const PROPERTY_KINDS_FLOOR_A: usize = 310;
+const COMMANDS_FLOOR_A: usize = 203;
+const PROPERTY_KINDS_FLOOR_A: usize = 313;
 
 #[test]
 fn coverage_gate() {
@@ -2544,6 +3010,8 @@ fn coverage_gate() {
         .iter()
         .map(|c| c.id)
         .filter(|id| PREFIXES.iter().any(|p| id.starts_with(p)))
+        // Native file dialogs (Pictures, Background) belong to the desktop app.
+        .filter(|id| !sp_ui::shell_hook::DESKTOP_INTERCEPTED.contains(id))
         .collect();
     let listed = |id: &str| {
         KNOWN_GAPS.iter().any(|(k, _)| *k == id) || NOT_PROPERTY.iter().any(|(k, _)| *k == id)
