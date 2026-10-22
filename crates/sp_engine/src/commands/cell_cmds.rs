@@ -34,7 +34,11 @@ pub fn parse_input(
     old: Option<&Cell>,
     styles: &mut StyleTable,
 ) -> Result<Option<Cell>, CmdError> {
-    let style = old.map_or(StyleId::DEFAULT, |c| c.style);
+    let mut style = old.map_or(StyleId::DEFAULT, |c| c.style);
+    // Text typed with a line break (Alt+Enter) turns on Wrap Text so the break shows.
+    if input.contains('\n') && !input.starts_with('=') && !styles.get(style).wrap {
+        style = styles.derive(style, |s| s.wrap = true);
+    }
     if input.is_empty() {
         return Ok(if style == StyleId::DEFAULT {
             None
@@ -372,5 +376,16 @@ mod tests {
         assert!(parse_input("", None, &mut st).unwrap().is_none());
         let c = parse_input("#N/A", None, &mut st).unwrap().unwrap();
         assert_eq!(c.value, Value::Error(ErrorKind::NA));
+    }
+
+    /// Text with a line break wraps (as Alt+Enter does in the target); other entries don't.
+    #[test]
+    fn line_break_turns_on_wrap() {
+        let mut st = StyleTable::default();
+        let c = parse_input("a\nb", None, &mut st).unwrap().unwrap();
+        assert_eq!(c.value, Value::text("a\nb"));
+        assert!(st.get(c.style).wrap);
+        let c = parse_input("ab", None, &mut st).unwrap().unwrap();
+        assert!(!st.get(c.style).wrap);
     }
 }
