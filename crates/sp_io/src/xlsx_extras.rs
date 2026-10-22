@@ -190,11 +190,12 @@ pub fn before_merges_xml(sheet: &Sheet) -> String {
         x.push_str("</protectedRanges>");
     }
     // A filter over a table's range is that table's filter (written in its part).
-    if let Some(af) = sheet
-        .auto_filter
-        .as_ref()
-        .filter(|af| !sheet.tables.iter().any(|t| t.filter_range() == Some(af.range)))
-    {
+    if let Some(af) = sheet.auto_filter.as_ref().filter(|af| {
+        !sheet
+            .tables
+            .iter()
+            .any(|t| t.filter_range() == Some(af.range))
+    }) {
         let _ = write!(x, r#"<autoFilter ref="{}""#, af.range.to_a1());
         if af.columns.is_empty() {
             x.push_str("/>");
@@ -290,6 +291,15 @@ impl SheetRels {
             target.to_string(),
             external,
         ));
+        id
+    }
+
+    /// Like [`SheetRels::add`] for a relationship type outside the main namespace.
+    pub fn add_typed(&mut self, rel_type: &str, target: &str) -> String {
+        let id = self.add("", target, false);
+        if let Some(r) = self.rels.last_mut() {
+            r.1 = rel_type.to_string();
+        }
         id
     }
 
@@ -471,6 +481,9 @@ pub fn after_merges_xml(sheet: &Sheet, n: usize, rels: &mut SheetRels) -> String
     }
     if !sheet.comments.is_empty() {
         rels.add("comments", &format!("../comments{n}.xml"), false);
+        if has_threads(sheet) {
+            rels.add_typed(THREADED_REL, &threaded_part(n).replace("xl/", "../"));
+        }
         let id = rels.add(
             "vmlDrawing",
             &format!("../drawings/vmlDrawing{n}.vml"),
@@ -490,12 +503,27 @@ fn comment_body(c: &Comment) -> String {
     t
 }
 
-/// `xl/commentsN.xml` for a sheet with comments.
-pub fn comments_xml(sheet: &Sheet) -> String {
+/// The legacy author of comment `i` of sheet `n`: a thread's is `tc=` its thread id (how
+/// the target ties the note it keeps for older readers to the thread).
+fn legacy_author(c: &Comment, n: usize, i: usize) -> String {
+    match c.kind {
+        CommentKind::Note => c.author.clone(),
+        CommentKind::Thread => format!("tc={}", thread_id(n, i, 0)),
+    }
+}
+
+/// `xl/commentsN.xml` for a sheet with comments (sheet number `n`).
+pub fn comments_xml(sheet: &Sheet, n: usize) -> String {
+    let all: Vec<String> = sheet
+        .comments
+        .iter()
+        .enumerate()
+        .map(|(i, c)| legacy_author(c, n, i))
+        .collect();
     let mut authors: Vec<&str> = Vec::new();
-    for c in &sheet.comments {
-        if !authors.contains(&c.author.as_str()) {
-            authors.push(&c.author);
+    for a in &all {
+        if !authors.contains(&a.as_str()) {
+            authors.push(a);
         }
     }
     let mut x = String::from(
@@ -506,8 +534,8 @@ pub fn comments_xml(sheet: &Sheet) -> String {
         let _ = write!(x, "<author>{}</author>", esc(a));
     }
     x.push_str("</authors><commentList>");
-    for c in &sheet.comments {
-        let aid = authors.iter().position(|a| *a == c.author).unwrap_or(0);
+    for (c, author) in sheet.comments.iter().zip(&all) {
+        let aid = authors.iter().position(|a| a == author).unwrap_or(0);
         let _ = write!(
             x,
             r#"<comment ref="{}" authorId="{aid}"><text><r><t xml:space="preserve">{}</t></r></text></comment>"#,
@@ -879,6 +907,198 @@ pub fn read_comments(xml: &str, vml: Option<&str>, sheet: &mut Sheet) -> Result<
     Ok(())
 }
 
+// ---------------------------------------------------------------------------------------
+// Threaded comments: `xl/threadedComments/threadedCommentN.xml` per sheet, the people in
+// `xl/persons/person.xml`. Ids are GUIDs, derived from the position so saving twice gives
+// the same file.
+
+pub const THREADED_REL: &str =
+    "http://schemas.microsoft.com/office/2017/10/relationships/threadedComment";
+pub const PERSON_REL: &str = "http://schemas.microsoft.com/office/2017/10/relationships/person";
+pub const THREADED_CT: &str = "application/vnd.ms-excel.threadedcomments+xml";
+pub const PERSON_CT: &str = "application/vnd.ms-excel.person+xml";
+pub const PERSON_PART: &str = "xl/persons/person.xml";
+const TC_NS: &str = "http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments";
+
+pub fn threaded_part(n: usize) -> String {
+    format!("xl/threadedComments/threadedComment{n}.xml")
+}
+
+pub fn has_threads(sheet: &Sheet) -> bool {
+    sheet.comments.iter().any(|c| c.kind == CommentKind::Thread)
+}
+
+fn fnv(s: &str) -> u64 {
+    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+/// A version-4-shaped GUID from `key`.
+fn guid(key: &str) -> String {
+    let (a, b) = (fnv(key), fnv(&format!("{key}#")));
+    format!(
+        "{{{:08X}-{:04X}-4{:03X}-8{:03X}-{:012X}}}",
+        a >> 32,
+        (a >> 16) & 0xFFFF,
+        a & 0xFFF,
+        b >> 52,
+        b & 0xFFFF_FFFF_FFFF
+    )
+}
+
+/// Comment `i` of sheet `n` (`j` = 0), or its reply `j` (from 1).
+fn thread_id(n: usize, i: usize, j: usize) -> String {
+    guid(&format!("comment/{n}/{i}/{j}"))
+}
+
+fn person_id(author: &str) -> String {
+    guid(&format!("person/{author}"))
+}
+
+/// Everyone who wrote in a thread, in order of appearance.
+pub fn thread_authors(wb: &Workbook) -> Vec<&str> {
+    let mut out: Vec<&str> = Vec::new();
+    for c in wb
+        .sheets
+        .iter()
+        .flat_map(|s| &s.comments)
+        .filter(|c| c.kind == CommentKind::Thread)
+    {
+        for a in std::iter::once(&c.author).chain(c.replies.iter().map(|r| &r.author)) {
+            if !out.contains(&a.as_str()) {
+                out.push(a);
+            }
+        }
+    }
+    out
+}
+
+pub fn persons_xml(authors: &[&str]) -> String {
+    let mut x = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<personList xmlns="{TC_NS}" xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main">"#
+    );
+    for a in authors {
+        let _ = write!(
+            x,
+            r#"<person displayName="{}" id="{}" userId="{}" providerId="None"/>"#,
+            esc(a),
+            person_id(a),
+            esc(a)
+        );
+    }
+    x.push_str("</personList>");
+    x
+}
+
+/// The threads of sheet `n` (its notes stay in the legacy part only).
+pub fn threaded_comments_xml(sheet: &Sheet, n: usize) -> String {
+    let mut x = format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ThreadedComments xmlns="{TC_NS}" xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main">"#
+    );
+    for (i, c) in sheet.comments.iter().enumerate() {
+        if c.kind != CommentKind::Thread {
+            continue;
+        }
+        let top = thread_id(n, i, 0);
+        let _ = write!(
+            x,
+            r#"<threadedComment ref="{}" personId="{}" id="{top}"{}><text>{}</text></threadedComment>"#,
+            c.addr.to_a1(),
+            person_id(&c.author),
+            if c.resolved { r#" done="1""# } else { "" },
+            esc(&c.text)
+        );
+        for (j, r) in c.replies.iter().enumerate() {
+            let _ = write!(
+                x,
+                r#"<threadedComment ref="{}" personId="{}" id="{}" parentId="{top}"><text>{}</text></threadedComment>"#,
+                c.addr.to_a1(),
+                person_id(&r.author),
+                thread_id(n, i, j + 1),
+                esc(&r.text)
+            );
+        }
+    }
+    x.push_str("</ThreadedComments>");
+    x
+}
+
+/// Person id → display name.
+pub fn read_persons(xml: &str) -> HashMap<String, String> {
+    let Ok(root) = parse_dom(xml) else {
+        return HashMap::new();
+    };
+    root.children_named("person")
+        .take(100_000)
+        .filter_map(|p| {
+            Some((
+                p.attr("id")?.to_string(),
+                p.attr("displayName").unwrap_or_default().to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// Turn the notes the threads keep for older readers back into threads: author, text,
+/// replies and resolved state come from the threaded part.
+pub fn read_threaded(
+    xml: &str,
+    persons: &HashMap<String, String>,
+    sheet: &mut Sheet,
+) -> Result<(), IoError> {
+    let root = parse_dom(xml)?;
+    let all: Vec<&Node> = root
+        .children_named("threadedComment")
+        .take(1_000_000)
+        .collect();
+    let who = |n: &Node| {
+        n.attr("personId")
+            .and_then(|p| persons.get(p))
+            .cloned()
+            .unwrap_or_default()
+    };
+    let text = |n: &Node| {
+        crate::xml::unescape_ooxml(&n.child("text").map(Node::all_text).unwrap_or_default())
+    };
+    for t in all.iter().filter(|t| t.attr("parentId").is_none()) {
+        let Some(addr) = t.attr("ref").and_then(|r| CellAddr::parse(r).ok()) else {
+            continue;
+        };
+        let id = t.attr("id").unwrap_or_default();
+        let replies = all
+            .iter()
+            .filter(|r| r.attr("parentId") == Some(id))
+            .map(|r| sp_model::CommentReply {
+                author: who(r),
+                text: text(r),
+            })
+            .collect();
+        let c = Comment {
+            addr,
+            kind: CommentKind::Thread,
+            author: who(t),
+            text: text(t),
+            replies,
+            visible: false,
+            resolved: flag(t.attr("done")).unwrap_or(false),
+        };
+        match sheet.comments.iter_mut().find(|x| x.addr == addr) {
+            Some(x) => {
+                *x = Comment {
+                    visible: x.visible,
+                    ..c
+                }
+            }
+            None => sheet.comments.push(c),
+        }
+    }
+    sheet.comments.sort_by_key(|c| c.addr);
+    Ok(())
+}
+
 /// Text of a rich-text `<text>` node: its `<t>` runs, skipping phonetic runs.
 fn text_of(n: &Node) -> String {
     let mut s = String::new();
@@ -1044,7 +1264,7 @@ mod tests {
                 text: "a".into(),
             }],
             visible: false,
-            resolved: false,
+            resolved: true,
         });
         let ps = &mut sh.page_setup;
         ps.margins = Margins::NARROW;
@@ -1091,12 +1311,8 @@ mod tests {
         assert_eq!(a.page_setup, b.page_setup);
         assert_eq!(a.outline, b.outline);
         assert_eq!(wb.protection, back.protection);
-        // Notes round-trip exactly; threads come back as notes carrying their replies.
-        assert_eq!(b.comments.len(), 2);
-        assert_eq!(b.comments[0], a.comments[0]);
-        assert_eq!(b.comments[1].text, "q\nAnn: a");
-        assert_eq!(b.comments[1].author, "Bob");
-        assert!(!b.comments[1].visible);
+        // Notes and threads (replies, resolved state) round-trip exactly.
+        assert_eq!(b.comments, a.comments);
     }
 
     #[test]

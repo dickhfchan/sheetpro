@@ -871,6 +871,7 @@ fn read_extras<R: Read + Seek>(
     xml: &str,
     sheet: &mut Sheet,
     report: &mut LoadReport,
+    persons: &HashMap<String, String>,
 ) -> Result<(), IoError> {
     let (dir, file) = path.rsplit_once('/').unwrap_or(("", path));
     let rels = match read_part(zip, &format!("{dir}/_rels/{file}.rels"))? {
@@ -904,6 +905,15 @@ fn read_extras<R: Read + Seek>(
                 .warnings
                 .push(format!("sheet '{}': comments skipped ({e})", sheet.name));
         }
+    }
+    if let Some(tpath) = find("threadedComment")
+        && let Some(tx) = read_part(zip, &tpath)?
+        && let Err(e) = crate::xlsx_extras::read_threaded(&tx, persons, sheet)
+    {
+        report.warnings.push(format!(
+            "sheet '{}': threaded comments skipped ({e})",
+            sheet.name
+        ));
     }
     Ok(())
 }
@@ -1019,6 +1029,15 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
         None => Vec::new(),
     };
     let rich = read_rich_errors(&mut zip)?;
+    let persons = match raw_rels
+        .iter()
+        .find(|r| !r.external && pass::rel_kind(&r.rel_type) == "person")
+    {
+        Some(r) => read_part(&mut zip, &r.target)?
+            .map(|x| crate::xlsx_extras::read_persons(&x))
+            .unwrap_or_default(),
+        None => HashMap::new(),
+    };
     let mut wb = Workbook::new();
     wb.sheets.clear();
     if let Some(r) = raw_rels
@@ -1082,7 +1101,7 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<(Workbook, LoadReport), Io
             match read_part(&mut zip, &path)? {
                 Some(x) => {
                     read_sheet(&x, &mut sheet, &sst, &xf_map, &mut report, &rich)?;
-                    read_extras(&mut zip, &path, &x, &mut sheet, &mut report)?;
+                    read_extras(&mut zip, &path, &x, &mut sheet, &mut report, &persons)?;
                     crate::xlsx_cf::read_sheet(&mut zip, &path, &x, &mut sheet, &dxfs, &mut report);
                     let (head, tail) =
                         crate::xlsx_extras::split_at_sheet_data(&x).unwrap_or((x.as_str(), ""));
