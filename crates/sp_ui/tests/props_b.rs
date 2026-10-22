@@ -38,6 +38,14 @@ use common::*;
 // ---------------------------------------------------------------------------------------
 // Helpers
 
+/// `e.pipe(f)` = `f(e)`, to keep a helper in the builder chain.
+trait Pipe: Sized {
+    fn pipe(self, f: impl FnOnce(Self) -> Self) -> Self {
+        f(self)
+    }
+}
+impl Pipe for Entry {}
+
 /// `cell` holds the constant `text` (input and value both the quoted text).
 fn text(e: Entry, cell: &str, t: &str) -> Entry {
     let q = format!("{t:?}");
@@ -182,6 +190,10 @@ fn entries() -> Vec<Entry> {
     v.extend(review_entries());
     v.extend(view_entries());
     v.extend(file_entries());
+    v.extend(what_if_entries());
+    v.extend(object_entries());
+    v.extend(table_pivot_entries());
+    v.extend(misc_entries());
     v
 }
 
@@ -530,8 +542,8 @@ fn formulas_entries() -> Vec<Entry> {
                 },
             },
         ),
-        // The button lists the watches (none): nothing changes. Adding one has no UI yet
-        // (see KNOWN_GAPS in the report: there is no Watch Window pane).
+        // The button lists the watches (none): nothing changes. Adding a watch has no way in
+        // yet: the shell has no Watch Window pane (its add/remove are engine unit tests).
         Entry::new(
             "watch window",
             "E2",
@@ -849,18 +861,583 @@ fn file_entries() -> Vec<Entry> {
     ]
 }
 
+fn what_if_entries() -> Vec<Entry> {
+    vec![
+        // Subtotal with the dialog's defaults: at each change in the first column, SUM, on
+        // the last column.
+        Entry::new(
+            "subtotal",
+            "A10:B13",
+            Act::Ribbon("Data", "Outline", "Subtotal…"),
+        )
+        .setup("cell.set", json!({"cell": "A10", "input": "K"}))
+        .setup("cell.set", json!({"cell": "B10", "input": "V"}))
+        .setup("cell.set", json!({"cell": "A11", "input": "a"}))
+        .setup("cell.set", json!({"cell": "B11", "input": "1"}))
+        .setup("cell.set", json!({"cell": "A12", "input": "a"}))
+        .setup("cell.set", json!({"cell": "B12", "input": "2"}))
+        .setup("cell.set", json!({"cell": "A13", "input": "b"}))
+        .setup("cell.set", json!({"cell": "B13", "input": "3"}))
+        // A total row under each group and a grand total, all SUBTOTAL(9, …) so the grand
+        // total skips the group totals; rows below move down.
+        .set("Sheet1!A13.input", "\"a Total\"")
+        .set("Sheet1!A13.value", "\"a Total\"")
+        .set("Sheet1!B13.input", "\"=SUBTOTAL(9,B11:B12)\"")
+        .set("Sheet1!A14.input", "\"b\"")
+        .set("Sheet1!A14.value", "\"b\"")
+        .set("Sheet1!B14.input", "\"3\"")
+        .set("Sheet1!B14.value", "3.0")
+        .set("Sheet1!A15.input", "\"b Total\"")
+        .set("Sheet1!A15.value", "\"b Total\"")
+        .set("Sheet1!B15.input", "\"=SUBTOTAL(9,B14:B14)\"")
+        .set("Sheet1!B15.value", "3.0")
+        .set("Sheet1!A16.input", "\"Grand Total\"")
+        .set("Sheet1!A16.value", "\"Grand Total\"")
+        .set("Sheet1!B16.input", "\"=SUBTOTAL(9,B11:B15)\"")
+        .set("Sheet1!B16.value", "6.0")
+        // Outline: the detail rows at level 2, the group totals at level 1 (inside the
+        // grand total's group), the grand total outside.
+        .set("Sheet1.outline.rows.10", "2")
+        .set("Sheet1.outline.rows.11", "2")
+        .set("Sheet1.outline.rows.12", "1")
+        .set("Sheet1.outline.rows.13", "2")
+        .set("Sheet1.outline.rows.14", "1"),
+        // Goal Seek: E2 (=C2*D2) to 30 by changing C2 → 20; OK keeps it.
+        Entry::new(
+            "goal seek",
+            "E2",
+            Act::Custom {
+                prep: |h| tab(h, "Data"),
+                act: |h| {
+                    click_in_ribbon(h, "Forecast", "Goal Seek…")?;
+                    h.run_steps(3);
+                    if let Dialog::GoalSeek(d) = dialog(h.state_mut()) {
+                        d.set_cell = "E2".into();
+                        d.to_value = "30".into();
+                        d.by_changing = "C2".into();
+                    }
+                    h.run_steps(2);
+                    click(h, "OK")?;
+                    click(h, "OK")
+                },
+            },
+        )
+        .pipe(|e| num(e, "C2", "20", 20.0))
+        .pipe(|e| value(value(e, "E2", 30.0), "G1", 82.5)),
+        Entry::new(
+            "scenario add",
+            "A1",
+            Act::Custom {
+                prep: |h| tab(h, "Data"),
+                act: |h| {
+                    click_in_ribbon(h, "Forecast", "Scenario Manager…")?;
+                    h.run_steps(3);
+                    if let Dialog::ScenarioManager(d) = dialog(h.state_mut()) {
+                        d.adding = true;
+                        d.name = "Base".into();
+                        d.changing = "C2:C3".into();
+                    }
+                    h.run_steps(2);
+                    click(h, "Save scenario")?;
+                    click(h, "Close")
+                },
+            },
+        )
+        // The changing cells' current values are saved with the scenario.
+        .set("Sheet1.analysis.scenarios.0.name", "\"Base\"")
+        .set("Sheet1.analysis.scenarios.0.changing", "\"$C$2,$C$3\"")
+        .set("Sheet1.analysis.scenarios.0.comment", "\"\"")
+        .set("Sheet1.analysis.scenarios.0.values.0.Number", "10.0")
+        .set("Sheet1.analysis.scenarios.0.values.1.Number", "4.0"),
+        // One-variable table: H2:H4 feed C2, I1 is =E2 (=C2*D2 → C2*1.5).
+        Entry::new(
+            "data table",
+            "H1:I4",
+            Act::Custom {
+                prep: |h| tab(h, "Data"),
+                act: |h| {
+                    click_in_ribbon(h, "Forecast", "Data Table…")?;
+                    h.run_steps(3);
+                    if let Dialog::DataTable(d) = dialog(h.state_mut()) {
+                        d.col_input = "C2".into();
+                    }
+                    h.run_steps(2);
+                    click(h, "OK")
+                },
+            },
+        )
+        .setup("cell.set", json!({"cell": "H2", "input": "1"}))
+        .setup("cell.set", json!({"cell": "H3", "input": "2"}))
+        .setup("cell.set", json!({"cell": "H4", "input": "3"}))
+        .setup("cell.set", json!({"cell": "I1", "input": "=E2"}))
+        // {=TABLE(,C2)} over the results, each the formula with C2 replaced by its input.
+        .cells("Sheet1!I2:I4", "input", "\"=TABLE(,C2)\"")
+        .pipe(|e| value(value(value(e, "I2", 1.5), "I3", 3.0), "I4", 4.5))
+        .set("Sheet1.analysis.data_tables.0.range", "\"$H$1:$I$4\"")
+        .set("Sheet1.analysis.data_tables.0.col_input", "\"$C$2\"")
+        .set("Sheet1.analysis.data_tables.0.row_input", "\"\""),
+        // Consolidate by position: C2:C4 + C5:C6 summed into H1:H3.
+        Entry::new(
+            "consolidate",
+            "H1",
+            Act::Dialog {
+                ribbon: ("Data", "Data Tools", "Consolidate…"),
+                fill: |app| {
+                    if let Dialog::Consolidate(d) = dialog(app) {
+                        d.func = "sum".into();
+                        d.sources = vec!["Sheet1!$C$2:$C$4".into(), "Sheet1!$C$5:$C$6".into()];
+                        d.dest = "H1".into();
+                    }
+                },
+                ok: "OK",
+            },
+        )
+        .set("Sheet1!H1.input", "\"22\"")
+        .set("Sheet1!H1.value", "22.0")
+        .set("Sheet1!H2.input", "\"7\"")
+        .set("Sheet1!H2.value", "7.0")
+        .set("Sheet1!H3.input", "\"7\"")
+        .set("Sheet1!H3.value", "7.0"),
+        forecast(
+            Entry::new(
+                "forecast sheet",
+                "H1:I6",
+                Act::Dialog {
+                    ribbon: ("Data", "Forecast", "Forecast Sheet"),
+                    fill: |_| {},
+                    ok: "Create",
+                },
+            )
+            .setup("cell.set", json!({"cell": "H1", "input": "1"}))
+            .setup("cell.set", json!({"cell": "H2", "input": "2"}))
+            .setup("cell.set", json!({"cell": "H3", "input": "3"}))
+            .setup("cell.set", json!({"cell": "H4", "input": "4"}))
+            .setup("cell.set", json!({"cell": "H5", "input": "5"}))
+            .setup("cell.set", json!({"cell": "H6", "input": "6"}))
+            .setup("cell.set", json!({"cell": "I1", "input": "10"}))
+            .setup("cell.set", json!({"cell": "I2", "input": "12"}))
+            .setup("cell.set", json!({"cell": "I3", "input": "14"}))
+            .setup("cell.set", json!({"cell": "I4", "input": "16"}))
+            .setup("cell.set", json!({"cell": "I5", "input": "18"}))
+            .setup("cell.set", json!({"cell": "I6", "input": "20"})),
+        ),
+    ]
+}
+
+/// The forecast sheet for 1..6 → 10, 12, …, 20 (a straight line): two more periods (a
+/// third of the history) at 22 and 24, with no spread (the bounds equal the forecast); the
+/// last actual value starts the forecast columns so the lines join. A line chart beside it.
+fn forecast(mut e: Entry) -> Entry {
+    let cell = |e: Entry, a: &str, input: &str, v: &str| {
+        e.set(&format!("Sheet2!{a}.input"), &format!("{input:?}"))
+            .set(&format!("Sheet2!{a}.value"), v)
+    };
+    for (col, head) in [
+        ("A", "Timeline"),
+        ("B", "Values"),
+        ("C", "Forecast"),
+        ("D", "Lower Confidence Bound"),
+        ("E", "Upper Confidence Bound"),
+    ] {
+        e = cell(e, &format!("{col}1"), head, &format!("{head:?}"))
+            .set(&format!("Sheet2!{col}1.style.bold"), "true");
+    }
+    for r in 2..=9u32 {
+        let t = r - 1;
+        e = cell(
+            e,
+            &format!("A{r}"),
+            &t.to_string(),
+            &format!("{:?}", f64::from(t)),
+        );
+        if r <= 7 {
+            let v = 8 + 2 * t;
+            e = cell(
+                e,
+                &format!("B{r}"),
+                &v.to_string(),
+                &format!("{:?}", f64::from(v)),
+            );
+        }
+    }
+    for col in ["C", "D", "E"] {
+        e = cell(e, &format!("{col}7"), "=B7", "20.0");
+    }
+    let ets = |r: u32| format!("FORECAST.ETS(A{r},$B$2:$B$7,$A$2:$A$7,1,1,1)");
+    let ci = |r: u32| format!("FORECAST.ETS.CONFINT(A{r},$B$2:$B$7,$A$2:$A$7,0.95,1,1,1)");
+    for (r, v) in [(8, "22.0"), (9, "24.0")] {
+        e = cell(e, &format!("C{r}"), &format!("={}", ets(r)), v);
+        e = cell(e, &format!("D{r}"), &format!("=C{r}-{}", ci(r)), v);
+        e = cell(e, &format!("E{r}"), &format!("=C{r}+{}", ci(r)), v);
+    }
+    let c = "Sheet2.drawings.charts.0";
+    e = e
+        .set(&format!("{c}.kind"), "\"Line\"")
+        .set(&format!("{c}.name"), "\"Forecast Chart\"")
+        .set(&format!("{c}.legend"), "\"Bottom\"");
+    for (i, col) in ["B", "C", "D", "E"].iter().enumerate() {
+        e = e
+            .set(
+                &format!("{c}.series.{i}.name"),
+                &format!("\"Sheet2!${col}$1\""),
+            )
+            .set(
+                &format!("{c}.series.{i}.values"),
+                &format!("\"Sheet2!${col}$2:${col}$9\""),
+            )
+            .set(
+                &format!("{c}.series.{i}.categories"),
+                "\"Sheet2!$A$2:$A$9\"",
+            );
+    }
+    // The new sheet becomes the active one, after Sheet1; its own settings are a new
+    // sheet's defaults, and the chart's presentation details are the defaults of a chart.
+    e.set("workbook.sheet_order.1", "\"Sheet2\"")
+        .set("workbook.active", "1")
+        .allow("Sheet2.page_setup.*")
+        .allow("Sheet2.default_*")
+        .allow("Sheet2.outline.summary_*")
+        .allow("Sheet2.show_gridlines")
+        .allow("Sheet2.visibility")
+        .allow("Sheet2.drawings.charts.0.anchor.*")
+        .allow("Sheet2.drawings.charts.0.*_italic")
+        .allow("Sheet2.drawings.charts.0.data_labels")
+        .allow("Sheet2.drawings.charts.0.grouping")
+        .allow("Sheet2.drawings.charts.0.markers")
+        .allow("Sheet2.drawings.charts.0.series.*.kind")
+        .allow("Sheet2.drawings.charts.0.series.*.secondary")
+}
+
+/// Three rectangles side by side in row 9: a (B9:C10), b (E9:F10), c (H9:I10).
+fn shapes(e: Entry) -> Entry {
+    e.setup("insert.shapes", json!({"name": "a", "range": "B9:C10"}))
+        .setup("insert.shapes", json!({"name": "b", "range": "E9:F10"}))
+        .setup("insert.shapes", json!({"name": "c", "range": "H9:I10"}))
+}
+
+/// Slot `i` of the z-order now holds shape `name` (a, b or c of [`shapes`]).
+fn slot(e: Entry, i: usize, name: char) -> Entry {
+    let (from, to, x) = match name {
+        'a' => (1, 3, "64.0"),
+        'b' => (4, 6, "256.0"),
+        _ => (7, 9, "448.0"),
+    };
+    let o = format!("Sheet1.objects.{i}");
+    e.set(&format!("{o}.name"), &format!("\"{name}\""))
+        .set(&format!("{o}.anchor.cells.from.col"), &from.to_string())
+        .set(&format!("{o}.anchor.cells.to.col"), &to.to_string())
+        .set(&format!("{o}.anchor.pos.0"), x)
+}
+
+/// Right-click the shape over `cell`, choose `item` in its menu.
+fn shape_menu(h: &mut Harness<'_, App>, cell: &str, item: &str) -> Result<(), String> {
+    let p = cell_center(h, cell);
+    right_click(h, p);
+    click_new(h, item, &[])
+}
+
+fn object_entries() -> Vec<Entry> {
+    vec![
+        shapes(Entry::new(
+            "bring to front",
+            "A1",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| shape_menu(h, "B9", "Bring to Front"),
+            },
+        ))
+        .pipe(|e| slot(slot(slot(e, 0, 'b'), 1, 'c'), 2, 'a')),
+        shapes(Entry::new(
+            "bring forward",
+            "A1",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| shape_menu(h, "B9", "Bring Forward"),
+            },
+        ))
+        .pipe(|e| slot(slot(e, 0, 'b'), 1, 'a')),
+        shapes(Entry::new(
+            "send to back",
+            "A1",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| shape_menu(h, "H9", "Send to Back"),
+            },
+        ))
+        .pipe(|e| slot(slot(slot(e, 0, 'c'), 1, 'a'), 2, 'b')),
+        shapes(Entry::new(
+            "send backward",
+            "A1",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| shape_menu(h, "H9", "Send Backward"),
+            },
+        ))
+        .pipe(|e| slot(slot(e, 1, 'c'), 2, 'b')),
+        shapes(Entry::new(
+            "delete shape",
+            "A1",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| shape_menu(h, "E9", "Delete"),
+            },
+        ))
+        .pipe(|e| slot(e, 1, 'c').gone("Sheet1.objects.2.*")),
+        // Select a shape and press Delete.
+        shapes(Entry::new(
+            "delete shape by key",
+            "A1",
+            Act::Custom {
+                prep: |h| {
+                    click_cell(h, "E9");
+                    Ok(())
+                },
+                act: |h| press(h, "Delete"),
+            },
+        ))
+        .pipe(|e| slot(e, 1, 'c').gone("Sheet1.objects.2.*")),
+        // Drag shape a one column to the right.
+        shapes(Entry::new(
+            "move shape",
+            "A1",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| {
+                    let (from, to) = (cell_center(h, "B9"), cell_center(h, "C9"));
+                    h.hover_at(from);
+                    h.run_steps(1);
+                    h.drag_at(from);
+                    h.run_steps(1);
+                    for k in 1..=4 {
+                        h.hover_at(from + (to - from) * (k as f32 / 4.0));
+                        h.run_steps(1);
+                    }
+                    h.drop_at(to);
+                    h.run_steps(2);
+                    Ok(())
+                },
+            },
+        ))
+        .set("Sheet1.objects.0.anchor.cells.from.col", "2")
+        .set("Sheet1.objects.0.anchor.cells.to.col", "4")
+        .set("Sheet1.objects.0.anchor.pos.0", "128.0"),
+    ]
+}
+
+fn table_pivot_entries() -> Vec<Entry> {
+    let pivot = || {
+        json!({"source": "A1:D6", "dest": "Sheet1!J1", "rows": ["Region"],
+               "values": [{"field": "Qty"}]})
+    };
+    vec![
+        // Table Design (right-click › Table Design…): turn on the total row.
+        Entry::new(
+            "table design total row",
+            "B3",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| {
+                    let p = cell_center(h, "B3");
+                    right_click(h, p);
+                    click_new(h, "Table Design…", &[])?;
+                    if let Dialog::TableDesign(d) = dialog(h.state_mut()) {
+                        d.opts.total_row = true;
+                    }
+                    h.run_steps(2);
+                    click(h, "OK")
+                },
+            },
+        )
+        .setup("insert.table", json!({"range": "A1:E6", "header": true}))
+        // The table grows by the total row: a label in the first column, a SUM of the
+        // visible rows (SUBTOTAL 109) in the last.
+        .set("Sheet1.tables.0.totals_row", "true")
+        .set("Sheet1.tables.0.range.end.row", "6")
+        .set("Sheet1.tables.0.columns.0.totals_label", "\"Total\"")
+        .set("Sheet1.tables.0.columns.4.totals_function", "\"sum\"")
+        .set("Sheet1!A7.input", "\"Total\"")
+        .set("Sheet1!A7.value", "\"Total\"")
+        .set("Sheet1!E7.input", "\"=SUBTOTAL(109,Table1[Total])\"")
+        .set("Sheet1!E7.value", "67.5"),
+        // The source changes after the pivot was made: Refresh All brings it up to date.
+        Entry::new("refresh all", "A1", Act::Key("Ctrl+Alt+F5"))
+            .setup("insert.pivot_table", pivot())
+            .setup("cell.set", json!({"cell": "C2", "input": "100"}))
+            // Rows East, North, West, Grand Total in J2:J5; Sum of Qty in K.
+            .set("Sheet1!K2.input", "\"107\"")
+            .set("Sheet1!K2.value", "107.0")
+            .set("Sheet1!K5.input", "\"126\"")
+            .set("Sheet1!K5.value", "126.0"),
+        // Field list: check Price (a number: it goes to Values).
+        Entry::new(
+            "pivot field check",
+            "K2",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| click(h, "Price"),
+            },
+        )
+        .setup("insert.pivot_table", pivot())
+        // A second value, Sum of Price, in column L (autofitted): East 1.5 + 3, North 1.5,
+        // West 2.25 + 1.5, total 9.75. Header and grand total bold like the first value's.
+        .set("Sheet1.analysis.pivots.0.output", "\"$J$1:$L$5\"")
+        .set("Sheet1.analysis.pivots.0.values.1.field", "3")
+        .set("Sheet1.analysis.pivots.0.values.1.func", "\"Sum\"")
+        .set("Sheet1.analysis.pivots.0.values.1.name", "\"\"")
+        .set("Sheet1.analysis.pivots.0.values.1.num_fmt", "\"\"")
+        .set("Sheet1.analysis.pivots.0.values.1.show_as", "\"Normal\"")
+        .set("Sheet1!L1.input", "\"Sum of Price\"")
+        .set("Sheet1!L1.value", "\"Sum of Price\"")
+        .set("Sheet1!L1.style.bold", "true")
+        .set("Sheet1!L2.input", "\"4.5\"")
+        .set("Sheet1!L2.value", "4.5")
+        .set("Sheet1!L3.input", "\"1.5\"")
+        .set("Sheet1!L3.value", "1.5")
+        .set("Sheet1!L4.input", "\"3.75\"")
+        .set("Sheet1!L4.value", "3.75")
+        .set("Sheet1!L5.input", "\"9.75\"")
+        .set("Sheet1!L5.value", "9.75")
+        .set("Sheet1!L5.style.bold", "true")
+        .allow("Sheet1.col_widths.11"),
+    ]
+}
+
+fn misc_entries() -> Vec<Entry> {
+    vec![
+        // Ctrl+1, Font bold and a fill, OK.
+        Entry::new(
+            "format cells dialog",
+            "C2:C3",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| {
+                    press(h, "Ctrl+1")?;
+                    match dialog(h.state_mut()) {
+                        Dialog::FormatCells(d) => {
+                            d.v.bold = true;
+                            d.v.fill = Some("FFFF00".into());
+                        }
+                        _ => return Err("Format Cells did not open".into()),
+                    }
+                    h.run_steps(2);
+                    click(h, "OK")
+                },
+            },
+        )
+        .cells("Sheet1!C2:C3", "style.bold", "true")
+        .cells("Sheet1!C2:C3", "style.fill.0", "255")
+        .cells("Sheet1!C2:C3", "style.fill.1", "255")
+        .cells("Sheet1!C2:C3", "style.fill.2", "0"),
+        // F7 on H1:H2: "Teh" is not in the dictionary; Change takes the first suggestion.
+        Entry::new(
+            "spelling change",
+            "H1:H2",
+            Act::Custom {
+                prep: |_| Ok(()),
+                act: |h| {
+                    press(h, "F7")?;
+                    click(h, "Change")?;
+                    click(h, "Close")
+                },
+            },
+        )
+        .setup("cell.set", json!({"cell": "H1", "input": "Teh fox"}))
+        .pipe(|e| text(e, "H1", "The fox")),
+    ]
+}
+
 // ---------------------------------------------------------------------------------------
 // Coverage
 
-/// Commands the desktop app handles natively (`sp_ui::shell_hook::DESKTOP_INTERCEPTED`):
-/// file dialogs, closing, options. Not workbook properties; out of scope here.
-const NOT_PROPERTY: [(&str, &str); 0] = [];
+/// Commands in scope with no entry of their own, each with why. Every one is still reached
+/// from the shell where it has a way in (the entries named), but has no property effect to
+/// prove or is not run by the shell at all.
+const NOT_PROPERTY: [(&str, &str); 25] = [
+    // The desktop app handles these natively (`sp_ui::shell_hook::DESKTOP_INTERCEPTED`):
+    // file dialogs, windows, the options and report windows. Not workbook properties; the
+    // PDF export itself runs in every `.print()` entry.
+    ("file.new", "desktop: opens a new window"),
+    ("file.open", "desktop: file dialog"),
+    ("file.save", "desktop: file dialog / writes the file"),
+    ("file.save_as", "desktop: file dialog"),
+    ("file.save_copy", "desktop: file dialog"),
+    ("file.export.csv", "desktop: file dialog"),
+    (
+        "file.export.pdf",
+        "desktop: file dialog (run directly by `.print()` entries)",
+    ),
+    ("file.close", "desktop: closes the window"),
+    ("file.exit", "desktop: quits"),
+    ("file.recent", "desktop: recent-files list"),
+    (
+        "file.options",
+        "desktop: options window (app settings, not the workbook)",
+    ),
+    ("file.inspect", "desktop: Inspect Document window"),
+    (
+        "data.get_from_text",
+        "desktop: file dialog for the file to import",
+    ),
+    ("app.report_problem", "desktop: problem report window"),
+    // These ribbon buttons open the Insert Function dialog (filtered to the category);
+    // the command itself is only the dialog's read-only function list. Entries "insert
+    // function" … "more functions" prove each button: the chosen function starts in the
+    // editor and nothing else changes.
+    (
+        "formulas.insert_function",
+        "opens Insert Function; read-only list",
+    ),
+    (
+        "formulas.library.financial",
+        "opens Insert Function (Financial); read-only list",
+    ),
+    (
+        "formulas.library.logical",
+        "opens Insert Function (Logical); read-only list",
+    ),
+    (
+        "formulas.library.text",
+        "opens Insert Function (Text); read-only list",
+    ),
+    (
+        "formulas.library.datetime",
+        "opens Insert Function (Date & Time); read-only list",
+    ),
+    (
+        "formulas.library.lookup",
+        "opens Insert Function (Lookup & Reference); read-only list",
+    ),
+    (
+        "formulas.library.math",
+        "opens Insert Function (Math & Trig); read-only list",
+    ),
+    (
+        "formulas.library.more",
+        "opens Insert Function; read-only list",
+    ),
+    // Read-only queries.
+    (
+        "formulas.evaluate_formula",
+        "the dialog's read-only steps (entry \"evaluate formula\")",
+    ),
+    (
+        "object.list",
+        "read-only list of the sheet's shapes; no Selection Pane uses it",
+    ),
+    // Review › New Comment opens the same dialog as Insert › Comment, which posts
+    // `insert.comment` (entry "new comment"; the command family is part A's).
+    (
+        "review.comment.new",
+        "alias: the dialog posts insert.comment",
+    ),
+];
 
 /// Commands whose entry would fail for an app reason (excluded from the run), with why.
 const KNOWN_GAPS: [(&str, &str); 0] = [];
 
-const COMMANDS_FLOOR_B: usize = 0;
-const PROPERTY_KINDS_FLOOR_B: usize = 0;
+/// What part B proves; CI fails if coverage drops below.
+const COMMANDS_FLOOR_B: usize = 81;
+const PROPERTY_KINDS_FLOOR_B: usize = 200;
 
 fn in_scope() -> Vec<String> {
     const OTHERS: [&str; 8] = [
