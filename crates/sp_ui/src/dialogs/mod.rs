@@ -195,6 +195,9 @@ pub fn dialog_for_command(id: &str) -> Option<&'static str> {
         "insert.hyperlink" => "hyperlink",
         "insert.symbol" => "symbol",
         "layout.scale_to_fit" => "scale_to_fit",
+        // Rows / columns to repeat on every page are asked for (all params are optional, so
+        // running straight away would only clear them).
+        "layout.print_titles" => "params:layout.print_titles",
         "formulas.evaluate_formula" => "evaluate_formula",
         "data.advanced_filter" => "advanced_filter",
         "data.consolidate" => "consolidate",
@@ -374,7 +377,9 @@ impl Dialog {
             "evaluate_formula" => Dialog::EvaluateFormula(tools2::EvaluateFormula::new(app)),
             "advanced_filter" => Dialog::AdvancedFilter(tools2::AdvancedFilter::new(&app.session)),
             "consolidate" => Dialog::Consolidate(tools2::Consolidate::new(&app.session)),
-            "scenario_manager" => Dialog::ScenarioManager(tools2::ScenarioManager::new(&app.session)),
+            "scenario_manager" => {
+                Dialog::ScenarioManager(tools2::ScenarioManager::new(&app.session))
+            }
             "data_table" => Dialog::DataTable(tools2::DataTable::new(&app.session)),
             "forecast_sheet" => Dialog::ForecastSheet(tools2::ForecastSheet::new(&app.session)),
             "paste_name" => Dialog::PasteName(tools2::PasteName::new(&app.session)),
@@ -494,11 +499,10 @@ impl App {
         // Format Painter is a mode: the next selection receives the current one's formats.
         if id == "home.clipboard.format_painter" {
             let s = &self.session;
-            let sheet = s
-                .wb
-                .sheet(s.sheet_index())
-                .map(|sh| sp_core::addr::quote_sheet_name(&sh.name))
-                .unwrap_or_default();
+            let sheet =
+                s.wb.sheet(s.sheet_index())
+                    .map(|sh| sp_core::addr::quote_sheet_name(&sh.name))
+                    .unwrap_or_default();
             self.ui.grid.painter = Some(format!("{sheet}!{}", s.sel.range().to_a1()));
             self.session.status = "Format Painter: select the cells to format (Esc cancels)".into();
             return;
@@ -638,9 +642,7 @@ mod tests {
         assert!(required_params(r#"{"range"?: "A1:B2"}"#).is_empty());
         assert!(required_params("{}").is_empty());
         // Result docs after the params object are not parameters.
-        assert!(
-            required_params(r#"{"cell"?: "C2"} → {"filled": n, "program": "…"}"#).is_empty()
-        );
+        assert!(required_params(r#"{"cell"?: "C2"} → {"filled": n, "program": "…"}"#).is_empty());
         assert_eq!(
             required_params(r#"{"sheet"?: "Sheet1", "color": "FF0000" | null}"#),
             vec!["color".to_string()]
@@ -657,5 +659,20 @@ mod tests {
         }
         assert!(Dialog::create("params:view.zoom", &mut app).is_ok());
         assert!(Dialog::create("nope", &mut app).is_err());
+    }
+
+    /// Print Titles asks which rows / columns to repeat; before, the button ran with no
+    /// params and only cleared them.
+    #[test]
+    fn print_titles_asks_for_rows_and_columns() {
+        let mut app = App::new(sp_engine::Session::new());
+        app.activate_command("layout.print_titles");
+        match &app.ui.dialog {
+            Some(Dialog::Params(p)) => {
+                let keys: Vec<&str> = p.fields.iter().map(|f| f.key.as_str()).collect();
+                assert_eq!(keys, ["rows", "cols"]);
+            }
+            other => panic!("expected the params form, got {other:?}"),
+        }
     }
 }
