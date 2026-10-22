@@ -236,6 +236,58 @@ pub struct Proved {
     pub persisted: BTreeSet<String>,
 }
 
+/// Exactly the expected changes: each `expect` path ends at its value (a path with `*`
+/// covers every changed path it matches, at least one, all ending at that value), and every
+/// other change matches an `allow` glob.
+pub fn check_changes(
+    changes: &[Change],
+    after: &PropMap,
+    expect: &[(String, Option<String>)],
+    allow: &[&str],
+) -> Result<(), String> {
+    let mut problems = Vec::new();
+    for (path, want) in expect {
+        if path.contains('*') {
+            let hit: Vec<&Change> = changes.iter().filter(|c| glob(path, &c.path)).collect();
+            if hit.is_empty() {
+                problems.push(format!("{path}: nothing matching changed"));
+            }
+            for c in hit {
+                if c.after.as_ref() != want.as_ref() {
+                    problems.push(format!("{}: expected {want:?}, got {:?}", c.path, c.after));
+                }
+            }
+            continue;
+        }
+        let got = after.get(path);
+        if got != want.as_ref() {
+            problems.push(format!("{path}: expected {want:?}, got {got:?}"));
+        }
+    }
+    let unexpected: Vec<Change> = changes
+        .iter()
+        .filter(|c| {
+            !expect
+                .iter()
+                .any(|(p, _)| *p == c.path || glob(p, &c.path))
+        })
+        .filter(|c| !allow.iter().any(|g| glob(g, &c.path)))
+        .cloned()
+        .collect();
+    if !unexpected.is_empty() {
+        problems.push(format!("unexpected changes:{}", show(&unexpected)));
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{}\n    all changes:{}",
+            problems.join("\n    "),
+            show(changes)
+        ))
+    }
+}
+
 pub fn run(e: &Entry, proved: &mut Proved) -> Result<(), String> {
     let mut s = base_session();
     for (id, p) in &e.setup {
@@ -262,48 +314,9 @@ pub fn run(e: &Entry, proved: &mut Proved) -> Result<(), String> {
         f(&h.state().session)?;
     }
 
-    // 1. Exactly the expected changes. A path with `*` covers every changed path it matches
-    // (at least one), all of which must end at the given value.
+    // 1. Exactly the expected changes.
     let changes = diff(&before, &after);
-    let mut problems = Vec::new();
-    for (path, want) in &e.expect {
-        if path.contains('*') {
-            let hit: Vec<&Change> = changes.iter().filter(|c| glob(path, &c.path)).collect();
-            if hit.is_empty() {
-                problems.push(format!("{path}: nothing matching changed"));
-            }
-            for c in hit {
-                if c.after.as_ref() != want.as_ref() {
-                    problems.push(format!("{}: expected {want:?}, got {:?}", c.path, c.after));
-                }
-            }
-            continue;
-        }
-        let got = after.get(path);
-        if got != want.as_ref() {
-            problems.push(format!("{path}: expected {want:?}, got {got:?}"));
-        }
-    }
-    let unexpected: Vec<Change> = changes
-        .iter()
-        .filter(|c| {
-            !e.expect
-                .iter()
-                .any(|(p, _)| *p == c.path || glob(p, &c.path))
-        })
-        .filter(|c| !e.allow.iter().any(|g| glob(g, &c.path)))
-        .cloned()
-        .collect();
-    if !unexpected.is_empty() {
-        problems.push(format!("unexpected changes:{}", show(&unexpected)));
-    }
-    if !problems.is_empty() {
-        return Err(format!(
-            "{}\n    all changes:{}",
-            problems.join("\n    "),
-            show(&changes)
-        ));
-    }
+    check_changes(&changes, &after, &e.expect, &e.allow)?;
     let sheets: Vec<String> = h
         .state()
         .session
