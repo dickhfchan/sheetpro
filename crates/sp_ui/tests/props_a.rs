@@ -609,6 +609,17 @@ fn tab_menu(h: &mut Harness<'_, App>, sheet: &str, path: &[&str]) -> Result<(), 
 }
 
 /// The open dialog, as the variant the caller expects.
+/// A new threaded comment "Check this" on C3 (the author is the user's name in settings).
+fn thread_on_c3(e: Entry) -> Entry {
+    e.set("Sheet1.comments.0.addr.row", "2")
+        .set("Sheet1.comments.0.addr.col", "2")
+        .set("Sheet1.comments.0.kind", "\"Thread\"")
+        .set("Sheet1.comments.0.text", "\"Check this\"")
+        .set("Sheet1.comments.0.visible", "false")
+        .set("Sheet1.comments.0.resolved", "false")
+        .allow("Sheet1.comments.0.author")
+}
+
 macro_rules! dialog {
     ($app:expr, $variant:ident) => {
         match &mut $app.ui.dialog {
@@ -2173,6 +2184,29 @@ fn insert_tab() -> Vec<Entry> {
         )
         .setup("insert.note", json!({"cell": "A1", "text": "old"}))
         .set("Sheet1.comments.0.text", "\"changed\""),
+        // A threaded comment from the Insert tab, and by key; it stays a thread on reopen.
+        thread_on_c3(Entry::new(
+            "new comment",
+            "C3",
+            Act::Dialog {
+                ribbon: ("Insert", "Comments", "New Comment"),
+                fill: |app| dialog!(app, NewComment).text = "Check this".into(),
+                ok: "Post",
+            },
+        )),
+        thread_on_c3(Entry::new(
+            "new comment by key",
+            "C3",
+            Act::Custom {
+                prep: no_prep,
+                act: |h| {
+                    key(h, "Ctrl+Shift+F2")?;
+                    dialog!(h.state_mut(), NewComment).text = "Check this".into();
+                    h.run_steps(1);
+                    click_label(h, "Post")
+                },
+            },
+        )),
         Entry::new("shape", "B2", rb("Insert", "Illustrations", "Shapes"))
             .allow("Sheet1.objects.0.*")
             .then(
@@ -2911,11 +2945,6 @@ const KNOWN_GAPS: &[(&str, &str)] = &[
          (one block is proved)",
     ),
     (
-        "insert.comment",
-        "threaded comments are saved as notes (no threadedComments part): the thread kind, \
-         replies' structure and authorship are lost on save and reopen",
-    ),
-    (
         "insert.slicer",
         "slicers are not saved: the .xlsx writer has no slicer parts, so a slicer is lost \
          on save and reopen",
@@ -2983,7 +3012,7 @@ fn every_entry_changes_exactly_its_properties() {
 }
 
 /// Coverage may only grow: raise these as entries are added.
-const COMMANDS_FLOOR_A: usize = 203;
+const COMMANDS_FLOOR_A: usize = 204;
 const PROPERTY_KINDS_FLOOR_A: usize = 313;
 
 #[test]
