@@ -45,6 +45,11 @@ pub struct App {
     pub edit_buf: String,
     pub(crate) editing_cell: Option<(usize, CellAddr)>,
     focus_editor: bool,
+    /// What is typed in the Name Box while it has focus.
+    name_box: Option<String>,
+    /// A text field used this frame's keys (Enter / Tab / Escape ending its edit): the
+    /// grid must not act on them too.
+    keys_taken: bool,
     drag_anchor: Option<CellAddr>,
     pub(crate) last_error: Option<String>,
     /// Open dialog and its fields (serializable, so scripts and tests can drive it).
@@ -60,6 +65,8 @@ impl App {
             edit_buf: String::new(),
             editing_cell: None,
             focus_editor: false,
+            name_box: None,
+            keys_taken: false,
             drag_anchor: None,
             last_error: None,
             ui: dialogs::UiState::default(),
@@ -211,6 +218,14 @@ impl App {
         if ui.ctx().global_style().visuals.dark_mode {
             ui.ctx().set_theme(egui::Theme::Light);
         }
+        // On the grid Tab moves the active cell (`keyboard`); egui would otherwise give
+        // the keyboard focus to the first text field (the Name Box) and swallow the key.
+        if self.ui.dialog.is_none()
+            && ui.memory(|m| m.focused().is_none())
+            && ui.input(|i| i.key_pressed(Key::Tab))
+        {
+            ui.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+        }
         if !self.session.view.full_screen {
             egui::Panel::top("ribbon")
                 .frame(egui::Frame::NONE.fill(T.ribbon_bg))
@@ -265,15 +280,32 @@ impl App {
             } else {
                 format!("{}R x {}C", r.rows(), r.cols())
             };
-            let mut name_box = name.clone();
+            // While the Name Box has focus it keeps what is typed (across frames); otherwise
+            // it shows the selection.
+            let nb_id = egui::Id::new("name_box");
+            let mut name_box = match &self.name_box {
+                Some(t) if ui.memory(|m| m.has_focus(nb_id)) => t.clone(),
+                _ => name.clone(),
+            };
             let nb = ui.add(
                 egui::TextEdit::singleline(&mut name_box)
+                    .id(nb_id)
                     .desired_width(90.0)
                     .font(FontId::proportional(13.0)),
             );
-            if nb.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) && name_box != name {
-                let reference = shell_hook::name_box_reference(&name_box);
-                self.exec("nav.goto_cell", json!({ "reference": reference }));
+            if nb.has_focus() {
+                self.name_box = Some(name_box.clone());
+            }
+            if nb.lost_focus() {
+                self.name_box = None;
+                if ui.input(|i| i.key_pressed(Key::Enter)) {
+                    // The Enter is the Name Box's, not the grid's.
+                    self.keys_taken = true;
+                    if name_box != name {
+                        let reference = shell_hook::name_box_reference(&name_box);
+                        self.exec("nav.goto_cell", json!({ "reference": reference }));
+                    }
+                }
             }
             ui.label(egui::RichText::new("fx").italics().color(T.group_label));
             let id = egui::Id::new("formula_editor");
@@ -302,6 +334,8 @@ impl App {
                         i.key_pressed(Key::Escape),
                     )
                 });
+                // The key that ended the edit is the editor's, not the grid's.
+                self.keys_taken = enter || tab || esc;
                 if esc {
                     self.cancel_edit();
                 } else if enter {
@@ -316,19 +350,26 @@ impl App {
     }
 
     /// Editor-only keys, handled before the text field sees them: Alt+Enter (line break),
-    /// F4 (cycle `$` on the reference at the caret), Ctrl+Shift+Enter (array formula).
+    /// F4 (cycle `$` on the reference at the caret), Ctrl+Shift+Enter (array formula),
+    /// Ctrl+Enter (the entry into every selected cell).
     fn editor_keys(&mut self, ui: &mut egui::Ui, id: egui::Id) {
-        let (cse, newline, f4) = ui.input_mut(|i| {
+        let (cse, fill, newline, f4) = ui.input_mut(|i| {
+            // Most specific first: extra Shift / Alt are ignored when matching.
             let cse = i.consume_key(
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
                 Key::Enter,
             );
-            let nl = !cse && i.consume_key(egui::Modifiers::ALT, Key::Enter);
+            let fill = !cse && i.consume_key(egui::Modifiers::COMMAND, Key::Enter);
+            let nl = !cse && !fill && i.consume_key(egui::Modifiers::ALT, Key::Enter);
             let f4 = i.consume_key(egui::Modifiers::NONE, Key::F4);
-            (cse, nl, f4)
+            (cse, fill, nl, f4)
         });
-        if cse {
-            self.array_enter();
+        if cse || fill {
+            if cse {
+                self.array_enter();
+            } else {
+                self.fill_enter();
+            }
             ui.memory_mut(|m| m.surrender_focus(id));
             return;
         }
@@ -361,12 +402,10 @@ impl App {
         }
     }
 
-    /// Ctrl+Shift+Enter: enter the edit buffer as a legacy array formula over the selection
-    /// (or just the edited cell when it is outside the selection).
-    pub fn array_enter(&mut self) {
-        let Some((sheet, at)) = self.editing_cell else {
-            return;
-        };
+    /// The range an Enter variant applies to: the selection when it holds the edited cell,
+    /// else just that cell (as `Sheet!A1:B2`).
+    fn edit_target(&self) -> Option<String> {
+        let (sheet, at) = self.editing_cell?;
         let sel = self.session.sel.range();
         let range = if sel.contains(at) && sheet == self.session.sheet_index() {
             sel
@@ -380,10 +419,37 @@ impl App {
             .get(sheet)
             .map(|s| sp_core::addr::quote_sheet_name(&s.name))
             .unwrap_or_default();
+        Some(format!("{name}!{}", range.to_a1()))
+    }
+
+    /// Ctrl+Enter: enter the edit buffer into every selected cell (formulas adjust per
+    /// cell); the selection stays.
+    pub fn fill_enter(&mut self) {
+        let Some(range) = self.edit_target() else {
+            return;
+        };
+        let input = self.edit_buf.clone();
+        self.exec(
+            "cell.fill_selection",
+            json!({ "range": range, "input": input }),
+        );
+        if self.last_error.is_none() {
+            self.editing_cell = None;
+            self.session.view.editing = false;
+            self.sync_buffer();
+        }
+    }
+
+    /// Ctrl+Shift+Enter: enter the edit buffer as a legacy array formula over the selection
+    /// (or just the edited cell when it is outside the selection).
+    pub fn array_enter(&mut self) {
+        let Some(range) = self.edit_target() else {
+            return;
+        };
         let formula = self.edit_buf.clone();
         self.exec(
             "cell.array_enter",
-            json!({ "range": format!("{name}!{}", range.to_a1()), "formula": formula }),
+            json!({ "range": range, "formula": formula }),
         );
         if self.last_error.is_none() {
             self.editing_cell = None;
@@ -815,7 +881,15 @@ impl App {
         if consumed {
             // A filter button, comment mark, list arrow or chart took the pointer.
         } else if resp.drag_started() || resp.clicked() {
-            if let Some(a) = resp.interact_pointer_pos().and_then(hit) {
+            // A drag starts where the button went down, not where it passed the drag
+            // threshold (a fast drag is already cells away by then).
+            let at = if resp.drag_started() {
+                ui.input(|i| i.pointer.press_origin())
+                    .or_else(|| resp.interact_pointer_pos())
+            } else {
+                resp.interact_pointer_pos()
+            };
+            if let Some(a) = at.and_then(hit) {
                 if self.editing_cell.is_some() {
                     self.commit_edit(None);
                 }
@@ -832,7 +906,10 @@ impl App {
                 self.drag_anchor = Some(self.session.sel.anchor);
                 self.sync_buffer();
             }
-        } else if resp.dragged()
+        }
+        // The drag reaches the cell under the pointer, also on the frame it starts or ends.
+        if !consumed
+            && (resp.dragged() || resp.drag_stopped())
             && let (Some(anchor), Some(a)) =
                 (self.drag_anchor, resp.interact_pointer_pos().and_then(hit))
         {
@@ -902,6 +979,9 @@ impl App {
 
     /// Map key presses to catalog shortcuts → commands. Typing starts editing.
     fn keyboard(&mut self, ui: &mut egui::Ui) {
+        if std::mem::take(&mut self.keys_taken) {
+            return; // A text field that just lost focus used this frame's keys.
+        }
         if ui.memory(|m| m.focused().is_some()) || self.ui.dialog.is_some() {
             return; // A text field or a dialog owns the keyboard.
         }
