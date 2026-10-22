@@ -431,6 +431,24 @@ pub fn goal_seek(wb: &sp_model::Workbook, set: Key, target: f64, changing: Key) 
             }
         }
     }
+    // Floating-point steps leave noise in the last digits (20.000000000000057 for 20): keep
+    // the shortest decimal near the answer that does at least as well.
+    if best.1.is_finite() && best.1 != 0.0 {
+        for digits in 1..=15 {
+            let Ok(x) = format!("{:.*e}", digits - 1, best.0).parse::<f64>() else {
+                break;
+            };
+            if x == best.0 {
+                break;
+            }
+            if let Some(v) = f(x)
+                && v.abs() <= best.1.abs()
+            {
+                best = (x, v);
+                break;
+            }
+        }
+    }
     let found = best.1.abs() <= tol;
     GoalSeek {
         found,
@@ -572,7 +590,9 @@ mod tests {
             (0, CellAddr::parse("B1").unwrap()),
         );
         assert!(g.found);
-        assert!((g.input - 15.0).abs() < 1e-6, "{g:?}");
+        // Exactly 15, not 15 plus floating-point noise from the secant steps.
+        assert_eq!(g.input, 15.0, "{g:?}");
+        assert_eq!(g.result, Value::Number(50.0));
         // Non-linear: B1^2 = 2.
         let wb = book(&[("B1", "1"), ("B2", "=B1^2")]);
         let g = super::goal_seek(
