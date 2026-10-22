@@ -2,6 +2,7 @@
 
 Toolchain: Rust (edition 2024; `rust-toolchain.toml` pins the channel). macOS, Linux and
 Windows are supported targets for the desktop app.
+Moving to a headless Ubuntu server: see `ubuntu-server.md`.
 
 ## Build, run, test
 
