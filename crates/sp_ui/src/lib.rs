@@ -872,8 +872,10 @@ impl App {
         if resp.double_clicked() && !consumed {
             self.begin_edit(None);
         }
-        // Right-click outside the selection selects the cell under the pointer first.
+        // Right-click outside the selection selects the cell under the pointer first (on a
+        // shape, the shape: its menu opens instead).
         if resp.secondary_clicked()
+            && !consumed
             && let Some(a) = resp.interact_pointer_pos().and_then(hit)
             && !self.session.sel.range().contains(a)
         {

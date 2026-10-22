@@ -221,9 +221,43 @@ impl App {
         }
     }
 
+    /// The menu of the selected shape or picture: z-order and Delete. The shape stays
+    /// selected at its new place in the order.
+    fn object_menu(&mut self, ui: &mut Ui, idx: usize) {
+        for (id, text) in [
+            ("object.bring_to_front", "Bring to Front"),
+            ("object.bring_forward", "Bring Forward"),
+            ("object.send_to_back", "Send to Back"),
+            ("object.send_backward", "Send Backward"),
+        ] {
+            if ui.button(text).clicked() {
+                match self.try_exec(id, json!({ "object": idx })) {
+                    Ok(r) => {
+                        self.ui.grid.object = r
+                            .get("object")
+                            .and_then(serde_json::Value::as_u64)
+                            .and_then(|i| usize::try_from(i).ok());
+                    }
+                    Err(e) => self.last_error = Some(e),
+                }
+                ui.close();
+            }
+        }
+        ui.separator();
+        if ui.button("Delete").clicked() {
+            self.exec("object.delete", json!({ "object": idx }));
+            self.ui.grid.object = None;
+            ui.close();
+        }
+    }
+
     /// Right-click menu on the cell grid.
     pub(crate) fn grid_menu(&mut self, ui: &mut Ui) {
         ui.set_min_width(170.0);
+        if let Some(idx) = self.ui.grid.object {
+            self.object_menu(ui, idx);
+            return;
+        }
         self.menu_cmd(ui, "home.clipboard.cut", "Cut");
         self.menu_cmd(ui, "home.clipboard.copy", "Copy");
         self.menu_cmd(ui, "home.clipboard.paste", "Paste");
