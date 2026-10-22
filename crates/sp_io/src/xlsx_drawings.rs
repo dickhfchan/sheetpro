@@ -627,28 +627,8 @@ pub fn parse_object(
     }
     let (mut o, path) = found?;
     o.anchor = a;
-    // A cell anchor's box from A1 (kept alongside its cells, as when it was placed): the
-    // shape's own offset and size, which writers store with the anchor's rectangle.
-    if o.anchor.kind == AnchorKind::TwoCell
-        && let Some((pos, ext)) = anchor
-            .children
-            .iter()
-            .find(|c| matches!(c.name.as_str(), "pic" | "sp" | "cxnSp"))
-            .and_then(xfrm_box)
-    {
-        o.anchor.pos = pos;
-        o.anchor.ext = ext;
-    }
     o.after_charts = charts_before;
     Some((o, path))
-}
-
-/// `spPr/xfrm` offset and size of a picture or shape, px.
-fn xfrm_box(n: &Node) -> Option<((f64, f64), (f64, f64))> {
-    let x = n.child("spPr")?.child("xfrm")?;
-    let (off, ext) = (x.child("off")?, x.child("ext")?);
-    let px = |n: &Node, k: &str| emu_px(num::<i64>(n, k).unwrap_or(0));
-    Some(((px(off, "x"), px(off, "y")), (px(ext, "cx"), px(ext, "cy"))))
 }
 
 /// Whether an anchor holds a picture, shape or connector (rather than a chart frame).
@@ -1536,7 +1516,7 @@ mod tests {
     }
 
     fn reparse(o: &DrawObject, rid: Option<&str>, media: &MediaLookup) -> Option<DrawObject> {
-        let x = object_anchor_xml(o, 2, rid, (5.0, 6.0, 10.0, 12.0))?;
+        let x = object_anchor_xml(o, 2, rid, (0.0, 0.0, 10.0, 10.0))?;
         let n = parse_dom(&x).ok()?;
         parse_object(&n, media, o.after_charts).map(|(o, _)| o)
     }
@@ -1550,15 +1530,7 @@ mod tests {
         let o = rect_obj();
         let back = reparse(&o, None, &empty).unwrap();
         assert_eq!(back.kind, o.kind);
-        // A cell anchor also gets its box back from the written offset and size.
-        assert_eq!(
-            back.anchor,
-            ObjectAnchor {
-                pos: (5.0, 6.0),
-                ext: (10.0, 12.0),
-                ..o.anchor
-            }
-        );
+        assert_eq!(back.anchor, o.anchor);
         assert_eq!(
             (back.name.as_str(), back.descr.as_str()),
             ("Rectangle 1", "alt <text>")
