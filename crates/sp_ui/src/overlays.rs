@@ -664,6 +664,23 @@ impl App {
                 return true;
             }
         }
+        // Right-click on a shape or picture selects it for its menu (see `object_menu`).
+        if resp.secondary_clicked()
+            && let Some(p) = pos
+        {
+            return match top_hit(p) {
+                Some(Hot::Object { idx, .. }) => {
+                    self.ui.grid.object = Some(idx);
+                    self.ui.grid.chart = None;
+                    self.ui.grid.slicer = None;
+                    true
+                }
+                _ => {
+                    self.ui.grid.object = None;
+                    false
+                }
+            };
+        }
         if !(resp.clicked() || resp.double_clicked() || resp.drag_started()) {
             return false;
         }

@@ -881,6 +881,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
         "docProps/app.xml",
         "xl/metadata.xml",
         crate::xlsx_drawings::FPB_PART,
+        crate::xlsx_extras::PERSON_PART,
     ]
     .iter()
     .map(|s| s.to_string())
@@ -893,6 +894,7 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             format!("xl/worksheets/_rels/sheet{n}.xml.rels"),
             format!("xl/comments{n}.xml"),
             format!("xl/drawings/vmlDrawing{n}.vml"),
+            crate::xlsx_extras::threaded_part(n),
         ];
         if sheet.passthrough.sheet_part.is_none() {
             generated.push(names[0].clone());
@@ -1088,8 +1090,17 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             put(
                 &mut zip,
                 &format!("xl/comments{n}.xml"),
-                crate::xlsx_extras::comments_xml(sheet).as_bytes(),
+                crate::xlsx_extras::comments_xml(sheet, n).as_bytes(),
             )?;
+            if crate::xlsx_extras::has_threads(sheet) {
+                let part = crate::xlsx_extras::threaded_part(n);
+                override_ct(&mut ct, &part, crate::xlsx_extras::THREADED_CT);
+                put(
+                    &mut zip,
+                    &part,
+                    crate::xlsx_extras::threaded_comments_xml(sheet, n).as_bytes(),
+                )?;
+            }
             put(
                 &mut zip,
                 &format!("xl/drawings/vmlDrawing{n}.vml"),
@@ -1114,6 +1125,22 @@ pub fn write_xlsx<W: Write + Seek>(wb: &Workbook, w: W) -> Result<(), IoError> {
             target: target.into(),
             external: false,
         });
+    }
+    let people = crate::xlsx_extras::thread_authors(wb);
+    if !people.is_empty() {
+        let part = crate::xlsx_extras::PERSON_PART;
+        wb_rels.push(RawRel {
+            id: wb_ids.take(),
+            rel_type: crate::xlsx_extras::PERSON_REL.to_string(),
+            target: part.trim_start_matches("xl/").into(),
+            external: false,
+        });
+        override_ct(&mut ct, part, crate::xlsx_extras::PERSON_CT);
+        put(
+            &mut zip,
+            part,
+            crate::xlsx_extras::persons_xml(&people).as_bytes(),
+        )?;
     }
     let styles_out = cfw.styles_xml(&styles.xml);
     for (path, data) in cfw.finish() {

@@ -63,6 +63,8 @@ fn regenerated(name: &str, content_type: &str) -> bool {
         "extended-properties+xml",
         "spreadsheetml.comments+xml",
         "threadedcomments+xml",
+        // The people of threaded comments, written from the comments' authors.
+        "person+xml",
         "vmlDrawing",
         "printerSettings",
         "spreadsheetml.table+xml",

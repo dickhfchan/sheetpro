@@ -456,3 +456,27 @@ fn charts_and_objects_cover_filter_buttons() {
         }
     }
 }
+
+/// Typing in a cell and pressing Enter (or Tab) commits and moves one cell, not two: the
+/// key that ends the edit is not seen again by the grid in the same frame.
+#[test]
+fn enter_and_tab_after_typing_move_one_cell() {
+    for (key, want) in [
+        (egui::Key::Enter, CellAddr::new(3, 2)),
+        (egui::Key::Tab, CellAddr::new(2, 3)),
+    ] {
+        let mut h = harness(App::new(Session::new()));
+        h.state_mut().session.select(CellAddr::new(2, 2));
+        h.run_steps(2);
+        h.event(egui::Event::Text("7".into()));
+        h.run_steps(1);
+        h.key_press_modifiers(egui::Modifiers::NONE, key);
+        h.run_steps(3);
+        let s = &h.state().session;
+        assert_eq!(
+            s.wb.sheet(0).unwrap().value(CellAddr::new(2, 2)),
+            &sp_core::Value::Number(7.0)
+        );
+        assert_eq!(s.sel.active, want, "{key:?}");
+    }
+}

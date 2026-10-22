@@ -13,6 +13,20 @@ use std::collections::HashSet;
 /// Rows a filter may span (keeps hidden-row bookkeeping bounded).
 const MAX_FILTER_ROWS: u32 = 1_048_576;
 const FILTER_DB: &str = "_xlnm._FilterDatabase";
+/// The criteria and copy-to ranges of the last Advanced Filter (the target names them too).
+const CRITERIA: &str = "_xlnm.Criteria";
+const EXTRACT: &str = "_xlnm.Extract";
+
+/// Define (or redefine) the sheet-scoped built-in name `name`.
+fn set_sheet_name(wb: &mut Workbook, sheet: usize, name: &str, formula: String) {
+    wb.names
+        .retain(|n| !(n.scope == Some(sheet) && n.name.eq_ignore_ascii_case(name)));
+    wb.names.push(DefinedName {
+        name: name.into(),
+        formula,
+        scope: Some(sheet),
+    });
+}
 
 /// Formatted text of a cell, as the filter dropdown lists it.
 pub fn cell_text(wb: &Workbook, sh: &Sheet, a: CellAddr) -> String {
@@ -531,6 +545,12 @@ fn criteria_cond(v: &Value) -> Option<FilterCond> {
     })
 }
 
+/// `Sheet!$A$1:$B$2` for a range on sheet `i`.
+fn abs_ref_on(wb: &Workbook, i: usize, r: CellRange) -> String {
+    let name = wb.sheet(i).map(|sh| sh.name.as_str()).unwrap_or_default();
+    super::audit_cmds::abs_ref(name, r)
+}
+
 fn advanced_filter(s: &mut Session, p: &Json) -> CmdResult {
     let (sheet, list) = match str_opt(p, "range") {
         Some(_) => range(s, p, "range")?,
@@ -557,6 +577,7 @@ fn advanced_filter(s: &mut Session, p: &Json) -> CmdResult {
     let sh = wb
         .sheet(sheet)
         .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
+    let crit_name = abs_ref_on(wb, csheet, crit);
     let csh = wb
         .sheet(csheet)
         .ok_or_else(|| CmdError::Failed("no sheet".into()))?;
@@ -637,7 +658,15 @@ fn advanced_filter(s: &mut Session, p: &Json) -> CmdResult {
                     "the copy-to range overlaps the list".into(),
                 ));
             }
+            let header = CellRange::new(
+                dest,
+                dest.offset(0, i64::from(list.cols()) - 1).unwrap_or(dest),
+            );
+            let extract = abs_ref_on(wb, dsheet, header);
             s.transact("Advanced Filter", |tx, _| {
+                tx.touch_book();
+                set_sheet_name(tx.wb, sheet, CRITERIA, crit_name);
+                set_sheet_name(tx.wb, sheet, EXTRACT, extract);
                 for (a, c) in out {
                     tx.set_cell(dsheet, a, c);
                 }
@@ -649,14 +678,13 @@ fn advanced_filter(s: &mut Session, p: &Json) -> CmdResult {
             let sheet_name = sh.name.clone();
             s.transact("Advanced Filter", |tx, _| {
                 tx.touch_book();
-                tx.wb.names.retain(|n| {
-                    !(n.scope == Some(sheet) && n.name.eq_ignore_ascii_case(FILTER_DB))
-                });
-                tx.wb.names.push(DefinedName {
-                    name: FILTER_DB.into(),
-                    formula: super::audit_cmds::abs_ref(&sheet_name, list),
-                    scope: Some(sheet),
-                });
+                set_sheet_name(
+                    tx.wb,
+                    sheet,
+                    FILTER_DB,
+                    super::audit_cmds::abs_ref(&sheet_name, list),
+                );
+                set_sheet_name(tx.wb, sheet, CRITERIA, crit_name);
                 if let Some(sh) = tx.wb.sheet_mut(sheet) {
                     let (a, b) = (list.start.row + 1, list.end.row);
                     sh.hidden_rows.retain(|x| *x < a || *x > b);
@@ -776,6 +804,14 @@ mod tests {
             .unwrap();
         assert_eq!(r["found"], 2);
         assert_eq!(hidden(&s), vec![3, 4, 5]);
+        let name = |s: &Session, n: &str| {
+            s.wb.names
+                .iter()
+                .find(|d| d.name == n && d.scope == Some(0))
+                .map(|d| d.formula.clone())
+        };
+        assert_eq!(name(&s, FILTER_DB).as_deref(), Some("Sheet1!$A$1:$C$6"));
+        assert_eq!(name(&s, CRITERIA).as_deref(), Some("Sheet1!$E$1:$F$2"));
         s.execute("data.filter_clear", &json!({})).unwrap();
         assert!(hidden(&s).is_empty());
         let r = s
@@ -786,6 +822,7 @@ mod tests {
             .unwrap();
         assert_eq!(r["found"], 1);
         assert_eq!(r["copied_to"], "H1:J2");
+        assert_eq!(name(&s, EXTRACT).as_deref(), Some("Sheet1!$H$1:$J$1"));
         assert_eq!(
             s.wb.sheets[0]
                 .value(CellAddr::parse("H2").unwrap())

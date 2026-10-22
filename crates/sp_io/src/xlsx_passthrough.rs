@@ -115,6 +115,7 @@ pub const HANDLED_SHEET_ELEMENTS: &[&str] = &[
     "sheetData",
     "sheetProtection",
     "protectedRanges",
+    "scenarios",
     "autoFilter",
     "mergeCells",
     "conditionalFormatting",
@@ -156,6 +157,8 @@ pub const HANDLED_WORKBOOK_REL_TYPES: &[&str] = &[
     "sharedStrings",
     "sheetMetadata",
     "calcChain",
+    // The people of threaded comments (written from the comments).
+    "person",
 ];
 
 /// Package relationship types the writer generates.

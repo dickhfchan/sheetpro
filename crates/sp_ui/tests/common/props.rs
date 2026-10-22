@@ -5,7 +5,8 @@
     clippy::unwrap_used,
     clippy::panic,
     clippy::indexing_slicing,
-    clippy::expect_used
+    clippy::expect_used,
+    clippy::type_complexity
 )]
 use super::*;
 use egui_kittest::Harness;
@@ -211,6 +212,7 @@ pub fn perform(h: &mut Harness<'_, App>, act: &Act) -> Result<PropMap, String> {
         }
         Act::Custom { prep, act } => {
             prep(h)?;
+            h.run_steps(2);
             let before = snap(h);
             act(h)?;
             h.run_steps(3);
