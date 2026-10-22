@@ -266,11 +266,7 @@ pub fn check_changes(
     }
     let unexpected: Vec<Change> = changes
         .iter()
-        .filter(|c| {
-            !expect
-                .iter()
-                .any(|(p, _)| *p == c.path || glob(p, &c.path))
-        })
+        .filter(|c| !expect.iter().any(|(p, _)| *p == c.path || glob(p, &c.path)))
         .filter(|c| !allow.iter().any(|g| glob(g, &c.path)))
         .cloned()
         .collect();
