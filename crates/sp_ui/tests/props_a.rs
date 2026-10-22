@@ -3028,6 +3028,8 @@ fn coverage_gate() {
         KNOWN_GAPS.len(),
         NOT_PROPERTY.len()
     );
+    let unproved: Vec<&&str> = ours.iter().filter(|id| !proved.contains(**id)).collect();
+    println!("not proved (listed above or missing): {unproved:?}");
     assert!(
         proved.len() >= COMMANDS_FLOOR_A,
         "commands proved {} < floor {COMMANDS_FLOOR_A}",
