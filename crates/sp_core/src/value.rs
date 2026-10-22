@@ -130,6 +130,33 @@ impl Value {
     }
 }
 
+/// A number as the formula bar shows it for editing: up to 15 significant digits (all a
+/// double reliably holds), so editing a cell and pressing Enter keeps its value. General's
+/// 10 digits are for display only.
+pub fn format_edit(n: f64) -> String {
+    if !n.is_finite() {
+        return format_general(n);
+    }
+    if n.fract() == 0.0 && n.abs() < 1e15 {
+        return format!("{}", n as i64);
+    }
+    let r: f64 = format!("{n:.14e}").parse().unwrap_or(n);
+    if (1e-5..1e15).contains(&r.abs()) {
+        return format!("{r}");
+    }
+    let s = format!("{r:e}");
+    match s.split_once('e') {
+        Some((mant, exp)) => {
+            let (sign, digits) = match exp.strip_prefix('-') {
+                Some(d) => ('-', d),
+                None => ('+', exp),
+            };
+            format!("{mant}E{sign}{digits:0>2}")
+        }
+        None => s,
+    }
+}
+
 /// Render a number the way the General format does: up to 11 significant characters,
 /// switching to scientific notation for very large/small magnitudes.
 pub fn format_general(n: f64) -> String {

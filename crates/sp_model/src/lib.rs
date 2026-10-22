@@ -80,6 +80,7 @@ impl Cell {
             Content::Formula(f) => format!("={f}"),
             Content::Value(v) => match v {
                 Value::Text(s) if needs_quote_prefix(s) => format!("'{s}"),
+                Value::Number(n) => sp_core::value::format_edit(*n),
                 other => other.to_display(),
             },
         }
@@ -691,5 +692,15 @@ mod tests {
         assert_eq!(Cell::constant(Value::text("123")).input_text(), "'123");
         assert_eq!(Cell::formula("A1+1").input_text(), "=A1+1");
         assert_eq!(Cell::constant(Value::Number(2.5)).input_text(), "2.5");
+        // 15 significant digits, not General's 10: editing must not round the value.
+        for (n, s) in [
+            (9428.135032823471, "9428.13503282347"),
+            (0.1 + 0.2, "0.3"),
+            (1e20, "1E+20"),
+            (-1.5e-7, "-1.5E-07"),
+            (123456789012.5, "123456789012.5"),
+        ] {
+            assert_eq!(Cell::constant(Value::Number(n)).input_text(), s);
+        }
     }
 }
