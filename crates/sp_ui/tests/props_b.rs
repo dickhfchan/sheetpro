@@ -1117,16 +1117,15 @@ fn shapes(e: Entry) -> Entry {
 
 /// Slot `i` of the z-order now holds shape `name` (a, b or c of [`shapes`]).
 fn slot(e: Entry, i: usize, name: char) -> Entry {
-    let (from, to, x) = match name {
-        'a' => (1, 3, "64.0"),
-        'b' => (4, 6, "256.0"),
-        _ => (7, 9, "448.0"),
+    let (from, to) = match name {
+        'a' => (1, 3),
+        'b' => (4, 6),
+        _ => (7, 9),
     };
     let o = format!("Sheet1.objects.{i}");
     e.set(&format!("{o}.name"), &format!("\"{name}\""))
         .set(&format!("{o}.anchor.cells.from.col"), &from.to_string())
         .set(&format!("{o}.anchor.cells.to.col"), &to.to_string())
-        .set(&format!("{o}.anchor.pos.0"), x)
 }
 
 /// Right-click the shape over `cell`, choose `item` in its menu.
@@ -1219,8 +1218,7 @@ fn object_entries() -> Vec<Entry> {
             },
         ))
         .set("Sheet1.objects.0.anchor.cells.from.col", "2")
-        .set("Sheet1.objects.0.anchor.cells.to.col", "4")
-        .set("Sheet1.objects.0.anchor.pos.0", "128.0"),
+        .set("Sheet1.objects.0.anchor.cells.to.col", "4"),
     ]
 }
 
