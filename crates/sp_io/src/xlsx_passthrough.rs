@@ -115,6 +115,7 @@ pub const HANDLED_SHEET_ELEMENTS: &[&str] = &[
     "sheetData",
     "sheetProtection",
     "protectedRanges",
+    "scenarios",
     "autoFilter",
     "mergeCells",
     "conditionalFormatting",

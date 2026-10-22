@@ -189,6 +189,7 @@ pub fn before_merges_xml(sheet: &Sheet) -> String {
         }
         x.push_str("</protectedRanges>");
     }
+    x.push_str(&scenarios_xml(sheet));
     // A filter over a table's range is that table's filter (written in its part).
     if let Some(af) = sheet.auto_filter.as_ref().filter(|af| {
         !sheet
@@ -571,6 +572,70 @@ pub fn vml_xml(sheet: &Sheet, n: usize) -> String {
     x
 }
 
+/// Cells of a scenario's changing-cells text (`$B$1,$B$3:$B$4`), in order.
+fn scenario_cells(text: &str) -> Vec<CellAddr> {
+    text.split(',')
+        .filter_map(|r| CellRange::parse(&r.trim().replace('$', "")).ok())
+        .flat_map(|r| r.iter().collect::<Vec<_>>())
+        .take(32)
+        .collect()
+}
+
+/// `<scenarios>`: each scenario's changing cells with the values it saved.
+fn scenarios_xml(sheet: &Sheet) -> String {
+    let list = &sheet.analysis.scenarios;
+    if list.is_empty() {
+        return String::new();
+    }
+    let mut x = String::from("<scenarios>");
+    for sc in list {
+        let cells = scenario_cells(&sc.changing);
+        let _ = write!(
+            x,
+            r#"<scenario name="{}" count="{}" user="" comment="{}">"#,
+            esc(&sc.name),
+            cells.len(),
+            esc(&sc.comment)
+        );
+        for (a, v) in cells.iter().zip(&sc.values) {
+            let val = match v {
+                sp_core::Value::Text(t) => t.to_string(),
+                sp_core::Value::Bool(b) => u8::from(*b).to_string(),
+                sp_core::Value::Empty => String::new(),
+                other => other.to_display(),
+            };
+            let _ = write!(x, r#"<inputCells r="{}" val="{}"/>"#, a.to_a1(), esc(&val));
+        }
+        x.push_str("</scenario>");
+    }
+    x.push_str("</scenarios>");
+    x
+}
+
+fn read_scenarios(n: &Node, sheet: &mut Sheet) {
+    for sc in n.children_named("scenario").take(10_000) {
+        let mut changing = Vec::new();
+        let mut values = Vec::new();
+        for c in sc.children_named("inputCells").take(32) {
+            let Some(a) = c.attr("r").and_then(|r| CellAddr::parse(r).ok()) else {
+                continue;
+            };
+            let val = c.attr("val").unwrap_or_default();
+            changing.push(format!("${}${}", sp_core::col_to_letters(a.col), a.row + 1));
+            values.push(match val.parse::<f64>() {
+                Ok(v) if v.is_finite() => sp_core::Value::Number(v),
+                _ => sp_core::Value::Text(val.into()),
+            });
+        }
+        sheet.analysis.scenarios.push(sp_model::pivot::Scenario {
+            name: sc.attr("name").unwrap_or_default().to_string(),
+            changing: changing.join(","),
+            values,
+            comment: sc.attr("comment").unwrap_or_default().to_string(),
+        });
+    }
+}
+
 /// `<workbookProtection>` (goes before `<bookViews>`).
 pub fn workbook_protection_xml(wb: &Workbook) -> String {
     let Some(p) = &wb.protection else {
@@ -649,6 +714,7 @@ pub fn read_sheet_extras(xml: &str, sheet: &mut Sheet, rels: &Rels) -> Result<()
                 }
             }
             "autoFilter" => sheet.auto_filter = read_auto_filter(n),
+            "scenarios" => read_scenarios(n, sheet),
             "dataValidations" => {
                 for v in n.children_named("dataValidation") {
                     sheet.validations.push(read_validation(v));
@@ -1282,6 +1348,15 @@ mod tests {
         sh.outline.rows.insert(3, 2);
         sh.outline.cols.insert(5, 1);
         sh.outline.summary_below = false;
+        sh.analysis.scenarios.push(sp_model::pivot::Scenario {
+            name: "Best <case>".into(),
+            changing: "$B$1,$C$4".into(),
+            values: vec![
+                sp_core::Value::Number(2.5),
+                sp_core::Value::Text("x".into()),
+            ],
+            comment: "why".into(),
+        });
         wb.protection = Some(WorkbookProtection {
             password: Some(PasswordHash::Modern {
                 algorithm: "SHA-512".into(),
@@ -1310,6 +1385,7 @@ mod tests {
         assert_eq!(a.hyperlinks, b.hyperlinks);
         assert_eq!(a.page_setup, b.page_setup);
         assert_eq!(a.outline, b.outline);
+        assert_eq!(a.analysis.scenarios, b.analysis.scenarios);
         assert_eq!(wb.protection, back.protection);
         // Notes and threads (replies, resolved state) round-trip exactly.
         assert_eq!(b.comments, a.comments);
