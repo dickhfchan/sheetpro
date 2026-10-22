@@ -15,7 +15,7 @@
 //! Cell styles are resolved from the shared style table, so a style change shows up as the
 //! properties that changed, not as a style id. Internal state is left out: the style pool,
 //! unmodelled file content kept for saving, spill bookkeeping (spilled values are cell
-//! values), pivot cache records (derived from the source). Long byte arrays (images) are
+//! values; only a legacy array's area shows, as `Sheet1!B3.array`), pivot cache records (derived from the source). Long byte arrays (images) are
 //! summarised by length and hash.
 
 use crate::Session;
@@ -148,6 +148,14 @@ fn cells(wb: &Workbook, sheet: &Sheet, out: &mut PropMap) {
             }
         }
     }
+    // A legacy (Ctrl+Shift+Enter) array formula's area is a property of its top-left cell
+    // (the file's `t="array" ref=…`); dynamic spill areas are derived and left out.
+    for a in sheet.spills.iter().filter(|a| a.fixed) {
+        out.insert(
+            format!("{}!{}.array", sheet.name, a.range.start.to_a1()),
+            format!("{:?}", a.range.to_a1()),
+        );
+    }
 }
 
 /// Every spreadsheet property of the session (workbook, sheets, cells, view).
@@ -257,6 +265,26 @@ mod tests {
         let d = diff(&a, &snapshot(&s2));
         let paths: Vec<&str> = d.iter().map(|c| c.path.as_str()).collect();
         assert_eq!(paths, vec!["Sheet1!A1.input", "Sheet1!A1.value"]);
+    }
+
+    /// A legacy array formula shows its area; a dynamic spill does not.
+    #[test]
+    fn legacy_array_area_is_a_property() {
+        let mut s = Session::new();
+        s.execute("cell.set", &json!({"cell": "A1", "input": "={1;2}"}))
+            .unwrap();
+        assert!(!snapshot(&s).keys().any(|k| k.ends_with(".array")));
+        s.execute(
+            "cell.array_enter",
+            &json!({"range": "C1:C2", "formula": "={1;2}"}),
+        )
+        .unwrap();
+        let snap = snapshot(&s);
+        assert_eq!(
+            snap.get("Sheet1!C1.array").map(String::as_str),
+            Some("\"C1:C2\"")
+        );
+        assert!(!snap.contains_key("Sheet1!A1.array"));
     }
 
     #[test]
